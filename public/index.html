@@ -275,7 +275,14 @@ async function searchDiarioOficial(kw, signal) {
       system: `Eres un agente que busca licitaciones en el Diario Oficial de Chile.
 Responde ÚNICAMENTE con un array JSON. Sin texto, sin markdown.
 Schema: {"titulo":"","organismo":"","estado":"Publicada","fechaPublicacion":"","fechaCierre":"","monto":null,"descripcion":"","url":"","fuente":"Diario Oficial","region":""}`,
-      messages:[{role:"user",content:`Busca en diariooficial.interior.gob.cl licitaciones relacionadas con: "${kw}". Devuelve array JSON con resultados reales.`}],
+      messages:[{role:"user",content:`Busca licitaciones en el Diario Oficial de Chile relacionadas con: "${kw}".
+
+Ejecuta estas búsquedas en orden:
+1. site:diariooficial.interior.gob.cl "${kw}" licitacion
+2. site:diariooficial.interior.gob.cl "${kw}" concurso publico
+3. diario oficial chile licitacion "${kw}" ingenieria vial 2026
+
+Extrae todos los resultados reales que encuentres con título, organismo, fecha y URL. Devuelve array JSON.`}],
       tools:[{type:"web_search_20250305",name:"web_search"}]
     })
   });
