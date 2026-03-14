@@ -10,6 +10,8 @@ const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || "";
 app.use(cors({ origin: "*" }));
 app.options("*", cors());
 app.use(express.json());
+const path = require("path");
+app.use(express.static(path.join(__dirname, "public")));
 
 // ── Salud ─────────────────────────────────────────────────────────────────────
 app.get("/", (req, res) => {
