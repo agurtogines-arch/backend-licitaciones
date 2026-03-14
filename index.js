@@ -3,7 +3,7 @@ const cors = require("cors");
 const fetch = require("node-fetch");
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 const TICKET = process.env.MP_TICKET || "1FC8A3E9-5D72-495C-8340-83E5B1749B79";
 
 app.use(cors()); // permite llamadas desde el agente en el navegador
