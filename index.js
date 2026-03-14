@@ -5,8 +5,9 @@ const fetch = require("node-fetch");
 const app = express();
 const PORT = process.env.PORT || 8080;
 const TICKET = process.env.MP_TICKET || "F8537A18-6766-4DEF-9E59-426B4FEE2844";
+const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || "";
 
-app.use(cors({ origin: "*", methods: ["GET","POST","OPTIONS"], allowedHeaders: ["Content-Type","Authorization"] }));
+app.use(cors({ origin: "*" }));
 app.options("*", cors());
 app.use(express.json());
 
@@ -15,13 +16,12 @@ app.get("/", (req, res) => {
   res.json({ status: "ok", mensaje: "Backend Licitaciones activo" });
 });
 
-// ── Búsqueda Mercado Público por keyword ──────────────────────────────────────
+// ── Búsqueda Mercado Público ───────────────────────────────────────────────────
 app.get("/buscar", async (req, res) => {
   const keyword = (req.query.q || "").toLowerCase().trim();
-  const estado  = req.query.estado || "activas";
   if (!keyword) return res.status(400).json({ error: "Parámetro q requerido" });
   try {
-    const url = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?estado=${estado}&ticket=${TICKET}`;
+    const url = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?estado=activas&ticket=${TICKET}`;
     const mpRes = await fetch(url, { timeout: 20000 });
     if (!mpRes.ok) throw new Error(`API MP respondió ${mpRes.status}`);
     const data = await mpRes.json();
@@ -50,17 +50,19 @@ app.get("/buscar", async (req, res) => {
   }
 });
 
-// ── NUEVO: Proxy hacia Anthropic API (evita bloqueo CORS desde claude.ai) ─────
-app.post("/proxy/anthropic", async (req, res) => {
+// ── Proxy Anthropic (para Diario Oficial y análisis IA) ───────────────────────
+app.post("/claude", async (req, res) => {
+  if (!ANTHROPIC_KEY) return res.status(500).json({ error: "ANTHROPIC_API_KEY no configurada" });
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "anthropic-version": "2023-06-01",
-        "x-api-key": req.headers["x-api-key"] || ""
+        "x-api-key": ANTHROPIC_KEY
       },
-      body: JSON.stringify(req.body)
+      body: JSON.stringify(req.body),
+      timeout: 40000
     });
     const data = await response.json();
     res.status(response.status).json(data);
@@ -71,14 +73,14 @@ app.post("/proxy/anthropic", async (req, res) => {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function estadoTexto(codigo) {
-  const estados = { "5":"Publicada","6":"Cerrada","7":"Desierta","8":"Adjudicada","9":"Revocada","10":"Suspendida","15":"Publicada","18":"Adjudicada" };
-  return estados[String(codigo)] || `Estado ${codigo}`;
+  const m = { "5":"Publicada","6":"Cerrada","7":"Desierta","8":"Adjudicada","9":"Revocada","10":"Suspendida","15":"Publicada","18":"Adjudicada" };
+  return m[String(codigo)] || "Publicada";
 }
 function formatFecha(str) {
   if (!str) return "–";
   const match = String(str).match(/\/Date\((\d+)\)\//);
   if (match) return new Date(Number(match[1])).toLocaleDateString("es-CL");
-  return str.substring(0, 10);
+  return String(str).substring(0, 10);
 }
 
 app.listen(PORT, () => console.log(`Backend licitaciones corriendo en puerto ${PORT}`));
