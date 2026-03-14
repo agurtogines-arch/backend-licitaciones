@@ -3,10 +3,16 @@ const cors = require("cors");
 const fetch = require("node-fetch");
 
 const app = express();
-const PORT = process.env.PORT || 8080;
-const TICKET = process.env.MP_TICKET || "1FC8A3E9-5D72-495C-8340-83E5B1749B79";
+const PORT = process.env.PORT || 3000;
+const TICKET = process.env.MP_TICKET || "F8537A18-6766-4DEF-9E59-426B4FEE2844";
 
-app.use(cors()); // permite llamadas desde el agente en el navegador
+// CORS abierto para permitir llamadas desde claude.ai y cualquier origen
+app.use(cors({
+  origin: "*",
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "anthropic-dangerous-direct-browser-access"]
+}));
+app.options("*", cors());
 app.use(express.json());
 
 // ── Ruta de salud ─────────────────────────────────────────────────────────────
