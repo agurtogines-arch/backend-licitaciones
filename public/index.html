@@ -19,8 +19,10 @@ label{font-size:13px;font-weight:600;color:#64748b;display:block;margin-bottom:6
 input,select{width:100%;padding:11px 14px;border-radius:8px;border:1px solid #cbd5e1;font-size:14px;outline:none;background:white}
 input:focus,select:focus{border-color:#2563eb}
 .hint{font-size:12px;color:#94a3b8;margin-top:6px;margin-bottom:16px}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
-@media(max-width:600px){.grid2{grid-template-columns:1fr}}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:8px}
+@media(max-width:640px){.grid2{grid-template-columns:1fr}.grid3{grid-template-columns:1fr}}
+.region-preview{background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;font-size:12px;color:#1d4ed8;margin-bottom:16px;min-height:36px;line-height:1.6}
 .chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px}
 .chip{background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;padding:5px 12px;border-radius:20px;font-size:12px;cursor:pointer;font-weight:600}
 .chip:hover{background:#dbeafe}
@@ -47,7 +49,8 @@ input:focus,select:focus{border-color:#2563eb}
 .analysis{font-size:13px;line-height:1.9;white-space:pre-wrap;color:#334155}
 .empty{text-align:center;color:#94a3b8;padding:48px}
 .hcard{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:8px}
-.region-tag{background:#f0fdf4;color:#15803d;font-size:11px;padding:2px 8px;border-radius:12px;font-weight:600}
+.rtag{background:#f0fdf4;color:#15803d;font-size:11px;padding:2px 8px;border-radius:12px;font-weight:600;white-space:nowrap}
+.arrow{color:#94a3b8;font-size:18px;display:flex;align-items:flex-end;padding-bottom:11px;justify-content:center}
 </style>
 </head>
 <body>
@@ -70,29 +73,39 @@ input:focus,select:focus{border-color:#2563eb}
   <!-- BUSCAR -->
   <div id="pane-buscar">
     <div class="card">
-      <div style="font-weight:700;font-size:15px;margin-bottom:16px">⚙️ Buscar en Mercado Público</div>
-      <div class="grid2">
+      <div style="font-weight:700;font-size:15px;margin-bottom:16px">⚙️ Configurar búsqueda</div>
+
+      <!-- Keyword -->
+      <div style="margin-bottom:16px">
+        <label>Palabras clave</label>
+        <input id="kw" value="vial" placeholder="Ej: infraestructura vial" onkeydown="if(event.key==='Enter')buscar()"/>
+      </div>
+
+      <!-- Rango de regiones -->
+      <div style="margin-bottom:8px">
+        <label>📍 Rango de regiones</label>
+      </div>
+      <div class="grid3" style="margin-bottom:8px">
         <div>
-          <label>Palabras clave</label>
-          <input id="kw" value="vial" placeholder="Ej: infraestructura vial" onkeydown="if(event.key==='Enter')buscar()"/>
+          <label style="font-size:11px;color:#94a3b8;font-weight:600">DESDE</label>
+          <select id="desde" onchange="updatePreview()">
+            <option value="todas">🌎 Todo Chile</option>
+          </select>
         </div>
+        <div class="arrow">→</div>
         <div>
-          <label>Filtrar por región</label>
-          <select id="region">
-            <option value="todas">🌎 Todas las regiones</option>
-            <option value="7">Región del Maule</option>
-            <option value="16">Región de Ñuble</option>
-            <option value="8">Región del Biobío</option>
-            <option value="9">Región de La Araucanía</option>
-            <option value="14">Región de Los Ríos</option>
-            <option value="10">Región de Los Lagos</option>
-            <option value="11">Región de Aysén</option>
-            <option value="12">Región de Magallanes</option>
+          <label style="font-size:11px;color:#94a3b8;font-weight:600">HASTA</label>
+          <select id="hasta" onchange="updatePreview()">
+            <option value="todas">🌎 Todo Chile</option>
           </select>
         </div>
       </div>
-      <div class="hint">💡 El agente consulta la API oficial de Mercado Público y filtra por tu búsqueda en tiempo real.</div>
+      <div class="region-preview" id="preview">🌎 Buscando en todas las regiones de Chile</div>
+
+      <div class="hint">💡 Selecciona un rango para filtrar licitaciones por zona geográfica.</div>
+
       <div class="chips" id="chips"></div>
+
       <div class="btns">
         <button class="btn-primary" id="btn-b" onclick="buscar()">🚀 Buscar Licitaciones</button>
         <button class="btn-cancel" id="btn-c" style="display:none" onclick="cancelar()">⛔ Cancelar</button>
@@ -121,10 +134,12 @@ input:focus,select:focus{border-color:#2563eb}
 </div>
 
 <script>
-const SK = "mp_lic_v2";
+const SK = "mp_lic_v3";
 const CHIPS = ["vial","infraestructura vial","estudio vial","prefactibilidad","diseño vial","concesionaria","MOP"];
 let results=[], history=[], loading=false, ctrl=null;
+let REGIONES = [];
 
+// Init chips
 const ce = document.getElementById("chips");
 CHIPS.forEach(s=>{
   const b=document.createElement("button");
@@ -133,7 +148,52 @@ CHIPS.forEach(s=>{
   ce.appendChild(b);
 });
 
-try{ history=JSON.parse(localStorage.getItem(SK)||"[]"); renderHist(); }catch{}
+// Cargar regiones desde el backend
+async function initRegiones() {
+  try {
+    const res = await fetch("/regiones");
+    REGIONES = await res.json();
+    const desde = document.getElementById("desde");
+    const hasta = document.getElementById("hasta");
+    REGIONES.forEach(r => {
+      desde.innerHTML += `<option value="${r.codigo}">${r.nombre}</option>`;
+      hasta.innerHTML += `<option value="${r.codigo}">${r.nombre}</option>`;
+    });
+    // Default: Maule hasta Magallanes
+    desde.value = "7";
+    hasta.value = "12";
+    updatePreview();
+  } catch(e) {
+    console.error("Error cargando regiones:", e);
+  }
+}
+
+function getRegionesSeleccionadas() {
+  const desdeVal = document.getElementById("desde").value;
+  const hastaVal = document.getElementById("hasta").value;
+  if (desdeVal === "todas" && hastaVal === "todas") return [];
+  const idxDesde = desdeVal === "todas" ? 0 : REGIONES.findIndex(r => r.codigo === desdeVal);
+  const idxHasta = hastaVal === "todas" ? REGIONES.length - 1 : REGIONES.findIndex(r => r.codigo === hastaVal);
+  const start = Math.min(idxDesde, idxHasta);
+  const end   = Math.max(idxDesde, idxHasta);
+  return REGIONES.slice(start, end + 1);
+}
+
+function updatePreview() {
+  const desdeVal = document.getElementById("desde").value;
+  const hastaVal = document.getElementById("hasta").value;
+  const prev = document.getElementById("preview");
+  if (desdeVal === "todas" && hastaVal === "todas") {
+    prev.textContent = "🌎 Buscando en todas las regiones de Chile";
+    return;
+  }
+  const sel = getRegionesSeleccionadas();
+  if (sel.length === 1) {
+    prev.textContent = `📍 Solo: ${sel[0].nombre}`;
+  } else {
+    prev.innerHTML = `📍 ${sel.length} regiones: ${sel.map(r=>`<b>${r.nombre.replace("Región de ","").replace("Región del ","").replace("Región Metropolitana","RM")}</b>`).join(" → ")}`;
+  }
+}
 
 function goTab(name,btn){
   ["buscar","resultados","detalle","historial"].forEach(t=>document.getElementById("pane-"+t).style.display="none");
@@ -178,26 +238,36 @@ function reiniciar(){
 }
 
 async function buscar(){
-  const kw=document.getElementById("kw").value.trim();
-  const region=document.getElementById("region").value;
+  const kw = document.getElementById("kw").value.trim();
+  const desdeVal = document.getElementById("desde").value;
+  const hastaVal = document.getElementById("hasta").value;
   if(!kw||loading) return;
+
   ctrl=new AbortController();
   setLoad(true); showErr("");
   document.getElementById("steps").innerHTML="";
-  addStep("Consultando API Mercado Público...","wait");
+
+  const sel = getRegionesSeleccionadas();
+  const regionDesc = sel.length === 0 ? "todas las regiones" :
+    sel.length === 1 ? sel[0].nombre :
+    `${sel[0].nombre} → ${sel[sel.length-1].nombre}`;
+
+  addStep(`Consultando API Mercado Público (${regionDesc})...`,"wait");
+
   try{
-    const res=await fetch(`/buscar?q=${encodeURIComponent(kw)}&region=${region}`,{signal:ctrl.signal});
+    const url = `/buscar?q=${encodeURIComponent(kw)}&desde=${desdeVal}&hasta=${hastaVal}`;
+    const res = await fetch(url, {signal:ctrl.signal});
     if(!res.ok) throw new Error(`Error ${res.status}`);
-    const data=await res.json();
-    results=data.resultados||[];
+    const data = await res.json();
+    results = data.resultados || [];
     document.getElementById("steps").innerHTML="";
     if(results.length){
       addStep(`✅ ${results.length} licitaciones encontradas`,"ok");
       saveHist(results);
-      renderResults();
+      renderResults(regionDesc);
       goTab("resultados",document.querySelectorAll(".tab")[1]);
     } else {
-      showErr("No se encontraron licitaciones. Prueba con otro término.");
+      showErr(`No se encontraron licitaciones en ${regionDesc}. Prueba con otro término o amplía el rango de regiones.`);
     }
   }catch(e){
     if(e.name==="AbortError") showErr("Búsqueda cancelada.");
@@ -214,11 +284,9 @@ function badge(e){
   return `<span class="badge bb">${e||"–"}</span>`;
 }
 
-function renderResults(){
+function renderResults(regionDesc){
   document.getElementById("tb-res").textContent=`📋 Resultados (${results.length})`;
-  const region=document.getElementById("region");
-  const regionLabel=region.options[region.selectedIndex].text;
-  document.getElementById("summary").innerHTML=`🏛 Mercado Público: <b style="color:#1d4ed8">${results.length}</b> licitaciones · ${regionLabel}`;
+  document.getElementById("summary").innerHTML=`🏛 Mercado Público: <b style="color:#1d4ed8">${results.length}</b> licitaciones · 📍 ${regionDesc||"todas las regiones"}`;
   const el=document.getElementById("list");
   if(!results.length){el.innerHTML='<div class="empty">Sin resultados.</div>';return;}
   el.innerHTML=results.map((r,i)=>`
@@ -230,7 +298,7 @@ function renderResults(){
       <div class="rmeta">
         <span>🏛️ ${r.organismo}</span>
         <span>🔖 ${r.codigo}</span>
-        ${r.region?`<span class="region-tag">📍 ${r.region}</span>`:""}
+        ${r.region?`<span class="rtag">📍 ${r.region}</span>`:""}
         <span>⏰ Cierre: ${r.fechaCierre}</span>
         ${r.monto?`<span style="color:#059669;font-weight:600">💰 ${r.monto}</span>`:""}
       </div>
@@ -245,9 +313,11 @@ async function verDetalle(i){
   const item=results[i];
   goTab("detalle",document.querySelectorAll(".tab")[2]);
   document.getElementById("detalle").innerHTML=`
-    ${badge(item.estado)}
-    ${item.region?`<span class="region-tag" style="margin-left:6px">📍 ${item.region}</span>`:""}
-    <div style="font-weight:700;font-size:17px;margin:8px 0 4px;line-height:1.3">${item.titulo}</div>
+    <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+      ${badge(item.estado)}
+      ${item.region?`<span class="rtag">📍 ${item.region}</span>`:""}
+    </div>
+    <div style="font-weight:700;font-size:17px;margin-bottom:6px;line-height:1.3">${item.titulo}</div>
     <div style="font-size:12px;color:#64748b;margin-bottom:16px;display:flex;gap:16px;flex-wrap:wrap">
       <span>🏛️ ${item.organismo}</span><span>🔖 ${item.codigo}</span>
       <span>⏰ Cierre: ${item.fechaCierre}</span>
@@ -295,7 +365,7 @@ function renderHist(){
     </div>
     ${history.map(r=>`
       <div class="hcard">
-        ${r.region?`<span class="region-tag">📍 ${r.region}</span>`:""}
+        ${r.region?`<span class="rtag">📍 ${r.region}</span>`:""}
         <div style="font-weight:600;font-size:13px;margin-top:4px">${r.titulo}</div>
         <div style="font-size:11px;color:#94a3b8;margin-top:3px">🔖 ${r.codigo} · Cierre: ${r.fechaCierre} · ${r._at}</div>
       </div>`).join("")}`;
@@ -306,6 +376,10 @@ function clearHist(){
   try{localStorage.removeItem(SK);}catch{}
   renderHist();
 }
+
+// Inicializar
+try{ history=JSON.parse(localStorage.getItem(SK)||"[]"); renderHist(); }catch{}
+initRegiones();
 </script>
 </body>
 </html>
