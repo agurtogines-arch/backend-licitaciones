@@ -318,7 +318,7 @@ function renderResults() {
       <div class="rmeta">
         <span>🏛️ ${r.organismo||"–"}</span>
         ${r.codigo?`<span>🔖 ${r.codigo}</span>`:""}
-        ${r.region?`<span class="region-tag">📍 ${r.region}</span>`:""}
+        ${r.region && r.region!=="undefined"?`<span class="region-tag">📍 ${r.region}</span>`:""}
         <span>⏰ Cierre: ${r.fechaCierre||"–"}</span>
         ${r.monto?`<span style="color:#059669;font-weight:600">💰 ${r.monto}</span>`:""}
       </div>
