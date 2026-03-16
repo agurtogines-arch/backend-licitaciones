@@ -12,7 +12,6 @@ app.options("*", cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-// Regiones en orden geográfico norte a sur
 const REGIONES = [
   { codigo: "15", nombre: "Región de Arica y Parinacota" },
   { codigo: "1",  nombre: "Región de Tarapacá" },
@@ -32,22 +31,17 @@ const REGIONES = [
   { codigo: "12", nombre: "Región de Magallanes" }
 ];
 
-// Mapa código → nombre
 const REGION_MAP = {};
 REGIONES.forEach(r => REGION_MAP[r.codigo] = r.nombre);
 
-// ── Salud ─────────────────────────────────────────────────────────────────────
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-// ── Lista de regiones (para el frontend) ─────────────────────────────────────
 app.get("/regiones", (req, res) => {
   res.json(REGIONES);
 });
 
-// ── Búsqueda Mercado Público ───────────────────────────────────────────────────
-// Parámetros: q=keyword, desde=codigoRegion, hasta=codigoRegion
 app.get("/buscar", async (req, res) => {
   const keyword    = (req.query.q     || "").toLowerCase().trim();
   const desdeParam = req.query.desde  || "todas";
@@ -55,30 +49,31 @@ app.get("/buscar", async (req, res) => {
 
   if (!keyword) return res.status(400).json({ error: "Parámetro q requerido" });
 
-  // Calcular rango de regiones
-  let codigosValidos = null; // null = todas
+  let codigosValidos = null;
   if (desdeParam !== "todas" || hastaParam !== "todas") {
     const idxDesde = desdeParam === "todas" ? 0 : REGIONES.findIndex(r => r.codigo === desdeParam);
     const idxHasta = hastaParam === "todas" ? REGIONES.length - 1 : REGIONES.findIndex(r => r.codigo === hastaParam);
-    const start = Math.min(idxDesde, idxHasta);
-    const end   = Math.max(idxDesde, idxHasta);
+    const start = Math.min(idxDesde < 0 ? 0 : idxDesde, idxHasta < 0 ? REGIONES.length - 1 : idxHasta);
+    const end   = Math.max(idxDesde < 0 ? 0 : idxDesde, idxHasta < 0 ? REGIONES.length - 1 : idxHasta);
     codigosValidos = new Set(REGIONES.slice(start, end + 1).map(r => r.codigo));
   }
 
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 55000);
+
     const url = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?estado=activas&ticket=${TICKET}`;
-    const mpRes = await fetch(url, { timeout: 60000 });
+    const mpRes = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
     if (!mpRes.ok) throw new Error(`API MP respondió ${mpRes.status}`);
     const data = await mpRes.json();
     const licitaciones = data.Listado || [];
-
     const terms = keyword.split(/\s+/);
 
     const filtradas = licitaciones.filter(l => {
-      // Filtro keyword
       const texto = `${l.Nombre || ""} ${l.Descripcion || ""}`.toLowerCase();
       if (!terms.every(t => texto.includes(t))) return false;
-      // Filtro región
       if (!codigosValidos) return true;
       return codigosValidos.has(String(l.CodigoRegion || ""));
     });
@@ -106,7 +101,6 @@ app.get("/buscar", async (req, res) => {
   }
 });
 
-// ── Proxy Claude para análisis IA ─────────────────────────────────────────────
 app.post("/claude", async (req, res) => {
   const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || "";
   if (!ANTHROPIC_KEY) return res.status(500).json({ error: "ANTHROPIC_API_KEY no configurada" });
@@ -128,7 +122,6 @@ app.post("/claude", async (req, res) => {
   }
 });
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 function estadoTexto(codigo) {
   const m = { "5":"Publicada","6":"Cerrada","7":"Desierta","8":"Adjudicada","9":"Revocada","10":"Suspendida","15":"Publicada","18":"Adjudicada" };
   return m[String(codigo)] || "Publicada";
