@@ -221,21 +221,6 @@ async function buscar() {
   results = [];
 
   try {
-    // Mercado Público
-    if(fuentes.mp) {
-      addStep("Consultando API Mercado Público...", "wait");
-      const res = await fetch(`/buscar?q=${encodeURIComponent(kw)}&region=${region}`, {signal:ctrl.signal});
-      if(!res.ok) throw new Error(`Error ${res.status}`);
-      const data = await res.json();
-      const r = data.resultados || [];
-      if(r.length) {
-        results.push(...r);
-        addStep(`✅ ${r.length} licitaciones en Mercado Público`, "ok");
-      } else {
-        addStep("Sin resultados en Mercado Público", "empty");
-      }
-    }
-
     // Diario Oficial
     if(fuentes.do) {
       addStep("Buscando en Diario Oficial...", "wait");
