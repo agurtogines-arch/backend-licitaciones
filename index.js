@@ -12,35 +12,58 @@ app.options("*", cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-// Regiones desde Maule al sur (códigos oficiales Mercado Público)
-const REGIONES_SUR = {
-  "7":  "Región del Maule",
-  "16": "Región de Ñuble",
-  "8":  "Región del Biobío",
-  "9":  "Región de La Araucanía",
-  "14": "Región de Los Ríos",
-  "10": "Región de Los Lagos",
-  "11": "Región de Aysén",
-  "12": "Región de Magallanes",
-  "todas": "Todas las regiones"
-};
+// Regiones en orden geográfico norte a sur
+const REGIONES = [
+  { codigo: "15", nombre: "Región de Arica y Parinacota" },
+  { codigo: "1",  nombre: "Región de Tarapacá" },
+  { codigo: "2",  nombre: "Región de Antofagasta" },
+  { codigo: "3",  nombre: "Región de Atacama" },
+  { codigo: "4",  nombre: "Región de Coquimbo" },
+  { codigo: "5",  nombre: "Región de Valparaíso" },
+  { codigo: "13", nombre: "Región Metropolitana" },
+  { codigo: "6",  nombre: "Región de O'Higgins" },
+  { codigo: "7",  nombre: "Región del Maule" },
+  { codigo: "16", nombre: "Región de Ñuble" },
+  { codigo: "8",  nombre: "Región del Biobío" },
+  { codigo: "9",  nombre: "Región de La Araucanía" },
+  { codigo: "14", nombre: "Región de Los Ríos" },
+  { codigo: "10", nombre: "Región de Los Lagos" },
+  { codigo: "11", nombre: "Región de Aysén" },
+  { codigo: "12", nombre: "Región de Magallanes" }
+];
+
+// Mapa código → nombre
+const REGION_MAP = {};
+REGIONES.forEach(r => REGION_MAP[r.codigo] = r.nombre);
 
 // ── Salud ─────────────────────────────────────────────────────────────────────
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-// ── Regiones disponibles ──────────────────────────────────────────────────────
+// ── Lista de regiones (para el frontend) ─────────────────────────────────────
 app.get("/regiones", (req, res) => {
-  res.json(REGIONES_SUR);
+  res.json(REGIONES);
 });
 
 // ── Búsqueda Mercado Público ───────────────────────────────────────────────────
+// Parámetros: q=keyword, desde=codigoRegion, hasta=codigoRegion
 app.get("/buscar", async (req, res) => {
-  const keyword = (req.query.q || "").toLowerCase().trim();
-  const regionFiltro = req.query.region || "todas";
+  const keyword    = (req.query.q     || "").toLowerCase().trim();
+  const desdeParam = req.query.desde  || "todas";
+  const hastaParam = req.query.hasta  || "todas";
 
   if (!keyword) return res.status(400).json({ error: "Parámetro q requerido" });
+
+  // Calcular rango de regiones
+  let codigosValidos = null; // null = todas
+  if (desdeParam !== "todas" || hastaParam !== "todas") {
+    const idxDesde = desdeParam === "todas" ? 0 : REGIONES.findIndex(r => r.codigo === desdeParam);
+    const idxHasta = hastaParam === "todas" ? REGIONES.length - 1 : REGIONES.findIndex(r => r.codigo === hastaParam);
+    const start = Math.min(idxDesde, idxHasta);
+    const end   = Math.max(idxDesde, idxHasta);
+    codigosValidos = new Set(REGIONES.slice(start, end + 1).map(r => r.codigo));
+  }
 
   try {
     const url = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?estado=activas&ticket=${TICKET}`;
@@ -54,20 +77,17 @@ app.get("/buscar", async (req, res) => {
     const filtradas = licitaciones.filter(l => {
       // Filtro keyword
       const texto = `${l.Nombre || ""} ${l.Descripcion || ""}`.toLowerCase();
-      const matchKeyword = terms.every(t => texto.includes(t));
-      if (!matchKeyword) return false;
-
+      if (!terms.every(t => texto.includes(t))) return false;
       // Filtro región
-      if (regionFiltro === "todas") return true;
-      const codigoRegion = String(l.CodigoRegion || "");
-      return codigoRegion === regionFiltro;
+      if (!codigosValidos) return true;
+      return codigosValidos.has(String(l.CodigoRegion || ""));
     });
 
     const resultado = filtradas.map(l => ({
       titulo:           l.Nombre || "Sin título",
       codigo:           l.CodigoExterno || "",
       organismo:        l.Nombre_org_unidad_compradora || l.NombreOrganismo || "–",
-      region:           regionNombre(l.CodigoRegion),
+      region:           REGION_MAP[String(l.CodigoRegion)] || null,
       codigoRegion:     String(l.CodigoRegion || ""),
       estado:           estadoTexto(l.CodigoEstado),
       fechaPublicacion: formatFecha(l.FechaPublicacion),
@@ -78,7 +98,7 @@ app.get("/buscar", async (req, res) => {
       fuente:           "Mercado Público"
     }));
 
-    res.json({ total: resultado.length, keyword, region: regionFiltro, resultados: resultado });
+    res.json({ total: resultado.length, keyword, resultados: resultado });
 
   } catch (err) {
     console.error("Error /buscar:", err.message);
@@ -112,16 +132,6 @@ app.post("/claude", async (req, res) => {
 function estadoTexto(codigo) {
   const m = { "5":"Publicada","6":"Cerrada","7":"Desierta","8":"Adjudicada","9":"Revocada","10":"Suspendida","15":"Publicada","18":"Adjudicada" };
   return m[String(codigo)] || "Publicada";
-}
-
-function regionNombre(codigo) {
-  const m = {
-    "1":"Tarapacá","2":"Antofagasta","3":"Atacama","4":"Coquimbo",
-    "5":"Valparaíso","6":"O'Higgins","7":"Maule","8":"Biobío",
-    "9":"Araucanía","10":"Los Lagos","11":"Aysén","12":"Magallanes",
-    "13":"Metropolitana","14":"Los Ríos","15":"Arica y Parinacota","16":"Ñuble"
-  };
-  return m[String(codigo || "")] || null;
 }
 
 function formatFecha(str) {
