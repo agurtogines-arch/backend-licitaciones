@@ -67,7 +67,7 @@ app.get("/buscar", async (req, res) => {
 
   try {
     const url = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?estado=activas&ticket=${TICKET}`;
-    const mpRes = await fetch(url, { timeout: 20000 });
+    const mpRes = await fetch(url, { timeout: 60000 });
     if (!mpRes.ok) throw new Error(`API MP respondió ${mpRes.status}`);
     const data = await mpRes.json();
     const licitaciones = data.Listado || [];
