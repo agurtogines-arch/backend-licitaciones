@@ -67,7 +67,7 @@ app.get("/buscar", async (req, res) => {
       titulo:           l.Nombre || "Sin título",
       codigo:           l.CodigoExterno || "",
       organismo:        l.Nombre_org_unidad_compradora || l.NombreOrganismo || "–",
-      region:           REGIONES_SUR[String(l.CodigoRegion)] || regionNombre(l.CodigoRegion),
+      region:           regionNombre(l.CodigoRegion),
       codigoRegion:     String(l.CodigoRegion || ""),
       estado:           estadoTexto(l.CodigoEstado),
       fechaPublicacion: formatFecha(l.FechaPublicacion),
@@ -121,7 +121,7 @@ function regionNombre(codigo) {
     "9":"Araucanía","10":"Los Lagos","11":"Aysén","12":"Magallanes",
     "13":"Metropolitana","14":"Los Ríos","15":"Arica y Parinacota","16":"Ñuble"
   };
-  return m[String(codigo)] || `Región ${codigo}`;
+  return m[String(codigo || "")] || null;
 }
 
 function formatFecha(str) {
