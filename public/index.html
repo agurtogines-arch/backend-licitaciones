@@ -221,18 +221,6 @@ async function buscar() {
   results = [];
 
   try {
-    // Diario Oficial
-    if(fuentes.do) {
-      addStep("Buscando en Diario Oficial...", "wait");
-      const doResults = await searchDiarioOficial(kw, ctrl.signal);
-      if(doResults.length) {
-        results.push(...doResults);
-        addStep(`✅ ${doResults.length} licitaciones en Diario Oficial`, "ok");
-      } else {
-        addStep("Sin resultados en Diario Oficial", "empty");
-      }
-    }
-
     if(results.length) {
       saveHist(results);
       renderResults();
@@ -246,37 +234,6 @@ async function buscar() {
     else showErr("Error: " + e.message);
   }
   setLoad(false);
-}
-
-async function searchDiarioOficial(kw, signal) {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST", signal,
-    headers: { "Content-Type": "application/json", "anthropic-dangerous-direct-browser-access": "true" },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 2000,
-      system: `Eres un agente que busca licitaciones en el Diario Oficial de Chile.
-Responde ÚNICAMENTE con un array JSON. Sin texto, sin markdown.
-Schema: {"titulo":"","organismo":"","estado":"Publicada","fechaPublicacion":"","fechaCierre":"","monto":null,"descripcion":"","url":"","fuente":"Diario Oficial","region":""}`,
-      messages:[{role:"user",content:`Busca licitaciones en el Diario Oficial de Chile relacionadas con: "${kw}".
-
-Ejecuta estas búsquedas en orden:
-1. site:diariooficial.interior.gob.cl "${kw}" licitacion
-2. site:diariooficial.interior.gob.cl "${kw}" concurso publico
-3. diario oficial chile licitacion "${kw}" ingenieria vial 2026
-
-Extrae todos los resultados reales que encuentres con título, organismo, fecha y URL. Devuelve array JSON.`}],
-      tools:[{type:"web_search_20250305",name:"web_search"}]
-    })
-  });
-  if(!res.ok) return [];
-  const data = await res.json();
-  const text = data.content?.filter(b=>b.type==="text").map(b=>b.text).join("\n")||"";
-  try {
-    const clean = text.replace(/```json|```/g,"").trim();
-    const match = clean.match(/\[[\s\S]*\]/);
-    return match ? JSON.parse(match[0]) : [];
-  } catch { return []; }
 }
 
 function badge(e) {
