@@ -13,114 +13,54 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
 const REGIONES = [
-  { codigo: "15", nombre: "Región de Arica y Parinacota",                oficial: "arica" },
-  { codigo: "1",  nombre: "Región de Tarapacá",                          oficial: "tarapacá" },
-  { codigo: "2",  nombre: "Región de Antofagasta",                       oficial: "antofagasta" },
-  { codigo: "3",  nombre: "Región de Atacama",                           oficial: "atacama" },
-  { codigo: "4",  nombre: "Región de Coquimbo",                          oficial: "coquimbo" },
-  { codigo: "5",  nombre: "Región de Valparaíso",                        oficial: "valparaíso" },
-  { codigo: "13", nombre: "Región Metropolitana",                        oficial: "metropolitana" },
-  { codigo: "6",  nombre: "Región de O'Higgins",                         oficial: "o'higgins" },
-  { codigo: "7",  nombre: "Región del Maule",                            oficial: "maule" },
-  { codigo: "16", nombre: "Región de Ñuble",                             oficial: "ñuble" },
-  { codigo: "8",  nombre: "Región del Biobío",                           oficial: "biobío" },
-  { codigo: "9",  nombre: "Región de La Araucanía",                      oficial: "araucanía" },
-  { codigo: "14", nombre: "Región de Los Ríos",                          oficial: "los ríos" },
-  { codigo: "10", nombre: "Región de Los Lagos",                         oficial: "los lagos" },
-  { codigo: "11", nombre: "Región de Aysén",                             oficial: "aysén" },
-  { codigo: "12", nombre: "Región de Magallanes",                        oficial: "magallanes" }
+  { codigo: "15", nombre: "Región de Arica y Parinacota", oficial: "arica" },
+  { codigo: "1",  nombre: "Región de Tarapacá",           oficial: "tarapacá" },
+  { codigo: "2",  nombre: "Región de Antofagasta",         oficial: "antofagasta" },
+  { codigo: "3",  nombre: "Región de Atacama",             oficial: "atacama" },
+  { codigo: "4",  nombre: "Región de Coquimbo",            oficial: "coquimbo" },
+  { codigo: "5",  nombre: "Región de Valparaíso",          oficial: "valparaíso" },
+  { codigo: "13", nombre: "Región Metropolitana",          oficial: "metropolitana" },
+  { codigo: "6",  nombre: "Región de O'Higgins",           oficial: "o'higgins" },
+  { codigo: "7",  nombre: "Región del Maule",              oficial: "maule" },
+  { codigo: "16", nombre: "Región de Ñuble",               oficial: "ñuble" },
+  { codigo: "8",  nombre: "Región del Biobío",             oficial: "biobío" },
+  { codigo: "9",  nombre: "Región de La Araucanía",        oficial: "araucanía" },
+  { codigo: "14", nombre: "Región de Los Ríos",            oficial: "los ríos" },
+  { codigo: "10", nombre: "Región de Los Lagos",           oficial: "los lagos" },
+  { codigo: "11", nombre: "Región de Aysén",               oficial: "aysén" },
+  { codigo: "12", nombre: "Región de Magallanes",          oficial: "magallanes" }
 ];
 
 const REGION_MAP = {};
 REGIONES.forEach(r => REGION_MAP[r.codigo] = r.nombre);
 
-// ── Salud ─────────────────────────────────────────────────────────────────────
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
-});
-
-// ── Lista de regiones ─────────────────────────────────────────────────────────
-app.get("/regiones", (req, res) => {
-  res.json(REGIONES);
-});
-
-// ── Obtener detalle de una licitación por código ──────────────────────────────
-async function fetchDetalle(codigo) {
-  try {
-    const url = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?codigo=${codigo}&ticket=${TICKET}`;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
-    const res = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeoutId);
-    if (!res.ok) return null;
-    const data = await res.json();
-    const l = data.Listado?.[0];
-    if (!l) return null;
-    // El detalle usa "Comprador.RegionUnidad" con el nombre completo de la región
-    const regionTexto = l.Comprador?.RegionUnidad || "";
-    return {
-      organismo:    l.Comprador?.NombreOrganismo || l.Nombre_org_unidad_compradora || null,
-      region:       regionTexto || null,
-      regionTexto:  regionTexto.toLowerCase(),
-      monto:        l.MontoEstimado ? `${Number(l.MontoEstimado).toLocaleString("es-CL")} CLP` : null,
-      descripcion:  l.Descripcion || ""
-    };
-  } catch {
-    return null;
-  }
-}
-
-// Extraer región desde el texto cuando fetchDetalle falla
+// Extraer región desde texto del título/descripción
 function extraerRegionDeTexto(texto) {
   if (!texto) return null;
   const t = texto.toLowerCase();
-  const mapa = [
-    { oficial: "arica",        nombre: "Región de Arica y Parinacota" },
-    { oficial: "tarapacá",     nombre: "Región de Tarapacá" },
-    { oficial: "antofagasta",  nombre: "Región de Antofagasta" },
-    { oficial: "atacama",      nombre: "Región de Atacama" },
-    { oficial: "coquimbo",     nombre: "Región de Coquimbo" },
-    { oficial: "valparaíso",   nombre: "Región de Valparaíso" },
-    { oficial: "metropolitana",nombre: "Región Metropolitana" },
-    { oficial: "o'higgins",    nombre: "Región de O'Higgins" },
-    { oficial: "maule",        nombre: "Región del Maule" },
-    { oficial: "ñuble",        nombre: "Región de Ñuble" },
-    { oficial: "biobío",       nombre: "Región del Biobío" },
-    { oficial: "bío bío",      nombre: "Región del Biobío" },
-    { oficial: "araucanía",    nombre: "Región de La Araucanía" },
-    { oficial: "los ríos",     nombre: "Región de Los Ríos" },
-    { oficial: "los lagos",    nombre: "Región de Los Lagos" },
-    { oficial: "aysén",        nombre: "Región de Aysén" },
-    { oficial: "magallanes",   nombre: "Región de Magallanes" },
-  ];
-  for (const r of mapa) {
+  for (const r of REGIONES) {
     if (t.includes(r.oficial)) return r;
   }
   return null;
 }
-async function fetchDetallesEnGrupos(licitaciones, tamanoGrupo = 20) {
-  const resultados = [];
-  for (let i = 0; i < licitaciones.length; i += tamanoGrupo) {
-    const grupo = licitaciones.slice(i, i + tamanoGrupo);
-    const detalles = await Promise.all(
-      grupo.map(l => fetchDetalle(l.CodigoExterno))
-    );
-    detalles.forEach((detalle, idx) => {
-      resultados.push({ ...grupo[idx], detalle });
-    });
-  }
-  return resultados;
-}
 
-// ── Búsqueda principal ────────────────────────────────────────────────────────
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
+app.get("/regiones", (req, res) => {
+  res.json(REGIONES);
+});
+
+// ── Búsqueda rápida: solo filtra por keyword, devuelve sin región ─────────────
 app.get("/buscar", async (req, res) => {
-  const keyword    = (req.query.q     || "").toLowerCase().trim();
-  const desdeParam = req.query.desde  || "todas";
-  const hastaParam = req.query.hasta  || "todas";
+  const keyword    = (req.query.q || "").toLowerCase().trim();
+  const desdeParam = req.query.desde || "todas";
+  const hastaParam = req.query.hasta || "todas";
 
   if (!keyword) return res.status(400).json({ error: "Parámetro q requerido" });
 
-  // Calcular rango de regiones seleccionado
+  // Calcular rango de regiones
   let codigosValidos = null;
   if (desdeParam !== "todas" || hastaParam !== "todas") {
     const idxDesde = desdeParam === "todas" ? 0 : REGIONES.findIndex(r => r.codigo === desdeParam);
@@ -131,7 +71,6 @@ app.get("/buscar", async (req, res) => {
   }
 
   try {
-    // Paso 1: Traer lista completa de licitaciones activas
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 90000);
     const url = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?estado=activas&ticket=${TICKET}`;
@@ -140,44 +79,44 @@ app.get("/buscar", async (req, res) => {
     if (!mpRes.ok) throw new Error(`API MP respondió ${mpRes.status}`);
     const data = await mpRes.json();
     const licitaciones = data.Listado || [];
-
-    // Paso 2: Filtrar por keyword
     const terms = keyword.split(/\s+/);
+
     const filtradas = licitaciones.filter(l => {
       const texto = `${l.Nombre || ""} ${l.Descripcion || ""}`.toLowerCase();
       return terms.every(t => texto.includes(t));
     });
 
-    if (filtradas.length === 0) {
-      return res.json({ total: 0, keyword, resultados: [] });
-    }
+    // Mapear resultados — intentar extraer región del texto primero
+    const resultado = filtradas.map(l => {
+      const textoCompleto = `${l.Nombre || ""} ${l.Descripcion || ""}`;
+      const regionExtraida = extraerRegionDeTexto(textoCompleto);
+      return {
+        titulo:           l.Nombre || "Sin título",
+        codigo:           l.CodigoExterno || "",
+        organismo:        "–",
+        region:           regionExtraida?.nombre || null,
+        regionOficial:    regionExtraida?.oficial || null,
+        estado:           estadoTexto(l.CodigoEstado),
+        fechaPublicacion: formatFecha(l.FechaPublicacion),
+        fechaCierre:      formatFecha(l.FechaCierre),
+        monto:            null,
+        descripcion:      "",
+        url:              `https://www.mercadopublico.cl/Procurement/Modules/RFB/DetailsAcquisition.aspx?idlicitacion=${l.CodigoExterno}`,
+        fuente:           "Mercado Público",
+        detalleCompleto:  false  // indica que aún falta el detalle
+      };
+    });
 
-    // Paso 3: Obtener detalle de cada licitación en grupos paralelos de 20
-    const conDetalle = await fetchDetallesEnGrupos(filtradas, 20);
-
-    // Paso 4: Filtrar por región usando el dato real del detalle
-    const resultado = conDetalle
-      .filter(item => {
-        if (!codigosValidos) return true;
-        const cod = item.detalle?.codigoRegion || "";
-        return codigosValidos.has(cod);
-      })
-      .map(item => ({
-        titulo:           item.Nombre || "Sin título",
-        codigo:           item.CodigoExterno || "",
-        organismo:        item.detalle?.organismo || "–",
-        region:           item.detalle?.region || extraerRegionDeTexto(`${item.Nombre || ""} ${item.Descripcion || ""}`)?.nombre || null,
-        codigoRegion:     "",
-        estado:           estadoTexto(item.CodigoEstado),
-        fechaPublicacion: formatFecha(item.FechaPublicacion),
-        fechaCierre:      formatFecha(item.FechaCierre),
-        monto:            item.detalle?.monto || (item.MontoEstimado ? `$${Number(item.MontoEstimado).toLocaleString("es-CL")} CLP` : null),
-        descripcion:      item.detalle?.descripcion || item.Descripcion || "",
-        url:              `https://www.mercadopublico.cl/Procurement/Modules/RFB/DetailsAcquisition.aspx?idlicitacion=${item.CodigoExterno}`,
-        fuente:           "Mercado Público"
-      }));
-
-    res.json({ total: resultado.length, keyword, resultados: resultado });
+    // Si hay filtro de región, filtrar solo los que ya tienen región conocida
+    // Los sin región se incluyen igual para que el frontend los enriquezca
+    res.json({
+      total: resultado.length,
+      keyword,
+      desde: desdeParam,
+      hasta: hastaParam,
+      codigosValidos: codigosValidos ? Array.from(codigosValidos) : null,
+      resultados: resultado
+    });
 
   } catch (err) {
     console.error("Error /buscar:", err.message);
@@ -185,7 +124,37 @@ app.get("/buscar", async (req, res) => {
   }
 });
 
-// ── Proxy Claude para análisis IA ─────────────────────────────────────────────
+// ── Detalle individual de una licitación ─────────────────────────────────────
+app.get("/detalle/:codigo", async (req, res) => {
+  const codigo = req.params.codigo;
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    const url = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?codigo=${codigo}&ticket=${TICKET}`;
+    const mpRes = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (!mpRes.ok) throw new Error(`API MP respondió ${mpRes.status}`);
+    const data = await mpRes.json();
+    const l = data.Listado?.[0];
+    if (!l) return res.status(404).json({ error: "No encontrada" });
+
+    const regionTexto = l.Comprador?.RegionUnidad || "";
+    const regionExtraida = extraerRegionDeTexto(regionTexto) ||
+                           extraerRegionDeTexto(`${l.Nombre || ""} ${l.Descripcion || ""}`);
+
+    res.json({
+      organismo:   l.Comprador?.NombreOrganismo || "–",
+      region:      regionTexto || regionExtraida?.nombre || null,
+      regionOficial: regionExtraida?.oficial || null,
+      monto:       l.MontoEstimado ? `$${Number(l.MontoEstimado).toLocaleString("es-CL")} CLP` : null,
+      descripcion: l.Descripcion || ""
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Proxy Claude ──────────────────────────────────────────────────────────────
 app.post("/claude", async (req, res) => {
   const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || "";
   if (!ANTHROPIC_KEY) return res.status(500).json({ error: "ANTHROPIC_API_KEY no configurada" });
@@ -207,7 +176,6 @@ app.post("/claude", async (req, res) => {
   }
 });
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 function estadoTexto(codigo) {
   const m = { "5":"Publicada","6":"Cerrada","7":"Desierta","8":"Adjudicada","9":"Revocada","10":"Suspendida","15":"Publicada","18":"Adjudicada" };
   return m[String(codigo)] || "Publicada";
