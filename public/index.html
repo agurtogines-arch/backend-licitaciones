@@ -12,20 +12,18 @@ body{font-family:system-ui,sans-serif;background:#f8fafc;color:#1e293b;min-heigh
 .header h1{font-size:22px;font-weight:800}
 .header p{font-size:12px;opacity:.8;margin-top:3px}
 .tabs{display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap}
-.tab{padding:8px 16px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:600;background:white;color:#475569;box-shadow:0 1px 3px rgba(0,0,0,.08);transition:all .15s}
+.tab{padding:8px 16px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:600;background:white;color:#475569;box-shadow:0 1px 3px rgba(0,0,0,.08)}
 .tab.active{background:#2563eb;color:white}
 .card{background:white;border-radius:12px;padding:24px;box-shadow:0 1px 4px rgba(0,0,0,.07);margin-bottom:16px}
 label{font-size:13px;font-weight:600;color:#64748b;display:block;margin-bottom:6px}
 input,select{width:100%;padding:11px 14px;border-radius:8px;border:1px solid #cbd5e1;font-size:14px;outline:none;background:white}
 input:focus,select:focus{border-color:#2563eb}
 .hint{font-size:12px;color:#94a3b8;margin-top:6px;margin-bottom:16px}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:8px}
-@media(max-width:640px){.grid2{grid-template-columns:1fr}.grid3{grid-template-columns:1fr}}
-.region-preview{background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;font-size:12px;color:#1d4ed8;margin-bottom:16px;min-height:36px;line-height:1.6}
+.grid3{display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:end;margin-bottom:8px}
+@media(max-width:600px){.grid3{grid-template-columns:1fr}}
+.preview{background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;font-size:12px;color:#1d4ed8;margin-bottom:16px;font-weight:600}
 .chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px}
 .chip{background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;padding:5px 12px;border-radius:20px;font-size:12px;cursor:pointer;font-weight:600}
-.chip:hover{background:#dbeafe}
 .btns{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .btn-primary{background:#2563eb;color:white;border:none;padding:12px 32px;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(37,99,235,.3)}
 .btn-primary:disabled{background:#94a3b8;box-shadow:none;cursor:not-allowed}
@@ -35,7 +33,8 @@ input:focus,select:focus{border-color:#2563eb}
 .step{font-size:13px;margin-bottom:4px;display:flex;gap:6px;align-items:center}
 .err{margin-top:14px;font-size:13px;color:#dc2626;background:#fee2e2;padding:10px 14px;border-radius:8px;display:none}
 .summary{background:white;padding:12px 16px;border-radius:10px;margin-bottom:16px;font-size:13px;color:#64748b;box-shadow:0 1px 3px rgba(0,0,0,.06)}
-.rcard{background:white;border-radius:10px;padding:16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.06);border-left:4px solid #2563eb}
+.rcard{background:white;border-radius:10px;padding:16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.06);border-left:4px solid #2563eb;transition:opacity .3s}
+.rcard.oculta{display:none}
 .rtitle{font-weight:700;font-size:14px;line-height:1.4;margin-bottom:8px}
 .rmeta{font-size:12px;color:#64748b;display:flex;flex-wrap:wrap;gap:4px 14px;margin-bottom:12px}
 .rbtns{display:flex;gap:8px;flex-wrap:wrap}
@@ -46,11 +45,12 @@ input:focus,select:focus{border-color:#2563eb}
 .br{background:#fee2e2;color:#dc2626}
 .bb{background:#dbeafe;color:#1d4ed8}
 .bgr{background:#f1f5f9;color:#64748b}
+.rtag{background:#f0fdf4;color:#15803d;font-size:11px;padding:2px 8px;border-radius:12px;font-weight:600;white-space:nowrap}
+.rtag-cargando{background:#fef9c3;color:#a16207;font-size:11px;padding:2px 8px;border-radius:12px;font-weight:600}
 .analysis{font-size:13px;line-height:1.9;white-space:pre-wrap;color:#334155}
 .empty{text-align:center;color:#94a3b8;padding:48px}
 .hcard{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:8px}
-.rtag{background:#f0fdf4;color:#15803d;font-size:11px;padding:2px 8px;border-radius:12px;font-weight:600;white-space:nowrap}
-.arrow{color:#94a3b8;font-size:18px;display:flex;align-items:flex-end;padding-bottom:11px;justify-content:center}
+.progress{font-size:12px;color:#2563eb;margin-top:8px;display:none}
 </style>
 </head>
 <body>
@@ -74,25 +74,19 @@ input:focus,select:focus{border-color:#2563eb}
   <div id="pane-buscar">
     <div class="card">
       <div style="font-weight:700;font-size:15px;margin-bottom:16px">⚙️ Configurar búsqueda</div>
-
-      <!-- Keyword -->
       <div style="margin-bottom:16px">
         <label>Palabras clave</label>
         <input id="kw" value="vial" placeholder="Ej: infraestructura vial" onkeydown="if(event.key==='Enter')buscar()"/>
       </div>
-
-      <!-- Rango de regiones -->
-      <div style="margin-bottom:8px">
-        <label>📍 Rango de regiones</label>
-      </div>
-      <div class="grid3" style="margin-bottom:8px">
+      <div style="margin-bottom:8px"><label>📍 Rango de regiones</label></div>
+      <div class="grid3">
         <div>
           <label style="font-size:11px;color:#94a3b8;font-weight:600">DESDE</label>
           <select id="desde" onchange="updatePreview()">
             <option value="todas">🌎 Todo Chile</option>
           </select>
         </div>
-        <div class="arrow">→</div>
+        <div style="color:#94a3b8;font-size:18px;padding-bottom:11px;text-align:center">→</div>
         <div>
           <label style="font-size:11px;color:#94a3b8;font-weight:600">HASTA</label>
           <select id="hasta" onchange="updatePreview()">
@@ -100,18 +94,16 @@ input:focus,select:focus{border-color:#2563eb}
           </select>
         </div>
       </div>
-      <div class="region-preview" id="preview">🌎 Buscando en todas las regiones de Chile</div>
-
-      <div class="hint">💡 Selecciona un rango para filtrar licitaciones por zona geográfica.</div>
-
+      <div class="preview" id="preview">🌎 Buscando en todas las regiones de Chile</div>
+      <div class="hint">💡 Los resultados aparecen inmediatamente. La región se va completando en segundo plano.</div>
       <div class="chips" id="chips"></div>
-
       <div class="btns">
         <button class="btn-primary" id="btn-b" onclick="buscar()">🚀 Buscar Licitaciones</button>
         <button class="btn-cancel" id="btn-c" style="display:none" onclick="cancelar()">⛔ Cancelar</button>
         <button class="btn-reset" id="btn-r" style="display:none" onclick="reiniciar()">🔄 Reiniciar</button>
       </div>
       <div class="steps" id="steps"></div>
+      <div class="progress" id="progress"></div>
       <div class="err" id="err"></div>
     </div>
   </div>
@@ -134,13 +126,13 @@ input:focus,select:focus{border-color:#2563eb}
 </div>
 
 <script>
-const SK = "mp_lic_v3";
+const SK = "mp_lic_v4";
 const CHIPS = ["vial","infraestructura vial","estudio vial","prefactibilidad","diseño vial","concesionaria","MOP"];
-let results=[], history=[], loading=false, ctrl=null;
-let REGIONES = [];
+let results=[], history=[], loading=false, ctrl=null, enriqueciendo=false;
+let REGIONES=[], codigosValidos=null;
 
 // Init chips
-const ce = document.getElementById("chips");
+const ce=document.getElementById("chips");
 CHIPS.forEach(s=>{
   const b=document.createElement("button");
   b.className="chip"; b.textContent=s;
@@ -148,51 +140,38 @@ CHIPS.forEach(s=>{
   ce.appendChild(b);
 });
 
-// Cargar regiones desde el backend
-async function initRegiones() {
-  try {
-    const res = await fetch("/regiones");
-    REGIONES = await res.json();
-    const desde = document.getElementById("desde");
-    const hasta = document.getElementById("hasta");
-    REGIONES.forEach(r => {
-      desde.innerHTML += `<option value="${r.codigo}">${r.nombre}</option>`;
-      hasta.innerHTML += `<option value="${r.codigo}">${r.nombre}</option>`;
+// Cargar regiones
+async function initRegiones(){
+  try{
+    const res=await fetch("/regiones");
+    REGIONES=await res.json();
+    const d=document.getElementById("desde"), h=document.getElementById("hasta");
+    REGIONES.forEach(r=>{
+      d.innerHTML+=`<option value="${r.codigo}">${r.nombre}</option>`;
+      h.innerHTML+=`<option value="${r.codigo}">${r.nombre}</option>`;
     });
-    // Default: Maule hasta Magallanes
-    desde.value = "7";
-    hasta.value = "12";
+    d.value="7"; h.value="12";
     updatePreview();
-  } catch(e) {
-    console.error("Error cargando regiones:", e);
-  }
+  }catch(e){console.error(e);}
 }
 
-function getRegionesSeleccionadas() {
-  const desdeVal = document.getElementById("desde").value;
-  const hastaVal = document.getElementById("hasta").value;
-  if (desdeVal === "todas" && hastaVal === "todas") return [];
-  const idxDesde = desdeVal === "todas" ? 0 : REGIONES.findIndex(r => r.codigo === desdeVal);
-  const idxHasta = hastaVal === "todas" ? REGIONES.length - 1 : REGIONES.findIndex(r => r.codigo === hastaVal);
-  const start = Math.min(idxDesde, idxHasta);
-  const end   = Math.max(idxDesde, idxHasta);
-  return REGIONES.slice(start, end + 1);
+function getSeleccionadas(){
+  const d=document.getElementById("desde").value;
+  const h=document.getElementById("hasta").value;
+  if(d==="todas"&&h==="todas") return [];
+  const id=d==="todas"?0:REGIONES.findIndex(r=>r.codigo===d);
+  const ih=h==="todas"?REGIONES.length-1:REGIONES.findIndex(r=>r.codigo===h);
+  const s=Math.min(id<0?0:id,ih<0?REGIONES.length-1:ih);
+  const e=Math.max(id<0?0:id,ih<0?REGIONES.length-1:ih);
+  return REGIONES.slice(s,e+1);
 }
 
-function updatePreview() {
-  const desdeVal = document.getElementById("desde").value;
-  const hastaVal = document.getElementById("hasta").value;
-  const prev = document.getElementById("preview");
-  if (desdeVal === "todas" && hastaVal === "todas") {
-    prev.textContent = "🌎 Buscando en todas las regiones de Chile";
-    return;
-  }
-  const sel = getRegionesSeleccionadas();
-  if (sel.length === 1) {
-    prev.textContent = `📍 Solo: ${sel[0].nombre}`;
-  } else {
-    prev.innerHTML = `📍 ${sel.length} regiones: ${sel.map(r=>`<b>${r.nombre.replace("Región de ","").replace("Región del ","").replace("Región Metropolitana","RM")}</b>`).join(" → ")}`;
-  }
+function updatePreview(){
+  const sel=getSeleccionadas();
+  const p=document.getElementById("preview");
+  if(!sel.length){p.textContent="🌎 Buscando en todas las regiones de Chile";return;}
+  if(sel.length===1){p.textContent=`📍 Solo: ${sel[0].nombre}`;return;}
+  p.innerHTML=`📍 ${sel.length} regiones: ${sel.map(r=>`<b>${r.nombre.replace("Región de ","").replace("Región del ","").replace("Región Metropolitana","RM")}</b>`).join(" → ")}`;
 }
 
 function goTab(name,btn){
@@ -225,9 +204,11 @@ function showErr(msg){
 
 function cancelar(){
   if(ctrl) ctrl.abort(); ctrl=null;
+  enriqueciendo=false;
   setLoad(false);
   document.getElementById("steps").innerHTML="";
   document.getElementById("steps").style.display="none";
+  document.getElementById("progress").style.display="none";
   showErr("");
 }
 
@@ -235,45 +216,6 @@ function reiniciar(){
   cancelar(); results=[];
   renderResults();
   goTab("buscar",document.querySelector(".tab"));
-}
-
-async function buscar(){
-  const kw = document.getElementById("kw").value.trim();
-  const desdeVal = document.getElementById("desde").value;
-  const hastaVal = document.getElementById("hasta").value;
-  if(!kw||loading) return;
-
-  ctrl=new AbortController();
-  setLoad(true); showErr("");
-  document.getElementById("steps").innerHTML="";
-
-  const sel = getRegionesSeleccionadas();
-  const regionDesc = sel.length === 0 ? "todas las regiones" :
-    sel.length === 1 ? sel[0].nombre :
-    `${sel[0].nombre} → ${sel[sel.length-1].nombre}`;
-
-  addStep(`Consultando API Mercado Público (${regionDesc})...`,"wait");
-
-  try{
-    const url = `/buscar?q=${encodeURIComponent(kw)}&desde=${desdeVal}&hasta=${hastaVal}`;
-    const res = await fetch(url, {signal:ctrl.signal});
-    if(!res.ok) throw new Error(`Error ${res.status}`);
-    const data = await res.json();
-    results = data.resultados || [];
-    document.getElementById("steps").innerHTML="";
-    if(results.length){
-      addStep(`✅ ${results.length} licitaciones encontradas`,"ok");
-      saveHist(results);
-      renderResults(regionDesc);
-      goTab("resultados",document.querySelectorAll(".tab")[1]);
-    } else {
-      showErr(`No se encontraron licitaciones en ${regionDesc}. Prueba con otro término o amplía el rango de regiones.`);
-    }
-  }catch(e){
-    if(e.name==="AbortError") showErr("Búsqueda cancelada.");
-    else showErr("Error: "+e.message);
-  }
-  setLoad(false);
 }
 
 function badge(e){
@@ -284,29 +226,174 @@ function badge(e){
   return `<span class="badge bb">${e||"–"}</span>`;
 }
 
-function renderResults(regionDesc){
+function regionTag(r, cargando){
+  if(r) return `<span class="rtag">📍 ${r}</span>`;
+  if(cargando) return `<span class="rtag-cargando">⏳ obteniendo región...</span>`;
+  return "";
+}
+
+function estaEnRango(regionOficial){
+  if(!codigosValidos) return true;
+  if(!regionOficial) return null; // desconocido aún
+  return codigosValidos.some(cod=>{
+    const r=REGIONES.find(r=>r.codigo===cod);
+    return r && regionOficial.includes(r.oficial);
+  });
+}
+
+async function buscar(){
+  const kw=document.getElementById("kw").value.trim();
+  if(!kw||loading) return;
+  ctrl=new AbortController();
+  setLoad(true); showErr("");
+  document.getElementById("steps").innerHTML="";
+  results=[];
+  const sel=getSeleccionadas();
+  codigosValidos=sel.length>0?sel.map(r=>r.codigo):null;
+
+  addStep("Consultando API Mercado Público...","wait");
+  try{
+    const d=document.getElementById("desde").value;
+    const h=document.getElementById("hasta").value;
+    const res=await fetch(`/buscar?q=${encodeURIComponent(kw)}&desde=${d}&hasta=${h}`,{signal:ctrl.signal});
+    if(!res.ok) throw new Error(`Error ${res.status}`);
+    const data=await res.json();
+    results=data.resultados||[];
+
+    document.getElementById("steps").innerHTML="";
+    if(results.length){
+      addStep(`✅ ${results.length} licitaciones encontradas`,"ok");
+      renderResults();
+      goTab("resultados",document.querySelectorAll(".tab")[1]);
+      // Iniciar enriquecimiento en segundo plano
+      enriquecerRegiones();
+    } else {
+      showErr("No se encontraron licitaciones. Prueba con otro término.");
+    }
+  }catch(e){
+    if(e.name==="AbortError") showErr("Búsqueda cancelada.");
+    else showErr("Error: "+e.message);
+  }
+  setLoad(false);
+}
+
+// Enriquecer con región en segundo plano
+async function enriquecerRegiones(){
+  enriqueciendo=true;
+  const sinRegion=results.filter(r=>!r.region&&!r.detalleCompleto);
+  if(!sinRegion.length){enriqueciendo=false;return;}
+
+  const prog=document.getElementById("progress");
+  prog.style.display="block";
+  prog.textContent=`⏳ Obteniendo región de ${sinRegion.length} licitaciones...`;
+
+  let completadas=0;
+  // Procesar de 5 en 5 para no saturar
+  for(let i=0;i<sinRegion.length;i+=5){
+    if(!enriqueciendo) break;
+    const grupo=sinRegion.slice(i,i+5);
+    await Promise.all(grupo.map(async item=>{
+      try{
+        const res=await fetch(`/detalle/${item.codigo}`);
+        if(!res.ok) return;
+        const detalle=await res.json();
+        // Actualizar el item en results
+        const idx=results.findIndex(r=>r.codigo===item.codigo);
+        if(idx>=0){
+          results[idx].organismo=detalle.organismo||"–";
+          results[idx].region=detalle.region||null;
+          results[idx].regionOficial=detalle.regionOficial||null;
+          results[idx].monto=detalle.monto||null;
+          results[idx].descripcion=detalle.descripcion||"";
+          results[idx].detalleCompleto=true;
+          // Actualizar la card en el DOM
+          actualizarCard(idx);
+        }
+        completadas++;
+        prog.textContent=`⏳ Obteniendo región... (${completadas}/${sinRegion.length})`;
+      }catch{}
+    }));
+  }
+
+  // Aplicar filtro de región después de enriquecer
+  if(codigosValidos){
+    aplicarFiltroRegion();
+  }
+
+  prog.textContent=`✅ Región obtenida para ${completadas} licitaciones`;
+  setTimeout(()=>{prog.style.display="none";},3000);
+  enriqueciendo=false;
+  // Guardar en historial con datos completos
+  saveHist(results.filter(r=>!esFiltrada(r)===false));
+}
+
+function esFiltrada(r){
+  if(!codigosValidos) return false;
+  if(!r.regionOficial&&!r.detalleCompleto) return false; // aún no sabemos
+  if(!r.regionOficial) return true; // no tiene región y ya está completo → filtrar
+  return !codigosValidos.some(cod=>{
+    const reg=REGIONES.find(reg=>reg.codigo===cod);
+    return reg && r.regionOficial.includes(reg.oficial);
+  });
+}
+
+function aplicarFiltroRegion(){
+  results.forEach((r,i)=>{
+    const card=document.getElementById(`card-${i}`);
+    if(!card) return;
+    if(esFiltrada(r)) card.classList.add("oculta");
+    else card.classList.remove("oculta");
+  });
+  // Actualizar contador
+  const visibles=results.filter(r=>!esFiltrada(r)).length;
+  document.getElementById("tb-res").textContent=`📋 Resultados (${visibles})`;
+  document.getElementById("summary").innerHTML=`🏛 Mercado Público: <b style="color:#1d4ed8">${visibles}</b> licitaciones en rango seleccionado`;
+}
+
+function actualizarCard(idx){
+  const r=results[idx];
+  const card=document.getElementById(`card-${idx}`);
+  if(!card) return;
+  // Actualizar región
+  const regionEl=card.querySelector(".region-slot");
+  if(regionEl) regionEl.innerHTML=regionTag(r.region,false);
+  // Actualizar organismo
+  const orgEl=card.querySelector(".org-slot");
+  if(orgEl) orgEl.textContent=`🏛️ ${r.organismo}`;
+  // Actualizar monto
+  const montoEl=card.querySelector(".monto-slot");
+  if(montoEl) montoEl.textContent=r.monto?`💰 ${r.monto}`:"";
+  // Aplicar filtro si hay rango activo
+  if(codigosValidos && r.detalleCompleto){
+    if(esFiltrada(r)) card.classList.add("oculta");
+    else card.classList.remove("oculta");
+  }
+}
+
+function renderResults(){
   document.getElementById("tb-res").textContent=`📋 Resultados (${results.length})`;
-  document.getElementById("summary").innerHTML=`🏛 Mercado Público: <b style="color:#1d4ed8">${results.length}</b> licitaciones · 📍 ${regionDesc||"todas las regiones"}`;
+  document.getElementById("summary").innerHTML=`🏛 Mercado Público: <b style="color:#1d4ed8">${results.length}</b> licitaciones encontradas`;
   const el=document.getElementById("list");
   if(!results.length){el.innerHTML='<div class="empty">Sin resultados.</div>';return;}
   el.innerHTML=results.map((r,i)=>`
-    <div class="rcard">
+    <div class="rcard" id="card-${i}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;margin-bottom:8px">
         <div class="rtitle" style="flex:1;min-width:180px">${r.titulo}</div>
         ${badge(r.estado)}
       </div>
       <div class="rmeta">
-        <span>🏛️ ${r.organismo}</span>
+        <span class="org-slot">🏛️ ${r.organismo}</span>
         <span>🔖 ${r.codigo}</span>
-        ${r.region?`<span class="rtag">📍 ${r.region}</span>`:""}
+        <span class="region-slot">${regionTag(r.region,true)}</span>
         <span>⏰ Cierre: ${r.fechaCierre}</span>
-        ${r.monto?`<span style="color:#059669;font-weight:600">💰 ${r.monto}</span>`:""}
+        <span class="monto-slot">${r.monto?`💰 ${r.monto}`:""}</span>
       </div>
       <div class="rbtns">
         <button class="btn-ai" onclick="verDetalle(${i})">🤖 Analizar con IA</button>
         <a href="${r.url}" target="_blank" class="btn-link">🔗 Ver en MP</a>
       </div>
     </div>`).join("");
+  saveHist(results);
 }
 
 async function verDetalle(i){
@@ -360,7 +447,7 @@ function renderHist(){
   if(!history.length){el.innerHTML='<div class="empty">Sin historial aún.</div>';return;}
   el.innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <span style="font-size:13px;color:#64748b">${history.length} licitaciones guardadas</span>
+      <span style="font-size:13px;color:#64748b">${history.length} licitaciones</span>
       <button onclick="clearHist()" style="background:#fee2e2;color:#dc2626;border:none;padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600">🗑️ Limpiar</button>
     </div>
     ${history.map(r=>`
@@ -377,8 +464,7 @@ function clearHist(){
   renderHist();
 }
 
-// Inicializar
-try{ history=JSON.parse(localStorage.getItem(SK)||"[]"); renderHist(); }catch{}
+try{history=JSON.parse(localStorage.getItem(SK)||"[]");renderHist();}catch{}
 initRegiones();
 </script>
 </body>
