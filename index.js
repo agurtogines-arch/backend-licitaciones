@@ -34,14 +34,56 @@ const REGIONES = [
 const REGION_MAP = {};
 REGIONES.forEach(r => REGION_MAP[r.codigo] = r.nombre);
 
+// ── Salud ─────────────────────────────────────────────────────────────────────
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
+// ── Lista de regiones ─────────────────────────────────────────────────────────
 app.get("/regiones", (req, res) => {
   res.json(REGIONES);
 });
 
+// ── Obtener detalle de una licitación por código ──────────────────────────────
+async function fetchDetalle(codigo) {
+  try {
+    const url = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?codigo=${codigo}&ticket=${TICKET}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const l = data.Listado?.[0];
+    if (!l) return null;
+    return {
+      organismo:    l.Nombre_org_unidad_compradora || l.NombreOrganismo || null,
+      region:       REGION_MAP[String(l.CodigoRegion || "")] || null,
+      codigoRegion: String(l.CodigoRegion || ""),
+      monto:        l.MontoEstimado ? `$${Number(l.MontoEstimado).toLocaleString("es-CL")} CLP` : null,
+      descripcion:  l.Descripcion || ""
+    };
+  } catch {
+    return null;
+  }
+}
+
+// Procesar en grupos paralelos de N
+async function fetchDetallesEnGrupos(licitaciones, tamanoGrupo = 20) {
+  const resultados = [];
+  for (let i = 0; i < licitaciones.length; i += tamanoGrupo) {
+    const grupo = licitaciones.slice(i, i + tamanoGrupo);
+    const detalles = await Promise.all(
+      grupo.map(l => fetchDetalle(l.CodigoExterno))
+    );
+    detalles.forEach((detalle, idx) => {
+      resultados.push({ ...grupo[idx], detalle });
+    });
+  }
+  return resultados;
+}
+
+// ── Búsqueda principal ────────────────────────────────────────────────────────
 app.get("/buscar", async (req, res) => {
   const keyword    = (req.query.q     || "").toLowerCase().trim();
   const desdeParam = req.query.desde  || "todas";
@@ -49,6 +91,7 @@ app.get("/buscar", async (req, res) => {
 
   if (!keyword) return res.status(400).json({ error: "Parámetro q requerido" });
 
+  // Calcular rango de regiones seleccionado
   let codigosValidos = null;
   if (desdeParam !== "todas" || hastaParam !== "todas") {
     const idxDesde = desdeParam === "todas" ? 0 : REGIONES.findIndex(r => r.codigo === desdeParam);
@@ -59,39 +102,51 @@ app.get("/buscar", async (req, res) => {
   }
 
   try {
+    // Paso 1: Traer lista completa de licitaciones activas
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 90000);
-
     const url = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?estado=activas&ticket=${TICKET}`;
     const mpRes = await fetch(url, { signal: controller.signal });
     clearTimeout(timeoutId);
-
     if (!mpRes.ok) throw new Error(`API MP respondió ${mpRes.status}`);
     const data = await mpRes.json();
     const licitaciones = data.Listado || [];
-    const terms = keyword.split(/\s+/);
 
+    // Paso 2: Filtrar por keyword
+    const terms = keyword.split(/\s+/);
     const filtradas = licitaciones.filter(l => {
       const texto = `${l.Nombre || ""} ${l.Descripcion || ""}`.toLowerCase();
-      if (!terms.every(t => texto.includes(t))) return false;
-      if (!codigosValidos) return true;
-      return codigosValidos.has(String(l.CodigoRegion || ""));
+      return terms.every(t => texto.includes(t));
     });
 
-    const resultado = filtradas.map(l => ({
-      titulo:           l.Nombre || "Sin título",
-      codigo:           l.CodigoExterno || "",
-      organismo:        l.Nombre_org_unidad_compradora || l.NombreOrganismo || "–",
-      region:           REGION_MAP[String(l.CodigoRegion)] || null,
-      codigoRegion:     String(l.CodigoRegion || ""),
-      estado:           estadoTexto(l.CodigoEstado),
-      fechaPublicacion: formatFecha(l.FechaPublicacion),
-      fechaCierre:      formatFecha(l.FechaCierre),
-      monto:            l.MontoEstimado ? `$${Number(l.MontoEstimado).toLocaleString("es-CL")} CLP` : null,
-      descripcion:      l.Descripcion || "",
-      url:              `https://www.mercadopublico.cl/Procurement/Modules/RFB/DetailsAcquisition.aspx?idlicitacion=${l.CodigoExterno}`,
-      fuente:           "Mercado Público"
-    }));
+    if (filtradas.length === 0) {
+      return res.json({ total: 0, keyword, resultados: [] });
+    }
+
+    // Paso 3: Obtener detalle de cada licitación en grupos paralelos de 20
+    const conDetalle = await fetchDetallesEnGrupos(filtradas, 20);
+
+    // Paso 4: Filtrar por región usando el dato real del detalle
+    const resultado = conDetalle
+      .filter(item => {
+        if (!codigosValidos) return true;
+        const cod = item.detalle?.codigoRegion || "";
+        return codigosValidos.has(cod);
+      })
+      .map(item => ({
+        titulo:           item.Nombre || "Sin título",
+        codigo:           item.CodigoExterno || "",
+        organismo:        item.detalle?.organismo || item.Nombre_org_unidad_compradora || "–",
+        region:           item.detalle?.region || null,
+        codigoRegion:     item.detalle?.codigoRegion || "",
+        estado:           estadoTexto(item.CodigoEstado),
+        fechaPublicacion: formatFecha(item.FechaPublicacion),
+        fechaCierre:      formatFecha(item.FechaCierre),
+        monto:            item.detalle?.monto || (item.MontoEstimado ? `$${Number(item.MontoEstimado).toLocaleString("es-CL")} CLP` : null),
+        descripcion:      item.detalle?.descripcion || item.Descripcion || "",
+        url:              `https://www.mercadopublico.cl/Procurement/Modules/RFB/DetailsAcquisition.aspx?idlicitacion=${item.CodigoExterno}`,
+        fuente:           "Mercado Público"
+      }));
 
     res.json({ total: resultado.length, keyword, resultados: resultado });
 
@@ -101,6 +156,7 @@ app.get("/buscar", async (req, res) => {
   }
 });
 
+// ── Proxy Claude para análisis IA ─────────────────────────────────────────────
 app.post("/claude", async (req, res) => {
   const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || "";
   if (!ANTHROPIC_KEY) return res.status(500).json({ error: "ANTHROPIC_API_KEY no configurada" });
@@ -122,6 +178,7 @@ app.post("/claude", async (req, res) => {
   }
 });
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function estadoTexto(codigo) {
   const m = { "5":"Publicada","6":"Cerrada","7":"Desierta","8":"Adjudicada","9":"Revocada","10":"Suspendida","15":"Publicada","18":"Adjudicada" };
   return m[String(codigo)] || "Publicada";
