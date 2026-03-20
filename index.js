@@ -56,11 +56,13 @@ async function fetchDetalle(codigo) {
     const data = await res.json();
     const l = data.Listado?.[0];
     if (!l) return null;
+    // El detalle usa "Comprador.RegionUnidad" con el nombre completo de la región
+    const regionTexto = l.Comprador?.RegionUnidad || "";
     return {
-      organismo:    l.Nombre_org_unidad_compradora || l.NombreOrganismo || null,
-      region:       REGION_MAP[String(l.CodigoRegion || "")] || null,
-      codigoRegion: String(l.CodigoRegion || ""),
-      monto:        l.MontoEstimado ? `$${Number(l.MontoEstimado).toLocaleString("es-CL")} CLP` : null,
+      organismo:    l.Comprador?.NombreOrganismo || l.Nombre_org_unidad_compradora || null,
+      region:       regionTexto || null,
+      regionTexto:  regionTexto.toLowerCase(),
+      monto:        l.MontoEstimado ? `${Number(l.MontoEstimado).toLocaleString("es-CL")} CLP` : null,
       descripcion:  l.Descripcion || ""
     };
   } catch {
@@ -136,9 +138,9 @@ app.get("/buscar", async (req, res) => {
       .map(item => ({
         titulo:           item.Nombre || "Sin título",
         codigo:           item.CodigoExterno || "",
-        organismo:        item.detalle?.organismo || item.Nombre_org_unidad_compradora || "–",
+        organismo:        item.detalle?.organismo || "–",
         region:           item.detalle?.region || null,
-        codigoRegion:     item.detalle?.codigoRegion || "",
+        codigoRegion:     "",
         estado:           estadoTexto(item.CodigoEstado),
         fechaPublicacion: formatFecha(item.FechaPublicacion),
         fechaCierre:      formatFecha(item.FechaCierre),
