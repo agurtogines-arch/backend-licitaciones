@@ -281,14 +281,17 @@ async function buscar(){
 async function enriquecerRegiones(){
   enriqueciendo=true;
   const sinRegion=results.filter(r=>!r.region&&!r.detalleCompleto);
-  if(!sinRegion.length){enriqueciendo=false;return;}
+  if(!sinRegion.length){
+    if(codigosValidos) aplicarFiltroRegion();
+    enriqueciendo=false;
+    return;
+  }
 
   const prog=document.getElementById("progress");
   prog.style.display="block";
   prog.textContent=`⏳ Obteniendo región de ${sinRegion.length} licitaciones...`;
 
   let completadas=0;
-  // Procesar de 5 en 5 para no saturar
   for(let i=0;i<sinRegion.length;i+=5){
     if(!enriqueciendo) break;
     const grupo=sinRegion.slice(i,i+5);
@@ -297,34 +300,32 @@ async function enriquecerRegiones(){
         const res=await fetch(`/detalle/${item.codigo}`);
         if(!res.ok) return;
         const detalle=await res.json();
-        // Actualizar el item en results
         const idx=results.findIndex(r=>r.codigo===item.codigo);
         if(idx>=0){
-          results[idx].organismo=detalle.organismo||"–";
-          results[idx].region=detalle.region||null;
-          results[idx].regionOficial=detalle.regionOficial||null;
-          results[idx].monto=detalle.monto||null;
-          results[idx].descripcion=detalle.descripcion||"";
-          results[idx].detalleCompleto=true;
-          // Actualizar la card en el DOM
+          results[idx].organismo  = detalle.organismo || "–";
+          results[idx].region     = detalle.region    || null;
+          results[idx].regionOficial = detalle.regionOficial || null;
+          results[idx].monto      = detalle.monto     || null;
+          results[idx].descripcion= detalle.descripcion || "";
+          results[idx].detalleCompleto = true;
           actualizarCard(idx);
         }
         completadas++;
         prog.textContent=`⏳ Obteniendo región... (${completadas}/${sinRegion.length})`;
-      }catch{}
+      }catch(e){
+        // marcar como completo aunque haya fallado para no quedar en loop
+        const idx=results.findIndex(r=>r.codigo===item.codigo);
+        if(idx>=0) results[idx].detalleCompleto=true;
+        completadas++;
+      }
     }));
   }
 
-  // Aplicar filtro de región después de enriquecer
-  if(codigosValidos){
-    aplicarFiltroRegion();
-  }
-
+  if(codigosValidos) aplicarFiltroRegion();
   prog.textContent=`✅ Región obtenida para ${completadas} licitaciones`;
   setTimeout(()=>{prog.style.display="none";},3000);
   enriqueciendo=false;
-  // Guardar en historial con datos completos
-  saveHist(results.filter(r=>!esFiltrada(r)===false));
+  saveHist(results);
 }
 
 function esFiltrada(r){
@@ -354,14 +355,14 @@ function actualizarCard(idx){
   const r=results[idx];
   const card=document.getElementById(`card-${idx}`);
   if(!card) return;
-  // Actualizar región
-  const regionEl=card.querySelector(".region-slot");
+  // Actualizar región usando id único por card
+  const regionEl=document.getElementById(`region-${idx}`);
   if(regionEl) regionEl.innerHTML=regionTag(r.region,false);
   // Actualizar organismo
-  const orgEl=card.querySelector(".org-slot");
+  const orgEl=document.getElementById(`org-${idx}`);
   if(orgEl) orgEl.textContent=`🏛️ ${r.organismo}`;
   // Actualizar monto
-  const montoEl=card.querySelector(".monto-slot");
+  const montoEl=document.getElementById(`monto-${idx}`);
   if(montoEl) montoEl.textContent=r.monto?`💰 ${r.monto}`:"";
   // Aplicar filtro si hay rango activo
   if(codigosValidos && r.detalleCompleto){
@@ -382,11 +383,11 @@ function renderResults(){
         ${badge(r.estado)}
       </div>
       <div class="rmeta">
-        <span class="org-slot">🏛️ ${r.organismo}</span>
+        <span id="org-${i}">🏛️ ${r.organismo}</span>
         <span>🔖 ${r.codigo}</span>
-        <span class="region-slot">${regionTag(r.region,true)}</span>
+        <span id="region-${i}">${regionTag(r.region,true)}</span>
         <span>⏰ Cierre: ${r.fechaCierre}</span>
-        <span class="monto-slot">${r.monto?`💰 ${r.monto}`:""}</span>
+        <span id="monto-${i}">${r.monto?`💰 ${r.monto}`:""}</span>
       </div>
       <div class="rbtns">
         <button class="btn-ai" onclick="verDetalle(${i})">🤖 Analizar con IA</button>
