@@ -13,22 +13,22 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
 const REGIONES = [
-  { codigo: "15", nombre: "Región de Arica y Parinacota" },
-  { codigo: "1",  nombre: "Región de Tarapacá" },
-  { codigo: "2",  nombre: "Región de Antofagasta" },
-  { codigo: "3",  nombre: "Región de Atacama" },
-  { codigo: "4",  nombre: "Región de Coquimbo" },
-  { codigo: "5",  nombre: "Región de Valparaíso" },
-  { codigo: "13", nombre: "Región Metropolitana" },
-  { codigo: "6",  nombre: "Región de O'Higgins" },
-  { codigo: "7",  nombre: "Región del Maule" },
-  { codigo: "16", nombre: "Región de Ñuble" },
-  { codigo: "8",  nombre: "Región del Biobío" },
-  { codigo: "9",  nombre: "Región de La Araucanía" },
-  { codigo: "14", nombre: "Región de Los Ríos" },
-  { codigo: "10", nombre: "Región de Los Lagos" },
-  { codigo: "11", nombre: "Región de Aysén" },
-  { codigo: "12", nombre: "Región de Magallanes" }
+  { codigo: "15", nombre: "Región de Arica y Parinacota",                oficial: "arica" },
+  { codigo: "1",  nombre: "Región de Tarapacá",                          oficial: "tarapacá" },
+  { codigo: "2",  nombre: "Región de Antofagasta",                       oficial: "antofagasta" },
+  { codigo: "3",  nombre: "Región de Atacama",                           oficial: "atacama" },
+  { codigo: "4",  nombre: "Región de Coquimbo",                          oficial: "coquimbo" },
+  { codigo: "5",  nombre: "Región de Valparaíso",                        oficial: "valparaíso" },
+  { codigo: "13", nombre: "Región Metropolitana",                        oficial: "metropolitana" },
+  { codigo: "6",  nombre: "Región de O'Higgins",                         oficial: "o'higgins" },
+  { codigo: "7",  nombre: "Región del Maule",                            oficial: "maule" },
+  { codigo: "16", nombre: "Región de Ñuble",                             oficial: "ñuble" },
+  { codigo: "8",  nombre: "Región del Biobío",                           oficial: "biobío" },
+  { codigo: "9",  nombre: "Región de La Araucanía",                      oficial: "araucanía" },
+  { codigo: "14", nombre: "Región de Los Ríos",                          oficial: "los ríos" },
+  { codigo: "10", nombre: "Región de Los Lagos",                         oficial: "los lagos" },
+  { codigo: "11", nombre: "Región de Aysén",                             oficial: "aysén" },
+  { codigo: "12", nombre: "Región de Magallanes",                        oficial: "magallanes" }
 ];
 
 const REGION_MAP = {};
