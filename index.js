@@ -70,7 +70,34 @@ async function fetchDetalle(codigo) {
   }
 }
 
-// Procesar en grupos paralelos de N
+// Extraer región desde el texto cuando fetchDetalle falla
+function extraerRegionDeTexto(texto) {
+  if (!texto) return null;
+  const t = texto.toLowerCase();
+  const mapa = [
+    { oficial: "arica",        nombre: "Región de Arica y Parinacota" },
+    { oficial: "tarapacá",     nombre: "Región de Tarapacá" },
+    { oficial: "antofagasta",  nombre: "Región de Antofagasta" },
+    { oficial: "atacama",      nombre: "Región de Atacama" },
+    { oficial: "coquimbo",     nombre: "Región de Coquimbo" },
+    { oficial: "valparaíso",   nombre: "Región de Valparaíso" },
+    { oficial: "metropolitana",nombre: "Región Metropolitana" },
+    { oficial: "o'higgins",    nombre: "Región de O'Higgins" },
+    { oficial: "maule",        nombre: "Región del Maule" },
+    { oficial: "ñuble",        nombre: "Región de Ñuble" },
+    { oficial: "biobío",       nombre: "Región del Biobío" },
+    { oficial: "bío bío",      nombre: "Región del Biobío" },
+    { oficial: "araucanía",    nombre: "Región de La Araucanía" },
+    { oficial: "los ríos",     nombre: "Región de Los Ríos" },
+    { oficial: "los lagos",    nombre: "Región de Los Lagos" },
+    { oficial: "aysén",        nombre: "Región de Aysén" },
+    { oficial: "magallanes",   nombre: "Región de Magallanes" },
+  ];
+  for (const r of mapa) {
+    if (t.includes(r.oficial)) return r;
+  }
+  return null;
+}
 async function fetchDetallesEnGrupos(licitaciones, tamanoGrupo = 20) {
   const resultados = [];
   for (let i = 0; i < licitaciones.length; i += tamanoGrupo) {
@@ -139,7 +166,7 @@ app.get("/buscar", async (req, res) => {
         titulo:           item.Nombre || "Sin título",
         codigo:           item.CodigoExterno || "",
         organismo:        item.detalle?.organismo || "–",
-        region:           item.detalle?.region || null,
+        region:           item.detalle?.region || extraerRegionDeTexto(`${item.Nombre || ""} ${item.Descripcion || ""}`)?.nombre || null,
         codigoRegion:     "",
         estado:           estadoTexto(item.CodigoEstado),
         fechaPublicacion: formatFecha(item.FechaPublicacion),
