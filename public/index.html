@@ -424,7 +424,7 @@ async function verDetalle(i){
         model:"claude-sonnet-4-20250514",
         max_tokens:1200,
         system:"Eres experto en licitaciones públicas chilenas para empresas consultoras de ingeniería vial. La empresa es una CONSULTORA especializada en estudios geométricos, seguridad vial, hidráulica e hidrología, infraestructura vial, diseño vial y prefactibilidad de rutas. NO es constructora. Enfoca el análisis en si requiere consultoría o estudios técnicos. Nunca sugieras subcontratación en etapa constructiva.",
-        messages:[{role:"user",content:`Analiza esta licitación para una empresa de ingeniería vial:\n\nTítulo: ${item.titulo}\nOrganismo: ${item.organismo}\nRegión: ${item.region||"No especificada"}\nEstado: ${item.estado}\nCierre: ${item.fechaCierre}\nMonto: ${item.monto||"No especificado"}\nCódigo: ${item.codigo}\n\n**1. Objeto** (2-3 líneas)\n**2. Relevancia** Alta/Media/Baja\n**3. Plazos clave**\n**4. Recomendación** ¿Postular?`}]
+        messages:[{role:"user",content:`Analiza esta licitación para una empresa de ingeniería vial:\n\nTítulo: ${item.titulo}\nOrganismo: ${item.organismo}\nRegión: ${item.region||"No especificada"}\nEstado: ${item.estado}\nCierre: ${item.fechaCierre}\nMonto: ${item.monto||"No especificado"}\nCódigo: ${item.codigo}\n\n**1. Objeto** (2-3 líneas)\n**2. Relevancia para consultoría vial** Alta/Media/Baja — ¿requiere estudios o diseños técnicos?\n**3. Plazos clave**\n**4. Recomendación** ¿Aplica para una consultora de ingeniería vial? ¿Por qué sí o no?
       })
     });
     const data=await res.json();
