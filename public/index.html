@@ -31,7 +31,7 @@ input,select{width:100%;padding:11px 14px;border-radius:8px;border:1px solid #cb
 .steps{margin-top:16px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;padding:14px;display:none}
 .step{font-size:13px;margin-bottom:4px;display:flex;gap:6px}
 .err{margin-top:14px;font-size:13px;color:#dc2626;background:#fee2e2;padding:10px 14px;border-radius:8px;display:none}
-.progress{font-size:12px;color:#2563eb;margin-top:8px;padding:8px 14px;background:#eff6ff;border-radius:8px;display:none}
+.prog{font-size:12px;color:#2563eb;margin-top:8px;padding:8px 14px;background:#eff6ff;border-radius:8px;display:none}
 .summary{background:white;padding:12px 16px;border-radius:10px;margin-bottom:16px;font-size:13px;color:#64748b;box-shadow:0 1px 3px rgba(0,0,0,.06)}
 .rcard{background:white;border-radius:10px;padding:16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.06);border-left:4px solid #2563eb}
 .rcard.oculta{display:none}
@@ -45,9 +45,14 @@ input,select{width:100%;padding:11px 14px;border-radius:8px;border:1px solid #cb
 .bb{background:#dbeafe;color:#1d4ed8}
 .bgr{background:#f1f5f9;color:#64748b}
 .rtag{background:#f0fdf4;color:#15803d;font-size:11px;padding:2px 8px;border-radius:12px;font-weight:600}
-.rtag-cargando{background:#fef9c3;color:#a16207;font-size:11px;padding:2px 8px;border-radius:12px;font-weight:600}
+.rtag-c{background:#fef9c3;color:#a16207;font-size:11px;padding:2px 8px;border-radius:12px;font-weight:600}
 .empty{text-align:center;color:#94a3b8;padding:48px}
 .hcard{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:8px}
+/* Modal análisis */
+.modal-bg{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:100;overflow-y:auto;padding:20px}
+.modal-box{background:white;border-radius:12px;padding:24px;max-width:800px;margin:0 auto;position:relative}
+.modal-close{position:absolute;top:16px;right:16px;background:#f1f5f9;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:13px;font-weight:700;color:#475569}
+.analysis{font-size:13px;line-height:1.9;white-space:pre-wrap;color:#334155;margin-top:16px}
 </style>
 </head>
 <body>
@@ -75,16 +80,12 @@ input,select{width:100%;padding:11px 14px;border-radius:8px;border:1px solid #cb
       <div class="grid3" style="margin-bottom:8px">
         <div>
           <label style="font-size:11px;color:#94a3b8;font-weight:600">DESDE</label>
-          <select id="desde" onchange="updatePreview()">
-            <option value="todas">🌎 Todo Chile</option>
-          </select>
+          <select id="desde" onchange="updatePreview()"><option value="todas">🌎 Todo Chile</option></select>
         </div>
         <div style="color:#94a3b8;font-size:18px;padding-bottom:11px;text-align:center">→</div>
         <div>
           <label style="font-size:11px;color:#94a3b8;font-weight:600">HASTA</label>
-          <select id="hasta" onchange="updatePreview()">
-            <option value="todas">🌎 Todo Chile</option>
-          </select>
+          <select id="hasta" onchange="updatePreview()"><option value="todas">🌎 Todo Chile</option></select>
         </div>
       </div>
       <div class="preview" id="preview">🌎 Buscando en todas las regiones de Chile</div>
@@ -109,7 +110,7 @@ input,select{width:100%;padding:11px 14px;border-radius:8px;border:1px solid #cb
         <button class="btn-reset" id="btn-r" style="display:none" onclick="reiniciar()">🔄 Reiniciar</button>
       </div>
       <div class="steps" id="steps"></div>
-      <div class="progress" id="prog"></div>
+      <div class="prog" id="prog"></div>
       <div class="err" id="err"></div>
     </div>
   </div>
@@ -124,59 +125,67 @@ input,select{width:100%;padding:11px 14px;border-radius:8px;border:1px solid #cb
   </div>
 </div>
 
+<!-- Modal análisis -->
+<div class="modal-bg" id="modal">
+  <div class="modal-box">
+    <button class="modal-close" onclick="cerrarModal()">✕ Cerrar</button>
+    <div id="modal-content"></div>
+  </div>
+</div>
+
 <script>
-var SK="mp_v6", CHIPS=["vial","infraestructura vial","estudio vial","prefactibilidad","diseño vial","concesionaria","MOP"];
-var results=[], history=[], loading=false, ctrl=null, enriq=false;
+var SK="mp_v7";
+var CHIPS=["vial","infraestructura vial","estudio vial","prefactibilidad","diseño vial","concesionaria","MOP"];
+var resultados=[], historial=[], loading=false, ctrl=null, enriq=false;
 var REGIONES=[], codValidos=null;
 
 // Init chips
 var ce=document.getElementById("chips");
-CHIPS.forEach(function(s){
-  var b=document.createElement("button");
-  b.className="chip"; b.textContent=s;
-  b.onclick=function(){ document.getElementById("kw").value=s; };
-  ce.appendChild(b);
-});
+for(var ci=0;ci<CHIPS.length;ci++){
+  (function(s){
+    var b=document.createElement("button");
+    b.className="chip"; b.textContent=s;
+    b.onclick=function(){ document.getElementById("kw").value=s; };
+    ce.appendChild(b);
+  })(CHIPS[ci]);
+}
 
 // Cargar regiones
 fetch("/regiones").then(function(r){ return r.json(); }).then(function(data){
   REGIONES=data;
   var d=document.getElementById("desde"), h=document.getElementById("hasta");
-  data.forEach(function(r){
-    d.innerHTML+='<option value="'+r.codigo+'">'+r.nombre+'</option>';
-    h.innerHTML+='<option value="'+r.codigo+'">'+r.nombre+'</option>';
-  });
-  d.value="7"; h.value="12";
-  updatePreview();
+  for(var i=0;i<data.length;i++){
+    d.innerHTML+='<option value="'+data[i].codigo+'">'+data[i].nombre+'</option>';
+    h.innerHTML+='<option value="'+data[i].codigo+'">'+data[i].nombre+'</option>';
+  }
+  d.value="7"; h.value="12"; updatePreview();
 }).catch(function(e){ console.error(e); });
 
-try{ history=JSON.parse(localStorage.getItem(SK)||"[]"); renderHist(); }catch(e){}
+try{ historial=JSON.parse(localStorage.getItem(SK)||"[]"); renderHist(); }catch(e){}
 
 function getSel(){
   var d=document.getElementById("desde").value;
   var h=document.getElementById("hasta").value;
   if(d==="todas"&&h==="todas") return [];
-  var id=d==="todas"?0:REGIONES.findIndex(function(r){return r.codigo===d;});
-  var ih=h==="todas"?REGIONES.length-1:REGIONES.findIndex(function(r){return r.codigo===h;});
-  var s=Math.min(id<0?0:id, ih<0?REGIONES.length-1:ih);
-  var e=Math.max(id<0?0:id, ih<0?REGIONES.length-1:ih);
+  var id=d==="todas"?0:idx(d), ih=h==="todas"?REGIONES.length-1:idx(h);
+  var s=Math.min(id<0?0:id,ih<0?REGIONES.length-1:ih);
+  var e=Math.max(id<0?0:id,ih<0?REGIONES.length-1:ih);
   return REGIONES.slice(s,e+1);
 }
+function idx(cod){ for(var i=0;i<REGIONES.length;i++) if(REGIONES[i].codigo===cod) return i; return -1; }
 
 function updatePreview(){
-  var sel=getSel();
-  var p=document.getElementById("preview");
+  var sel=getSel(), p=document.getElementById("preview");
   if(!sel.length){ p.textContent="🌎 Buscando en todas las regiones de Chile"; return; }
   if(sel.length===1){ p.textContent="📍 Solo: "+sel[0].nombre; return; }
-  p.textContent="📍 "+sel.length+" regiones: "+sel.map(function(r){
-    return r.nombre.replace("Región de ","").replace("Región del ","").replace("Región Metropolitana","RM");
-  }).join(" → ");
+  var nombres=[];
+  for(var i=0;i<sel.length;i++) nombres.push(sel[i].nombre.replace("Región de ","").replace("Región del ","").replace("Región Metropolitana","RM"));
+  p.textContent="📍 "+sel.length+" regiones: "+nombres.join(" → ");
 }
 
 function goTab(name,btn){
-  ["buscar","resultados","historial"].forEach(function(t){
-    document.getElementById("pane-"+t).style.display="none";
-  });
+  var tabs=["buscar","resultados","historial"];
+  for(var i=0;i<tabs.length;i++) document.getElementById("pane-"+tabs[i]).style.display="none";
   document.querySelectorAll(".tab").forEach(function(b){ b.classList.remove("active"); });
   document.getElementById("pane-"+name).style.display="block";
   if(btn) btn.classList.add("active");
@@ -194,21 +203,21 @@ function addStep(msg,cls){
   var el=document.getElementById("steps"); el.style.display="block";
   var d=document.createElement("div"); d.className="step";
   d.style.color=cls==="ok"?"#16a34a":cls==="wait"?"#2563eb":"#94a3b8";
-  d.innerHTML="<span>"+(cls==="ok"?"✅":cls==="wait"?"⏳":"⚪")+"</span><span>"+msg+"</span>";
+  d.innerHTML="<span>"+(cls==="ok"?"✅":"⏳")+"</span><span>"+msg+"</span>";
   el.appendChild(d);
 }
 
 function showErr(msg){
   var e=document.getElementById("err");
-  e.style.display=msg?"block":"none"; e.textContent=msg;
+  e.style.display=msg?"block":"none"; e.textContent=msg||"";
 }
 
 function parseFecha(f){
   if(!f||f==="–") return null;
   var p=f.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-  if(p) return new Date(Number(p[3]),Number(p[2])-1,Number(p[1]));
+  if(p) return new Date(+p[3],+p[2]-1,+p[1]);
   var iso=f.match(/(\d{4})[\/\-](\d{2})[\/\-](\d{2})/);
-  if(iso) return new Date(Number(iso[1]),Number(iso[2])-1,Number(iso[3]));
+  if(iso) return new Date(+iso[1],+iso[2]-1,+iso[3]);
   return null;
 }
 
@@ -222,9 +231,10 @@ function cancelar(){
 }
 
 function reiniciar(){
-  cancelar(); results=[];
+  cancelar(); resultados=[];
   renderResults();
-  goTab("buscar",document.querySelector(".tab"));
+  var tabs=document.querySelectorAll(".tab");
+  goTab("buscar",tabs[0]);
 }
 
 function buscar(){
@@ -233,27 +243,21 @@ function buscar(){
   ctrl=new AbortController();
   setLoad(true); showErr("");
   document.getElementById("steps").innerHTML="";
-  results=[];
+  resultados=[];
   var sel=getSel();
   codValidos=sel.length>0?sel.map(function(r){return r.codigo;}):null;
   var d=document.getElementById("desde").value;
   var h=document.getElementById("hasta").value;
   var fdv=document.getElementById("fd").value;
   var fhv=document.getElementById("fh").value;
-
   addStep("Consultando API Mercado Público...","wait");
 
-  fetch("/buscar?q="+encodeURIComponent(kw)+"&desde="+d+"&hasta="+h, {signal:ctrl.signal})
-  .then(function(res){
-    if(!res.ok) throw new Error("Error "+res.status);
-    return res.json();
-  })
+  fetch("/buscar?q="+encodeURIComponent(kw)+"&desde="+d+"&hasta="+h,{signal:ctrl.signal})
+  .then(function(res){ if(!res.ok) throw new Error("Error "+res.status); return res.json(); })
   .then(function(data){
     var todos=data.resultados||[];
-    // Filtro fechas
     if(fdv||fhv){
-      var dF=fdv?new Date(fdv):null;
-      var hF=fhv?new Date(fhv):null;
+      var dF=fdv?new Date(fdv):null, hF=fhv?new Date(fhv):null;
       todos=todos.filter(function(r){
         var fc=parseFecha(r.fechaCierre);
         if(!fc) return true;
@@ -262,12 +266,15 @@ function buscar(){
         return true;
       });
     }
-    results=todos;
+    resultados=todos;
     document.getElementById("steps").innerHTML="";
-    if(results.length){
-      addStep("✅ "+results.length+" licitaciones encontradas","ok");
+    document.getElementById("steps").style.display="none";
+    if(resultados.length){
+      addStep("✅ "+resultados.length+" licitaciones encontradas","ok");
       renderResults();
-      goTab("resultados",document.querySelectorAll(".tab")[1]);
+      // Salto automático a resultados
+      var tabs=document.querySelectorAll(".tab");
+      goTab("resultados",tabs[1]);
       enriquecerRegiones();
     } else {
       showErr("No se encontraron licitaciones. Prueba con otro término.");
@@ -283,121 +290,183 @@ function buscar(){
 
 function enriquecerRegiones(){
   enriq=true;
-  var sinReg=results.filter(function(r){return !r.region&&!r.detalleCompleto;});
+  var sinReg=resultados.filter(function(r){return !r.region&&!r.detalleCompleto;});
   if(!sinReg.length){ if(codValidos) aplicarFiltro(); enriq=false; return; }
-  var prog=document.getElementById("prog");
-  prog.style.display="block";
-  prog.textContent="⏳ Obteniendo región de "+sinReg.length+" licitaciones...";
+  var progEl=document.getElementById("prog");
+  progEl.style.display="block";
+  progEl.textContent="⏳ Obteniendo región de "+sinReg.length+" licitaciones...";
   var completadas=0;
 
-  function procesarGrupo(idx){
-    if(idx>=sinReg.length||!enriq){
+  function procesarGrupo(gi){
+    if(gi>=sinReg.length||!enriq){
       if(codValidos) aplicarFiltro();
-      prog.textContent="✅ Región obtenida para "+completadas+" licitaciones";
-      setTimeout(function(){prog.style.display="none";},3000);
-      enriq=false;
-      saveHist(results);
-      return;
+      progEl.textContent="✅ Región obtenida para "+completadas+" licitaciones";
+      setTimeout(function(){progEl.style.display="none";},3000);
+      enriq=false; saveHist(resultados); return;
     }
-    var grupo=sinReg.slice(idx,idx+5);
-    var promises=grupo.map(function(item){
-      return fetch("/detalle/"+item.codigo)
-      .then(function(res){ return res.ok?res.json():null; })
-      .then(function(detalle){
-        if(!detalle) return;
-        var i=results.findIndex(function(r){return r.codigo===item.codigo;});
-        if(i>=0){
-          results[i].organismo=detalle.organismo||"–";
-          results[i].region=detalle.region||null;
-          results[i].regionOficial=detalle.regionOficial||null;
-          results[i].monto=detalle.monto||null;
-          results[i].descripcion=detalle.descripcion||"";
-          results[i].detalleCompleto=true;
-          actualizarCard(i);
-        }
-        completadas++;
-        prog.textContent="⏳ Obteniendo región... ("+completadas+"/"+sinReg.length+")";
-      })
-      .catch(function(){
-        var i=results.findIndex(function(r){return r.codigo===item.codigo;});
-        if(i>=0) results[i].detalleCompleto=true;
-        completadas++;
-      });
-    });
-    Promise.all(promises).then(function(){
-      setTimeout(function(){ procesarGrupo(idx+5); }, 2000);
-    });
+    var grupo=sinReg.slice(gi,gi+5);
+    var pending=grupo.length, done=0;
+    function check(){ done++; if(done>=pending) setTimeout(function(){procesarGrupo(gi+5);},2000); }
+    for(var j=0;j<grupo.length;j++){
+      (function(item){
+        fetch("/detalle/"+item.codigo)
+        .then(function(res){ return res.ok?res.json():null; })
+        .then(function(det){
+          if(det){
+            var i=findIdx(item.codigo);
+            if(i>=0){
+              resultados[i].organismo=det.organismo||"–";
+              resultados[i].region=det.region||null;
+              resultados[i].regionOficial=det.regionOficial||null;
+              resultados[i].monto=det.monto||null;
+              resultados[i].descripcion=det.descripcion||"";
+              resultados[i].detalleCompleto=true;
+              actualizarCard(i);
+            }
+          } else {
+            var i=findIdx(item.codigo);
+            if(i>=0) resultados[i].detalleCompleto=true;
+          }
+          completadas++;
+          progEl.textContent="⏳ Obteniendo región... ("+completadas+"/"+sinReg.length+")";
+          check();
+        })
+        .catch(function(){
+          var i=findIdx(item.codigo);
+          if(i>=0) resultados[i].detalleCompleto=true;
+          completadas++; check();
+        });
+      })(grupo[j]);
+    }
   }
   procesarGrupo(0);
+}
+
+function findIdx(codigo){
+  for(var i=0;i<resultados.length;i++) if(resultados[i].codigo===codigo) return i;
+  return -1;
 }
 
 function esFiltrado(r){
   if(!codValidos) return false;
   if(!r.regionOficial&&!r.detalleCompleto) return false;
   if(!r.regionOficial) return true;
-  return !codValidos.some(function(cod){
-    var reg=REGIONES.find(function(reg){return reg.codigo===cod;});
-    return reg&&r.regionOficial.includes(reg.oficial);
-  });
+  for(var i=0;i<codValidos.length;i++){
+    var reg=null;
+    for(var j=0;j<REGIONES.length;j++) if(REGIONES[j].codigo===codValidos[i]){ reg=REGIONES[j]; break; }
+    if(reg&&r.regionOficial.toLowerCase().includes(reg.oficial)) return false;
+  }
+  return true;
 }
 
 function aplicarFiltro(){
-  results.forEach(function(r,i){
+  var vis=0;
+  for(var i=0;i<resultados.length;i++){
     var card=document.getElementById("card-"+i);
-    if(!card) return;
-    if(esFiltrado(r)) card.classList.add("oculta");
-    else card.classList.remove("oculta");
-  });
-  var vis=results.filter(function(r){return !esFiltrado(r);}).length;
+    if(!card) continue;
+    if(esFiltrado(resultados[i])){ card.classList.add("oculta"); }
+    else{ card.classList.remove("oculta"); vis++; }
+  }
   document.getElementById("tb-res").textContent="📋 Resultados ("+vis+")";
   document.getElementById("summary").innerHTML="🏛 Mercado Público: <b style='color:#1d4ed8'>"+vis+"</b> licitaciones en rango seleccionado";
 }
 
-function actualizarCard(idx){
-  var r=results[idx];
-  var card=document.getElementById("card-"+idx);
-  if(!card) return;
-  var re=document.getElementById("region-"+idx);
+function actualizarCard(i){
+  var r=resultados[i];
+  var re=document.getElementById("region-"+i);
   if(re) re.innerHTML=r.region?"<span class='rtag'>📍 "+r.region+"</span>":"";
-  var oe=document.getElementById("org-"+idx);
+  var oe=document.getElementById("org-"+i);
   if(oe) oe.textContent="🏛️ "+r.organismo;
-  var me=document.getElementById("monto-"+idx);
+  var me=document.getElementById("monto-"+i);
   if(me) me.textContent=r.monto?"💰 "+r.monto:"";
-  if(codValidos&&r.detalleCompleto){
-    if(esFiltrado(r)) card.classList.add("oculta");
-    else card.classList.remove("oculta");
+  var card=document.getElementById("card-"+i);
+  if(card&&codValidos&&r.detalleCompleto){
+    if(esFiltrado(r)) card.classList.add("oculta"); else card.classList.remove("oculta");
   }
 }
 
 function badge(e){
   var l=(e||"").toLowerCase();
-  if(l.includes("publicada")||l.includes("activa")) return "<span class='badge bg'>"+e+"</span>";
-  if(l.includes("cerrada")||l.includes("adjudicada")) return "<span class='badge bgr'>"+e+"</span>";
-  if(l.includes("desierta")||l.includes("revocada")) return "<span class='badge br'>"+e+"</span>";
+  if(l.indexOf("publicada")>=0||l.indexOf("activa")>=0) return "<span class='badge bg'>"+e+"</span>";
+  if(l.indexOf("cerrada")>=0||l.indexOf("adjudicada")>=0) return "<span class='badge bgr'>"+e+"</span>";
+  if(l.indexOf("desierta")>=0||l.indexOf("revocada")>=0) return "<span class='badge br'>"+e+"</span>";
   return "<span class='badge bb'>"+(e||"–")+"</span>";
 }
 
 function abrirAnalisis(i){
-  var item=results[i];
-  var msg="Analiza esta licitación de Mercado Público Chile para una empresa consultora de ingeniería vial especializada en estudios geométricos, seguridad vial, hidráulica e hidrología, diseño vial y prefactibilidad de rutas. NO es empresa constructora.\n\nTítulo: "+item.titulo+"\nCódigo: "+item.codigo+"\nOrganismo: "+item.organismo+"\nRegión: "+(item.region||"No especificada")+"\nEstado: "+item.estado+"\nCierre: "+item.fechaCierre+"\nMonto: "+(item.monto||"No especificado")+"\nURL: "+item.url+"\n\nPor favor accede a la URL, lee el contenido completo y entrega:\n1. Objeto de la licitación (detalle real del documento)\n2. Relevancia para consultoría vial Alta/Media/Baja\n3. Plazos clave\n4. Requisitos técnicos destacados\n5. Recomendación ¿Aplica para una consultora de ingeniería vial?";
-  window.open("https://claude.ai/new?q="+encodeURIComponent(msg),"_blank");
+  var item=resultados[i];
+  var mc=document.getElementById("modal-content");
+  mc.innerHTML="<div style='display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap'>"+
+    badge(item.estado)+
+    (item.region?"<span class='rtag'>📍 "+item.region+"</span>":"")+
+    "</div>"+
+    "<div style='font-weight:700;font-size:16px;line-height:1.3;margin-bottom:6px'>"+item.titulo+"</div>"+
+    "<div style='font-size:12px;color:#64748b;margin-bottom:16px;display:flex;gap:16px;flex-wrap:wrap'>"+
+    "<span>🏛️ "+item.organismo+"</span>"+
+    "<span>🔖 "+item.codigo+"</span>"+
+    "<span>⏰ Cierre: "+item.fechaCierre+"</span>"+
+    (item.monto?"<span style='color:#059669;font-weight:600'>💰 "+item.monto+"</span>":"")+
+    "</div>"+
+    "<hr style='border:none;border-top:1px solid #f1f5f9;margin-bottom:16px'/>"+
+    "<div style='color:#2563eb;font-size:14px;margin-bottom:12px'>⏳ Analizando licitación con IA...</div>"+
+    "<div id='ai-text' class='analysis'></div>"+
+    "<div style='margin-top:20px'><a href='"+item.url+"' target='_blank' class='btn-link'>🔗 Abrir en Mercado Público</a></div>";
+
+  document.getElementById("modal").style.display="block";
+
+  // Llamada a Anthropic directamente
+  fetch("https://api.anthropic.com/v1/messages",{
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json",
+      "anthropic-dangerous-direct-browser-access":"true"
+    },
+    body:JSON.stringify({
+      model:"claude-sonnet-4-20250514",
+      max_tokens:1200,
+      system:"Eres experto en licitaciones públicas chilenas para empresas consultoras de ingeniería vial. La empresa es CONSULTORA especializada en estudios geométricos, seguridad vial, hidráulica e hidrología, diseño vial y prefactibilidad. NO es constructora. Enfoca el análisis en si requiere consultoría o estudios técnicos.",
+      messages:[{role:"user",content:"Analiza esta licitación para una consultora de ingeniería vial:\n\nTítulo: "+item.titulo+"\nOrganismo: "+item.organismo+"\nRegión: "+(item.region||"No especificada")+"\nCierre: "+item.fechaCierre+"\nMonto: "+(item.monto||"No especificado")+"\nURL: "+item.url+"\n\nAccede a la URL para leer el contenido completo y entrega:\n**1. Objeto** (2-3 líneas con detalle real)\n**2. Relevancia para consultoría vial** Alta/Media/Baja\n**3. Plazos clave**\n**4. Requisitos técnicos destacados**\n**5. Recomendación** ¿Aplica para una consultora vial?"}],
+      tools:[{type:"web_search_20250305",name:"web_search"}]
+    })
+  })
+  .then(function(res){ return res.json(); })
+  .then(function(data){
+    var txt="";
+    if(data.content) for(var i=0;i<data.content.length;i++) if(data.content[i].type==="text") txt+=data.content[i].text;
+    var el=document.getElementById("ai-text");
+    if(el){
+      el.textContent=txt||"No se pudo obtener análisis.";
+      var prev=el.previousElementSibling;
+      if(prev&&prev.textContent.indexOf("Analizando")>=0) prev.style.display="none";
+    }
+  })
+  .catch(function(e){
+    var el=document.getElementById("ai-text");
+    if(el) el.textContent="Error al analizar: "+e.message;
+  });
+}
+
+function cerrarModal(){
+  document.getElementById("modal").style.display="none";
+  document.getElementById("modal-content").innerHTML="";
 }
 
 function renderResults(){
-  document.getElementById("tb-res").textContent="📋 Resultados ("+results.length+")";
-  document.getElementById("summary").innerHTML="🏛 Mercado Público: <b style='color:#1d4ed8'>"+results.length+"</b> licitaciones encontradas";
+  document.getElementById("tb-res").textContent="📋 Resultados ("+resultados.length+")";
+  document.getElementById("summary").innerHTML="🏛 Mercado Público: <b style='color:#1d4ed8'>"+resultados.length+"</b> licitaciones encontradas";
   var el=document.getElementById("list");
-  if(!results.length){ el.innerHTML="<div class='empty'>Sin resultados.</div>"; return; }
-  el.innerHTML=results.map(function(r,i){
-    return "<div class='rcard' id='card-"+i+"'>"+
-      "<div style='display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;margin-bottom:8px'>"+
+  if(!resultados.length){ el.innerHTML="<div class='empty'>Sin resultados.</div>"; return; }
+  var html="";
+  for(var i=0;i<resultados.length;i++){
+    var r=resultados[i];
+    html+="<div class='rcard' id='card-"+i+"'>"+
+      "<div style='display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px'>"+
       "<div style='font-weight:700;font-size:14px;flex:1;min-width:180px;line-height:1.4'>"+r.titulo+"</div>"+
-      badge(r.estado)+
-      "</div>"+
+      badge(r.estado)+"</div>"+
       "<div class='rmeta'>"+
       "<span id='org-"+i+"'>🏛️ "+r.organismo+"</span>"+
       "<span>🔖 "+r.codigo+"</span>"+
-      "<span id='region-"+i+"'><span class='rtag-cargando'>⏳ obteniendo región...</span></span>"+
+      "<span id='region-"+i+"'><span class='rtag-c'>⏳ obteniendo región...</span></span>"+
       "<span>⏰ Cierre: "+r.fechaCierre+"</span>"+
       "<span id='monto-"+i+"'>"+(r.monto?"💰 "+r.monto:"")+"</span>"+
       "</div>"+
@@ -405,45 +474,43 @@ function renderResults(){
       "<button class='btn-ai' onclick='abrirAnalisis("+i+")'>🤖 Analizar con IA</button>"+
       "<a href='"+r.url+"' target='_blank' class='btn-link'>🔗 Ver en MP</a>"+
       "</div></div>";
-  }).join("");
-  saveHist(results);
+  }
+  el.innerHTML=html;
+  saveHist(resultados);
 }
 
 function saveHist(items){
-  var m=items.map(function(i){return Object.assign({},i,{_at:new Date().toLocaleDateString("es-CL")});});
-  history=m.concat(history).slice(0,100);
-  try{localStorage.setItem(SK,JSON.stringify(history));}catch(e){}
+  var m=[];
+  for(var i=0;i<items.length;i++){
+    var o={}; for(var k in items[i]) o[k]=items[i][k];
+    o._at=new Date().toLocaleDateString("es-CL"); m.push(o);
+  }
+  historial=m.concat(historial).slice(0,100);
+  try{ localStorage.setItem(SK,JSON.stringify(historial)); }catch(e){}
   renderHist();
 }
 
 function renderHist(){
-  document.getElementById("tb-hist").textContent="🕐 Historial ("+history.length+")";
+  document.getElementById("tb-hist").textContent="🕐 Historial ("+historial.length+")";
   var el=document.getElementById("hist-list");
-  if(!history.length){ el.innerHTML="<div class='empty'>Sin historial aún.</div>"; return; }
-  el.innerHTML="<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:12px'>"+
-    "<span style='font-size:13px;color:#64748b'>"+history.length+" licitaciones</span>"+
-    "<button onclick='clearHist()' style='background:#fee2e2;color:#dc2626;border:none;padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600'>🗑️ Limpiar</button>"+
-    "</div>"+
-    history.map(function(r){
-      return "<div class='hcard'>"+
-        (r.region?"<span class='rtag'>📍 "+r.region+"</span>":"")+
-        "<div style='font-weight:600;font-size:13px;margin-top:4px'>"+r.titulo+"</div>"+
-        "<div style='font-size:11px;color:#94a3b8;margin-top:3px'>🔖 "+r.codigo+" · Cierre: "+r.fechaCierre+" · "+r._at+"</div>"+
-        "<button onclick='abrirAnalisisHist(\""+r.codigo+"\")' style='background:#dbeafe;color:#1d4ed8;border:none;padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;margin-top:8px;font-weight:600'>🤖 Analizar</button>"+
-        "</div>";
-    }).join("");
-}
-
-function abrirAnalisisHist(codigo){
-  var item=history.find(function(r){return r.codigo===codigo;});
-  if(!item) return;
-  var msg="Analiza esta licitación de Mercado Público Chile para una empresa consultora de ingeniería vial.\n\nTítulo: "+item.titulo+"\nCódigo: "+item.codigo+"\nOrganismo: "+item.organismo+"\nRegión: "+(item.region||"No especificada")+"\nCierre: "+item.fechaCierre+"\nURL: "+item.url+"\n\nAccede a la URL y entrega análisis completo para una consultora vial.";
-  window.open("https://claude.ai/new?q="+encodeURIComponent(msg),"_blank");
+  if(!historial.length){ el.innerHTML="<div class='empty'>Sin historial aún.</div>"; return; }
+  var html="<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:12px'>"+
+    "<span style='font-size:13px;color:#64748b'>"+historial.length+" licitaciones</span>"+
+    "<button onclick='clearHist()' style='background:#fee2e2;color:#dc2626;border:none;padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600'>🗑️ Limpiar</button></div>";
+  for(var i=0;i<historial.length;i++){
+    var r=historial[i];
+    html+="<div class='hcard'>"+
+      (r.region?"<span class='rtag'>📍 "+r.region+"</span>":"")+
+      "<div style='font-weight:600;font-size:13px;margin-top:4px'>"+r.titulo+"</div>"+
+      "<div style='font-size:11px;color:#94a3b8;margin-top:3px'>🔖 "+r.codigo+" · Cierre: "+r.fechaCierre+" · "+r._at+"</div>"+
+      "</div>";
+  }
+  el.innerHTML=html;
 }
 
 function clearHist(){
-  history=[];
-  try{localStorage.removeItem(SK);}catch(e){}
+  historial=[];
+  try{ localStorage.removeItem(SK); }catch(e){}
   renderHist();
 }
 </script>
