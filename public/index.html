@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Agente de Licitaciones - Mercado Público</title>
+<title>Agente Licitaciones - Mercado Público</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:system-ui,sans-serif;background:#f8fafc;color:#1e293b;min-height:100vh}
-.wrap{max-width:960px;margin:0 auto;padding:16px}
-.header{background:linear-gradient(135deg,#1e3a5f,#2563eb);border-radius:12px;padding:20px 24px;margin-bottom:20px;color:white;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
+.wrap{max-width:900px;margin:0 auto;padding:16px}
+.header{background:linear-gradient(135deg,#1e3a5f,#2563eb);border-radius:12px;padding:20px 24px;margin-bottom:20px;color:white}
 .header h1{font-size:22px;font-weight:800}
 .header p{font-size:12px;opacity:.8;margin-top:3px}
 .tabs{display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap}
@@ -18,12 +18,14 @@ body{font-family:system-ui,sans-serif;background:#f8fafc;color:#1e293b;min-heigh
 label{font-size:13px;font-weight:600;color:#64748b;display:block;margin-bottom:6px}
 input,select{width:100%;padding:11px 14px;border-radius:8px;border:1px solid #cbd5e1;font-size:14px;outline:none;background:white}
 input:focus,select:focus{border-color:#2563eb}
-.hint{font-size:12px;color:#94a3b8;margin-top:6px;margin-bottom:16px}
-.grid3{display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:end;margin-bottom:8px}
-@media(max-width:600px){.grid3{grid-template-columns:1fr}}
+.hint{font-size:11px;color:#94a3b8;margin-top:4px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid3{display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:end}
+@media(max-width:600px){.grid2,.grid3{grid-template-columns:1fr}}
 .preview{background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;font-size:12px;color:#1d4ed8;margin-bottom:16px;font-weight:600}
 .chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px}
 .chip{background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;padding:5px 12px;border-radius:20px;font-size:12px;cursor:pointer;font-weight:600}
+.chip:hover{background:#dbeafe}
 .btns{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .btn-primary{background:#2563eb;color:white;border:none;padding:12px 32px;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(37,99,235,.3)}
 .btn-primary:disabled{background:#94a3b8;box-shadow:none;cursor:not-allowed}
@@ -32,6 +34,7 @@ input:focus,select:focus{border-color:#2563eb}
 .steps{margin-top:16px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;padding:14px;display:none}
 .step{font-size:13px;margin-bottom:4px;display:flex;gap:6px;align-items:center}
 .err{margin-top:14px;font-size:13px;color:#dc2626;background:#fee2e2;padding:10px 14px;border-radius:8px;display:none}
+.progress{font-size:12px;color:#2563eb;margin-top:8px;padding:8px 14px;background:#eff6ff;border-radius:8px;display:none}
 .summary{background:white;padding:12px 16px;border-radius:10px;margin-bottom:16px;font-size:13px;color:#64748b;box-shadow:0 1px 3px rgba(0,0,0,.06)}
 .rcard{background:white;border-radius:10px;padding:16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.06);border-left:4px solid #2563eb;transition:opacity .3s}
 .rcard.oculta{display:none}
@@ -50,17 +53,13 @@ input:focus,select:focus{border-color:#2563eb}
 .analysis{font-size:13px;line-height:1.9;white-space:pre-wrap;color:#334155}
 .empty{text-align:center;color:#94a3b8;padding:48px}
 .hcard{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:8px}
-.progress{font-size:12px;color:#2563eb;margin-top:8px;display:none}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="header">
-    <div>
-      <h1>🔍 Agente de Licitaciones</h1>
-      <p>Ingeniería Vial · API Oficial Mercado Público · Chile</p>
-    </div>
-    <span class="badge bb" style="padding:6px 14px;font-size:13px">🏛 Mercado Público</span>
+    <h1>🔍 Agente de Licitaciones</h1>
+    <p>Ingeniería Vial · API Oficial Mercado Público · Chile</p>
   </div>
 
   <div class="tabs">
@@ -74,12 +73,15 @@ input:focus,select:focus{border-color:#2563eb}
   <div id="pane-buscar">
     <div class="card">
       <div style="font-weight:700;font-size:15px;margin-bottom:16px">⚙️ Configurar búsqueda</div>
+
       <div style="margin-bottom:16px">
         <label>Palabras clave</label>
-        <input id="kw" value="vial" placeholder="Ej: infraestructura vial" onkeydown="if(event.key==='Enter')buscar()"/>
+        <input id="kw" value="vial" placeholder="Ej: vial prefactibilidad concesionaria" onkeydown="if(event.key==='Enter')buscar()"/>
+        <div class="hint">💡 Separa palabras con espacios — muestra licitaciones que contengan AL MENOS UNA</div>
       </div>
+
       <div style="margin-bottom:8px"><label>📍 Rango de regiones</label></div>
-      <div class="grid3">
+      <div class="grid3" style="margin-bottom:8px">
         <div>
           <label style="font-size:11px;color:#94a3b8;font-weight:600">DESDE</label>
           <select id="desde" onchange="updatePreview()">
@@ -95,8 +97,24 @@ input:focus,select:focus{border-color:#2563eb}
         </div>
       </div>
       <div class="preview" id="preview">🌎 Buscando en todas las regiones de Chile</div>
-      <div class="hint">💡 Los resultados aparecen inmediatamente. La región se va completando en segundo plano.</div>
+
+      <div style="margin-bottom:16px">
+        <label>📅 Rango de fechas de cierre</label>
+        <div class="grid2" style="margin-top:6px">
+          <div>
+            <label style="font-size:11px;color:#94a3b8;font-weight:600">DESDE</label>
+            <input type="date" id="fecha-desde" style="margin-top:4px"/>
+          </div>
+          <div>
+            <label style="font-size:11px;color:#94a3b8;font-weight:600">HASTA</label>
+            <input type="date" id="fecha-hasta" style="margin-top:4px"/>
+          </div>
+        </div>
+        <div class="hint">💡 Filtra por fecha de cierre de ofertas. Vacío = sin filtro de fecha</div>
+      </div>
+
       <div class="chips" id="chips"></div>
+
       <div class="btns">
         <button class="btn-primary" id="btn-b" onclick="buscar()">🚀 Buscar Licitaciones</button>
         <button class="btn-cancel" id="btn-c" style="display:none" onclick="cancelar()">⛔ Cancelar</button>
@@ -126,31 +144,29 @@ input:focus,select:focus{border-color:#2563eb}
 </div>
 
 <script>
-const SK = "mp_lic_v4";
-const CHIPS = ["vial","infraestructura vial","estudio vial","prefactibilidad","diseño vial","concesionaria","MOP"];
-let results=[], history=[], loading=false, ctrl=null, enriqueciendo=false;
-let REGIONES=[], codigosValidos=null;
+const SK="mp_lic_v5";
+const CHIPS=["vial","infraestructura vial","estudio vial","prefactibilidad","diseño vial","concesionaria","MOP"];
+let results=[],history=[],loading=false,ctrl=null,enriqueciendo=false;
+let REGIONES=[],codigosValidos=null;
 
-// Init chips
 const ce=document.getElementById("chips");
 CHIPS.forEach(s=>{
   const b=document.createElement("button");
-  b.className="chip"; b.textContent=s;
-  b.onclick=()=>document.getElementById("kw").value=s;
+  b.className="chip";b.textContent=s;
+  b.onclick=()=>{document.getElementById("kw").value=s;};
   ce.appendChild(b);
 });
 
-// Cargar regiones
 async function initRegiones(){
   try{
     const res=await fetch("/regiones");
     REGIONES=await res.json();
-    const d=document.getElementById("desde"), h=document.getElementById("hasta");
+    const d=document.getElementById("desde"),h=document.getElementById("hasta");
     REGIONES.forEach(r=>{
       d.innerHTML+=`<option value="${r.codigo}">${r.nombre}</option>`;
       h.innerHTML+=`<option value="${r.codigo}">${r.nombre}</option>`;
     });
-    d.value="7"; h.value="12";
+    d.value="7";h.value="12";
     updatePreview();
   }catch(e){console.error(e);}
 }
@@ -178,20 +194,20 @@ function goTab(name,btn){
   ["buscar","resultados","detalle","historial"].forEach(t=>document.getElementById("pane-"+t).style.display="none");
   document.querySelectorAll(".tab").forEach(b=>b.classList.remove("active"));
   document.getElementById("pane-"+name).style.display="block";
-  if(btn) btn.classList.add("active");
+  if(btn)btn.classList.add("active");
 }
 
 function setLoad(v){
   loading=v;
   const b=document.getElementById("btn-b");
-  b.disabled=v; b.textContent=v?"⏳ Buscando...":"🚀 Buscar Licitaciones";
+  b.disabled=v;b.textContent=v?"⏳ Buscando...":"🚀 Buscar Licitaciones";
   document.getElementById("btn-c").style.display=v?"inline-block":"none";
   document.getElementById("btn-r").style.display=v?"inline-block":"none";
 }
 
 function addStep(msg,cls){
-  const el=document.getElementById("steps"); el.style.display="block";
-  const d=document.createElement("div"); d.className="step";
+  const el=document.getElementById("steps");el.style.display="block";
+  const d=document.createElement("div");d.className="step";
   d.style.color=cls==="ok"?"#16a34a":cls==="wait"?"#2563eb":"#94a3b8";
   d.innerHTML=`<span>${cls==="ok"?"✅":cls==="wait"?"⏳":"⚪"}</span><span>${msg}</span>`;
   el.appendChild(d);
@@ -199,11 +215,11 @@ function addStep(msg,cls){
 
 function showErr(msg){
   const e=document.getElementById("err");
-  e.style.display=msg?"block":"none"; e.textContent=msg;
+  e.style.display=msg?"block":"none";e.textContent=msg;
 }
 
 function cancelar(){
-  if(ctrl) ctrl.abort(); ctrl=null;
+  if(ctrl)ctrl.abort();ctrl=null;
   enriqueciendo=false;
   setLoad(false);
   document.getElementById("steps").innerHTML="";
@@ -213,62 +229,63 @@ function cancelar(){
 }
 
 function reiniciar(){
-  cancelar(); results=[];
+  cancelar();results=[];
   renderResults();
   goTab("buscar",document.querySelector(".tab"));
 }
 
-function badge(e){
-  const l=(e||"").toLowerCase();
-  if(l.includes("publicada")||l.includes("activa")) return `<span class="badge bg">${e}</span>`;
-  if(l.includes("cerrada")||l.includes("adjudicada")) return `<span class="badge bgr">${e}</span>`;
-  if(l.includes("desierta")||l.includes("revocada")) return `<span class="badge br">${e}</span>`;
-  return `<span class="badge bb">${e||"–"}</span>`;
-}
-
-function regionTag(r, cargando){
-  if(r) return `<span class="rtag">📍 ${r}</span>`;
-  if(cargando) return `<span class="rtag-cargando">⏳ obteniendo región...</span>`;
-  return "";
-}
-
-function estaEnRango(regionOficial){
-  if(!codigosValidos) return true;
-  if(!regionOficial) return null; // desconocido aún
-  return codigosValidos.some(cod=>{
-    const r=REGIONES.find(r=>r.codigo===cod);
-    return r && regionOficial.includes(r.oficial);
-  });
+function parseFecha(f){
+  if(!f||f==="–") return null;
+  const p=f.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if(p) return new Date(Number(p[3]),Number(p[2])-1,Number(p[1]));
+  const iso=f.match(/(\d{4})[\/\-](\d{2})[\/\-](\d{2})/);
+  if(iso) return new Date(Number(iso[1]),Number(iso[2])-1,Number(iso[3]));
+  return null;
 }
 
 async function buscar(){
   const kw=document.getElementById("kw").value.trim();
   if(!kw||loading) return;
   ctrl=new AbortController();
-  setLoad(true); showErr("");
+  setLoad(true);showErr("");
   document.getElementById("steps").innerHTML="";
   results=[];
   const sel=getSeleccionadas();
   codigosValidos=sel.length>0?sel.map(r=>r.codigo):null;
+  const d=document.getElementById("desde").value;
+  const h=document.getElementById("hasta").value;
+  const fdDesde=document.getElementById("fecha-desde").value;
+  const fdHasta=document.getElementById("fecha-hasta").value;
 
   addStep("Consultando API Mercado Público...","wait");
   try{
-    const d=document.getElementById("desde").value;
-    const h=document.getElementById("hasta").value;
     const res=await fetch(`/buscar?q=${encodeURIComponent(kw)}&desde=${d}&hasta=${h}`,{signal:ctrl.signal});
     if(!res.ok) throw new Error(`Error ${res.status}`);
     const data=await res.json();
-    results=data.resultados||[];
 
+    // Filtro de fechas de cierre
+    let filtrados=data.resultados||[];
+    if(fdDesde||fdHasta){
+      const dF=fdDesde?new Date(fdDesde):null;
+      const hF=fdHasta?new Date(fdHasta):null;
+      filtrados=filtrados.filter(r=>{
+        const fc=parseFecha(r.fechaCierre);
+        if(!fc) return true;
+        if(dF&&fc<dF) return false;
+        if(hF&&fc>hF) return false;
+        return true;
+      });
+    }
+
+    results=filtrados;
     document.getElementById("steps").innerHTML="";
     if(results.length){
       addStep(`✅ ${results.length} licitaciones encontradas`,"ok");
       renderResults();
       goTab("resultados",document.querySelectorAll(".tab")[1]);
-      // Iniciar enriquecimiento en segundo plano
       enriquecerRegiones();
     } else {
-      showErr("No se encontraron licitaciones. Prueba con otro término.");
+      showErr("No se encontraron licitaciones. Prueba con otro término o amplía los filtros.");
     }
   }catch(e){
     if(e.name==="AbortError") showErr("Búsqueda cancelada.");
@@ -277,20 +294,16 @@ async function buscar(){
   setLoad(false);
 }
 
-// Enriquecer con región en segundo plano
 async function enriquecerRegiones(){
   enriqueciendo=true;
   const sinRegion=results.filter(r=>!r.region&&!r.detalleCompleto);
   if(!sinRegion.length){
     if(codigosValidos) aplicarFiltroRegion();
-    enriqueciendo=false;
-    return;
+    enriqueciendo=false;return;
   }
-
   const prog=document.getElementById("progress");
   prog.style.display="block";
   prog.textContent=`⏳ Obteniendo región de ${sinRegion.length} licitaciones...`;
-
   let completadas=0;
   for(let i=0;i<sinRegion.length;i+=5){
     if(!enriqueciendo) break;
@@ -302,26 +315,24 @@ async function enriquecerRegiones(){
         const detalle=await res.json();
         const idx=results.findIndex(r=>r.codigo===item.codigo);
         if(idx>=0){
-          results[idx].organismo  = detalle.organismo || "–";
-          results[idx].region     = detalle.region    || null;
-          results[idx].regionOficial = detalle.regionOficial || null;
-          results[idx].monto      = detalle.monto     || null;
-          results[idx].descripcion= detalle.descripcion || "";
-          results[idx].detalleCompleto = true;
+          results[idx].organismo=detalle.organismo||"–";
+          results[idx].region=detalle.region||null;
+          results[idx].regionOficial=detalle.regionOficial||null;
+          results[idx].monto=detalle.monto||null;
+          results[idx].descripcion=detalle.descripcion||"";
+          results[idx].detalleCompleto=true;
           actualizarCard(idx);
         }
         completadas++;
         prog.textContent=`⏳ Obteniendo región... (${completadas}/${sinRegion.length})`;
       }catch(e){
-        // marcar como completo aunque haya fallado para no quedar en loop
         const idx=results.findIndex(r=>r.codigo===item.codigo);
         if(idx>=0) results[idx].detalleCompleto=true;
         completadas++;
       }
     }));
+    await new Promise(r=>setTimeout(r,2000));
   }
-  await new Promise(r => setTimeout(r, 2000));
-
   if(codigosValidos) aplicarFiltroRegion();
   prog.textContent=`✅ Región obtenida para ${completadas} licitaciones`;
   setTimeout(()=>{prog.style.display="none";},3000);
@@ -331,11 +342,11 @@ async function enriquecerRegiones(){
 
 function esFiltrada(r){
   if(!codigosValidos) return false;
-  if(!r.regionOficial&&!r.detalleCompleto) return false; // aún no sabemos
-  if(!r.regionOficial) return true; // no tiene región y ya está completo → filtrar
+  if(!r.regionOficial&&!r.detalleCompleto) return false;
+  if(!r.regionOficial) return true;
   return !codigosValidos.some(cod=>{
     const reg=REGIONES.find(reg=>reg.codigo===cod);
-    return reg && r.regionOficial.includes(reg.oficial);
+    return reg&&r.regionOficial.includes(reg.oficial);
   });
 }
 
@@ -346,7 +357,6 @@ function aplicarFiltroRegion(){
     if(esFiltrada(r)) card.classList.add("oculta");
     else card.classList.remove("oculta");
   });
-  // Actualizar contador
   const visibles=results.filter(r=>!esFiltrada(r)).length;
   document.getElementById("tb-res").textContent=`📋 Resultados (${visibles})`;
   document.getElementById("summary").innerHTML=`🏛 Mercado Público: <b style="color:#1d4ed8">${visibles}</b> licitaciones en rango seleccionado`;
@@ -356,20 +366,24 @@ function actualizarCard(idx){
   const r=results[idx];
   const card=document.getElementById(`card-${idx}`);
   if(!card) return;
-  // Actualizar región usando id único por card
   const regionEl=document.getElementById(`region-${idx}`);
-  if(regionEl) regionEl.innerHTML=regionTag(r.region,false);
-  // Actualizar organismo
+  if(regionEl) regionEl.innerHTML=r.region?`<span class="rtag">📍 ${r.region}</span>`:`<span class="rtag-cargando">⏳ obteniendo región...</span>`;
   const orgEl=document.getElementById(`org-${idx}`);
   if(orgEl) orgEl.textContent=`🏛️ ${r.organismo}`;
-  // Actualizar monto
   const montoEl=document.getElementById(`monto-${idx}`);
   if(montoEl) montoEl.textContent=r.monto?`💰 ${r.monto}`:"";
-  // Aplicar filtro si hay rango activo
-  if(codigosValidos && r.detalleCompleto){
+  if(codigosValidos&&r.detalleCompleto){
     if(esFiltrada(r)) card.classList.add("oculta");
     else card.classList.remove("oculta");
   }
+}
+
+function badge(e){
+  const l=(e||"").toLowerCase();
+  if(l.includes("publicada")||l.includes("activa")) return `<span class="badge bg">${e}</span>`;
+  if(l.includes("cerrada")||l.includes("adjudicada")) return `<span class="badge bgr">${e}</span>`;
+  if(l.includes("desierta")||l.includes("revocada")) return `<span class="badge br">${e}</span>`;
+  return `<span class="badge bb">${e||"–"}</span>`;
 }
 
 function renderResults(){
@@ -386,7 +400,7 @@ function renderResults(){
       <div class="rmeta">
         <span id="org-${i}">🏛️ ${r.organismo}</span>
         <span>🔖 ${r.codigo}</span>
-        <span id="region-${i}">${regionTag(r.region,true)}</span>
+        <span id="region-${i}"><span class="rtag-cargando">⏳ obteniendo región...</span></span>
         <span>⏰ Cierre: ${r.fechaCierre}</span>
         <span id="monto-${i}">${r.monto?`💰 ${r.monto}`:""}</span>
       </div>
@@ -408,7 +422,8 @@ async function verDetalle(i){
     </div>
     <div style="font-weight:700;font-size:17px;margin-bottom:6px;line-height:1.3">${item.titulo}</div>
     <div style="font-size:12px;color:#64748b;margin-bottom:16px;display:flex;gap:16px;flex-wrap:wrap">
-      <span>🏛️ ${item.organismo}</span><span>🔖 ${item.codigo}</span>
+      <span>🏛️ ${item.organismo}</span>
+      <span>🔖 ${item.codigo}</span>
       <span>⏰ Cierre: ${item.fechaCierre}</span>
       ${item.monto?`<span style="color:#059669;font-weight:600">💰 ${item.monto}</span>`:""}
     </div>
@@ -424,13 +439,13 @@ async function verDetalle(i){
         model:"claude-sonnet-4-20250514",
         max_tokens:1200,
         system:"Eres experto en licitaciones públicas chilenas para empresas consultoras de ingeniería vial. La empresa es una CONSULTORA especializada en estudios geométricos, seguridad vial, hidráulica e hidrología, diseño vial y prefactibilidad de rutas. NO es constructora. Enfoca el análisis en si requiere consultoría o estudios técnicos. Nunca sugieras subcontratación en etapa constructiva.",
-        messages:[{role:"user",content:`Analiza esta licitación para una empresa de ingeniería vial:\n\nTítulo: ${item.titulo}\nOrganismo: ${item.organismo}\nRegión: ${item.region||"No especificada"}\nEstado: ${item.estado}\nCierre: ${item.fechaCierre}\nMonto: ${item.monto||"No especificado"}\nCódigo: ${item.codigo}\n\n**1. Objeto** (2-3 líneas)\n**2. Relevancia para consultoría vial** Alta/Media/Baja — ¿requiere estudios o diseños técnicos?\n**3. Plazos clave**\n**4. Recomendación** ¿Aplica para una consultora de ingeniería vial? ¿Por qué sí o no?
+        messages:[{role:"user",content:`Analiza esta licitación para una empresa consultora de ingeniería vial:\n\nTítulo: ${item.titulo}\nOrganismo: ${item.organismo}\nRegión: ${item.region||"No especificada"}\nEstado: ${item.estado}\nCierre: ${item.fechaCierre}\nMonto: ${item.monto||"No especificado"}\nCódigo: ${item.codigo}\n\n**1. Objeto** (2-3 líneas)\n**2. Relevancia para consultoría vial** Alta/Media/Baja — ¿requiere estudios o diseños técnicos?\n**3. Plazos clave**\n**4. Recomendación** ¿Aplica para una consultora de ingeniería vial? ¿Por qué sí o no?`}]
       })
     });
     const data=await res.json();
     const txt=data.content?.filter(b=>b.type==="text").map(b=>b.text).join("\n")||"Sin análisis.";
     const ai=document.getElementById("ai");
-    ai.className="analysis"; ai.textContent=txt;
+    ai.className="analysis";ai.textContent=txt;
   }catch(e){
     document.getElementById("ai").textContent="Error al analizar: "+e.message;
   }
