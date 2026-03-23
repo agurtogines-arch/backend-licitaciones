@@ -310,7 +310,9 @@ async function enriquecerRegiones(){
     const grupo=sinRegion.slice(i,i+5);
     await Promise.all(grupo.map(async item=>{
       try{
-        const res=await fetch(`/detalle/${item.codigo}`);
+        const res=await fetch(`/detalle/${item.codigo}`,{
+          headers:{"anthropic-dangerous-direct-browser-access":"true"}
+        });
         if(!res.ok) return;
         const detalle=await res.json();
         const idx=results.findIndex(r=>r.codigo===item.codigo);
@@ -432,14 +434,18 @@ async function verDetalle(i){
     <div style="margin-top:20px"><a href="${item.url}" target="_blank" class="btn-link">🔗 Abrir en Mercado Público</a></div>`;
 
   try{
-    const res=await fetch("/claude",{
+    const res=await fetch("https://api.anthropic.com/v1/messages",{
       method:"POST",
-      headers:{"Content-Type":"application/json"},
+      headers:{
+        "Content-Type":"application/json",
+        "anthropic-dangerous-direct-browser-access":"true"
+      },
       body:JSON.stringify({
         model:"claude-sonnet-4-20250514",
         max_tokens:1200,
         system:"Eres experto en licitaciones públicas chilenas para empresas consultoras de ingeniería vial. La empresa es una CONSULTORA especializada en estudios geométricos, seguridad vial, hidráulica e hidrología, diseño vial y prefactibilidad de rutas. NO es constructora. Enfoca el análisis en si requiere consultoría o estudios técnicos. Nunca sugieras subcontratación en etapa constructiva.",
-        messages:[{role:"user",content:`Analiza esta licitación para una empresa consultora de ingeniería vial:\n\nTítulo: ${item.titulo}\nOrganismo: ${item.organismo}\nRegión: ${item.region||"No especificada"}\nEstado: ${item.estado}\nCierre: ${item.fechaCierre}\nMonto: ${item.monto||"No especificado"}\nCódigo: ${item.codigo}\n\n**1. Objeto** (2-3 líneas)\n**2. Relevancia para consultoría vial** Alta/Media/Baja — ¿requiere estudios o diseños técnicos?\n**3. Plazos clave**\n**4. Recomendación** ¿Aplica para una consultora de ingeniería vial? ¿Por qué sí o no?`}]
+        messages:[{role:"user",content:`Analiza esta licitación para una empresa consultora de ingeniería vial:\n\nTítulo: ${item.titulo}\nOrganismo: ${item.organismo}\nRegión: ${item.region||"No especificada"}\nEstado: ${item.estado}\nCierre: ${item.fechaCierre}\nMonto: ${item.monto||"No especificado"}\nCódigo: ${item.codigo}\nURL: ${item.url}\n\nAccede a la URL para obtener más detalles de la licitación.\n\n**1. Objeto** (2-3 líneas)\n**2. Relevancia para consultoría vial** Alta/Media/Baja — ¿requiere estudios o diseños técnicos?\n**3. Plazos clave**\n**4. Recomendación** ¿Aplica para una consultora de ingeniería vial? ¿Por qué sí o no?`}],
+        tools:[{type:"web_search_20250305",name:"web_search"}]
       })
     });
     const data=await res.json();
