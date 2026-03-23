@@ -407,14 +407,36 @@ function renderResults(){
         <span id="monto-${i}">${r.monto?`💰 ${r.monto}`:""}</span>
       </div>
       <div class="rbtns">
-        <button class="btn-ai" onclick="verDetalle(${i})">🤖 Analizar con IA</button>
+        <button class="btn-ai" onclick="abrirAnalisis(${i})">🤖 Analizar con IA</button>
         <a href="${r.url}" target="_blank" class="btn-link">🔗 Ver en MP</a>
       </div>
     </div>`).join("");
   saveHist(results);
 }
 
-async function verDetalle(i){
+function abrirAnalisis(i){
+  const item=results[i];
+  const msg=`Analiza esta licitación de Mercado Público Chile para una empresa consultora de ingeniería vial especializada en estudios geométricos, seguridad vial, hidráulica e hidrología, diseño vial y prefactibilidad de rutas. NO es empresa constructora.
+
+Título: ${item.titulo}
+Código: ${item.codigo}
+Organismo: ${item.organismo}
+Región: ${item.region||"No especificada"}
+Estado: ${item.estado}
+Cierre: ${item.fechaCierre}
+Monto: ${item.monto||"No especificado"}
+URL: ${item.url}
+
+Por favor accede a la URL, lee el contenido completo de la licitación y entrega:
+**1. Objeto de la licitación** (2-3 líneas con el detalle real del documento)
+**2. Relevancia para consultoría vial** Alta/Media/Baja — ¿requiere estudios, diseños o asesorías técnicas?
+**3. Plazos clave** (fechas importantes del proceso)
+**4. Requisitos técnicos destacados** (si los hay en el documento)
+**5. Recomendación** ¿Aplica para una consultora de ingeniería vial? ¿Por qué sí o no?`;
+
+  const url=`https://claude.ai/new?q=${encodeURIComponent(msg)}`;
+  window.open(url,"_blank");
+}
   const item=results[i];
   goTab("detalle",document.querySelectorAll(".tab")[2]);
   document.getElementById("detalle").innerHTML=`
