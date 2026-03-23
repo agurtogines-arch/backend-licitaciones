@@ -395,55 +395,8 @@ function badge(e){
 
 function abrirAnalisis(i){
   var item=resultados[i];
-  var mc=document.getElementById("modal-content");
-  mc.innerHTML="<div style='display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap'>"+
-    badge(item.estado)+
-    (item.region?"<span class='rtag'>📍 "+item.region+"</span>":"")+
-    "</div>"+
-    "<div style='font-weight:700;font-size:16px;line-height:1.3;margin-bottom:6px'>"+item.titulo+"</div>"+
-    "<div style='font-size:12px;color:#64748b;margin-bottom:16px;display:flex;gap:16px;flex-wrap:wrap'>"+
-    "<span>🏛️ "+item.organismo+"</span>"+
-    "<span>🔖 "+item.codigo+"</span>"+
-    "<span>⏰ Cierre: "+item.fechaCierre+"</span>"+
-    (item.monto?"<span style='color:#059669;font-weight:600'>💰 "+item.monto+"</span>":"")+
-    "</div>"+
-    "<hr style='border:none;border-top:1px solid #f1f5f9;margin-bottom:16px'/>"+
-    "<div style='color:#2563eb;font-size:14px;margin-bottom:12px'>⏳ Analizando licitación con IA...</div>"+
-    "<div id='ai-text' class='analysis'></div>"+
-    "<div style='margin-top:20px'><a href='"+item.url+"' target='_blank' class='btn-link'>🔗 Abrir en Mercado Público</a></div>";
-
-  document.getElementById("modal").style.display="block";
-
-  // Llamada a Anthropic directamente
-  fetch("https://api.anthropic.com/v1/messages",{
-    method:"POST",
-    headers:{
-      "Content-Type":"application/json",
-      "anthropic-dangerous-direct-browser-access":"true"
-    },
-    body:JSON.stringify({
-      model:"claude-sonnet-4-20250514",
-      max_tokens:1200,
-      system:"Eres experto en licitaciones públicas chilenas para empresas consultoras de ingeniería vial. La empresa es CONSULTORA especializada en estudios geométricos, seguridad vial, hidráulica e hidrología, diseño vial y prefactibilidad. NO es constructora. Enfoca el análisis en si requiere consultoría o estudios técnicos.",
-      messages:[{role:"user",content:"Analiza esta licitación para una consultora de ingeniería vial:\n\nTítulo: "+item.titulo+"\nOrganismo: "+item.organismo+"\nRegión: "+(item.region||"No especificada")+"\nCierre: "+item.fechaCierre+"\nMonto: "+(item.monto||"No especificado")+"\nURL: "+item.url+"\n\nAccede a la URL para leer el contenido completo y entrega:\n**1. Objeto** (2-3 líneas con detalle real)\n**2. Relevancia para consultoría vial** Alta/Media/Baja\n**3. Plazos clave**\n**4. Requisitos técnicos destacados**\n**5. Recomendación** ¿Aplica para una consultora vial?"}],
-      tools:[{type:"web_search_20250305",name:"web_search"}]
-    })
-  })
-  .then(function(res){ return res.json(); })
-  .then(function(data){
-    var txt="";
-    if(data.content) for(var i=0;i<data.content.length;i++) if(data.content[i].type==="text") txt+=data.content[i].text;
-    var el=document.getElementById("ai-text");
-    if(el){
-      el.textContent=txt||"No se pudo obtener análisis.";
-      var prev=el.previousElementSibling;
-      if(prev&&prev.textContent.indexOf("Analizando")>=0) prev.style.display="none";
-    }
-  })
-  .catch(function(e){
-    var el=document.getElementById("ai-text");
-    if(el) el.textContent="Error al analizar: "+e.message;
-  });
+  var msg="Analiza esta licitación de Mercado Público Chile para una empresa consultora de ingeniería vial especializada en estudios geométricos, seguridad vial, hidráulica e hidrología, diseño vial y prefactibilidad de rutas. NO es empresa constructora.\n\nTítulo: "+item.titulo+"\nCódigo: "+item.codigo+"\nOrganismo: "+item.organismo+"\nRegión: "+(item.region||"No especificada")+"\nEstado: "+item.estado+"\nCierre: "+item.fechaCierre+"\nMonto: "+(item.monto||"No especificado")+"\nURL: "+item.url+"\n\nPor favor accede a la URL, lee el contenido completo de la licitación y entrega:\n1. Objeto de la licitación (detalle real del documento)\n2. Relevancia para consultoría vial Alta/Media/Baja\n3. Plazos clave\n4. Requisitos técnicos destacados\n5. Recomendación ¿Aplica para una consultora de ingeniería vial?";
+  window.open("https://claude.ai/new?q="+encodeURIComponent(msg),"_blank");
 }
 
 function cerrarModal(){
