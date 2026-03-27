@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Agente Diario Oficial — LEN Ingeniería</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#f8fafc;color:#1e293b;min-height:100vh}
+.wrap{max-width:960px;margin:0 auto;padding:16px}
+.header{background:linear-gradient(135deg,#c2410c,#ea580c);border-radius:12px;padding:20px 24px;margin-bottom:20px;color:white;display:flex;align-items:center;gap:16px}
+.header-logo{background:rgba(255,255,255,0.15);border-radius:8px;padding:8px 14px;font-size:20px;font-weight:900;letter-spacing:1px}
+.header-text h1{font-size:21px;font-weight:800}
+.header-text p{font-size:12px;opacity:.75;margin-top:3px}
+.tabs{display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.tab{padding:8px 16px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:600;background:white;color:#475569;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.tab.active{background:#ea580c;color:white}
+.card{background:white;border-radius:12px;padding:24px;box-shadow:0 1px 4px rgba(0,0,0,.07);margin-bottom:16px}
+label{font-size:13px;font-weight:600;color:#64748b;display:block;margin-bottom:6px}
+input,select{width:100%;padding:11px 14px;border-radius:8px;border:1px solid #cbd5e1;font-size:14px;outline:none;background:white;font-family:inherit}
+.hint{font-size:11px;color:#94a3b8;margin-top:4px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid3{display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:end}
+.preview{background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 14px;font-size:12px;color:#c2410c;margin-bottom:16px;font-weight:600}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px}
+.chip{background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;padding:5px 12px;border-radius:20px;font-size:12px;cursor:pointer;font-weight:600}
+.btns{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.btn-primary{background:#ea580c;color:white;border:none;padding:12px 32px;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(234,88,12,.3)}
+.btn-primary:disabled{background:#94a3b8;cursor:not-allowed;box-shadow:none}
+.btn-cancel{background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;padding:12px 20px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer}
+.btn-reset{background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;padding:12px 20px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer}
+.steps{margin-top:16px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;padding:14px;display:none}
+.step{font-size:13px;margin-bottom:4px;display:flex;gap:6px}
+.err{margin-top:14px;font-size:13px;color:#dc2626;background:#fee2e2;padding:10px 14px;border-radius:8px;display:none}
+.summary{background:white;padding:12px 16px;border-radius:10px;margin-bottom:16px;font-size:13px;color:#64748b;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.rcard{background:white;border-radius:10px;padding:16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.06);border-left:4px solid #ea580c}
+.rmeta{font-size:12px;color:#64748b;display:flex;flex-wrap:wrap;gap:4px 14px;margin:8px 0 12px}
+.rbtns{display:flex;gap:8px;flex-wrap:wrap}
+.btn-ai{background:#ea580c;color:white;border:none;padding:7px 16px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600}
+.btn-ai:disabled{background:#94a3b8;cursor:not-allowed}
+.btn-link{background:#f1f5f9;color:#c2410c;border:1px solid #e2e8f0;padding:7px 14px;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;display:inline-block}
+.rtag{background:#f0fdf4;color:#15803d;font-size:11px;padding:2px 8px;border-radius:12px;font-weight:600}
+.empty{text-align:center;color:#94a3b8;padding:48px}
+.hcard{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:8px}
+.analysis-panel{display:none;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:20px;margin-top:12px}
+.analysis-body{font-size:13px;line-height:1.9;white-space:pre-wrap;color:#334155;margin-top:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <div class="header-logo">LEN</div>
+    <div class="header-text">
+      <h1>📰 Agente Diario Oficial</h1>
+      <p>LEN Ingeniería · Infraestructura · ITO · Hidráulica · Ambiental · Chile</p>
+    </div>
+  </div>
+
+  <div style="margin-bottom:16px">
+    <a href="/" style="background:white;color:#1d4ed8;border:1px solid #bfdbfe;padding:7px 16px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none">← Volver a Mercado Público</a>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" onclick="goTab('buscar',this)">📰 Buscar</button>
+    <button class="tab" id="tb-res" onclick="goTab('resultados',this)">📋 Resultados (0)</button>
+    <button class="tab" id="tb-hist" onclick="goTab('historial',this)">🕐 Historial (0)</button>
+  </div>
+
+  <!-- BUSCAR -->
+  <div id="pane-buscar">
+    <div class="card">
+      <div style="font-weight:700;font-size:15px;margin-bottom:16px">⚙️ Buscar en Diario Oficial</div>
+      <div style="margin-bottom:16px">
+        <label>Palabras clave</label>
+        <input id="kw" value="vial" placeholder="Ej: vial prefactibilidad concesionaria"/>
+        <div class="hint">💡 Separa palabras con espacios</div>
+      </div>
+      <div style="margin-bottom:8px"><label>📍 Rango de regiones</label></div>
+      <div class="grid3" style="margin-bottom:8px">
+        <div>
+          <label style="font-size:11px;color:#94a3b8;font-weight:600">DESDE</label>
+          <select id="desde" onchange="updatePreview()">
+            <option value="todas">🌎 Todo Chile</option>
+            <option value="15">Región de Arica y Parinacota</option>
+            <option value="1">Región de Tarapacá</option>
+            <option value="2">Región de Antofagasta</option>
+            <option value="3">Región de Atacama</option>
+            <option value="4">Región de Coquimbo</option>
+            <option value="5">Región de Valparaíso</option>
+            <option value="13">Región Metropolitana</option>
+            <option value="6">Región de O'Higgins</option>
+            <option value="7" selected>Región del Maule</option>
+            <option value="16">Región de Ñuble</option>
+            <option value="8">Región del Biobío</option>
+            <option value="9">Región de La Araucanía</option>
+            <option value="14">Región de Los Ríos</option>
+            <option value="10">Región de Los Lagos</option>
+            <option value="11">Región de Aysén</option>
+            <option value="12">Región de Magallanes</option>
+          </select>
+        </div>
+        <div style="color:#94a3b8;font-size:18px;padding-bottom:11px;text-align:center">→</div>
+        <div>
+          <label style="font-size:11px;color:#94a3b8;font-weight:600">HASTA</label>
+          <select id="hasta" onchange="updatePreview()">
+            <option value="todas">🌎 Todo Chile</option>
+            <option value="15">Región de Arica y Parinacota</option>
+            <option value="1">Región de Tarapacá</option>
+            <option value="2">Región de Antofagasta</option>
+            <option value="3">Región de Atacama</option>
+            <option value="4">Región de Coquimbo</option>
+            <option value="5">Región de Valparaíso</option>
+            <option value="13">Región Metropolitana</option>
+            <option value="6">Región de O'Higgins</option>
+            <option value="7">Región del Maule</option>
+            <option value="16">Región de Ñuble</option>
+            <option value="8">Región del Biobío</option>
+            <option value="9">Región de La Araucanía</option>
+            <option value="14">Región de Los Ríos</option>
+            <option value="10">Región de Los Lagos</option>
+            <option value="11">Región de Aysén</option>
+            <option value="12" selected>Región de Magallanes</option>
+          </select>
+        </div>
+      </div>
+      <div class="preview" id="preview">📍 8 regiones: Maule → Ñuble → Biobío → La Araucanía → Los Ríos → Los Lagos → Aysén → Magallanes</div>
+      <div style="margin-bottom:20px">
+        <label>📅 Rango de publicación</label>
+        <div class="grid2" style="margin-top:6px">
+          <div>
+            <label style="font-size:11px;color:#94a3b8;font-weight:600">DESDE</label>
+            <input type="date" id="fd" value="2024-01-01" style="margin-top:4px"/>
+          </div>
+          <div>
+            <label style="font-size:11px;color:#94a3b8;font-weight:600">HASTA</label>
+            <input type="date" id="fh" style="margin-top:4px"/>
+          </div>
+        </div>
+      </div>
+      <div class="chips" id="chips"></div>
+      <div class="btns">
+        <button class="btn-primary" id="btn-b" onclick="buscar()">🚀 Buscar en Diario Oficial</button>
+        <button class="btn-cancel" id="btn-c" style="display:none" onclick="cancelar()">⛔ Cancelar</button>
+        <button class="btn-reset" id="btn-r" style="display:none" onclick="reiniciar()">🔄 Reiniciar</button>
+      </div>
+      <div class="steps" id="steps"></div>
+      <div class="err" id="err"></div>
+    </div>
+  </div>
+
+  <!-- RESULTADOS -->
+  <div id="pane-resultados" style="display:none">
+    <div class="summary" id="summary"></div>
+    <div id="list"></div>
+  </div>
+
+  <!-- HISTORIAL -->
+  <div id="pane-historial" style="display:none">
+    <div class="card" id="hist-list"><div class="empty">Sin historial aún.</div></div>
+  </div>
+</div>
+
+<script>
+var SK="do_len_v1";
+var CHIPS=["vial","ITO inspección técnica","hidráulica riego","medio ambiente EIA","prefactibilidad","diseño vial","concesionaria","MOP","SERVIU","minería","energía renovable"];
+var REGIONES=[
+  {v:"15",n:"Región de Arica y Parinacota"},{v:"1",n:"Región de Tarapacá"},
+  {v:"2",n:"Región de Antofagasta"},{v:"3",n:"Región de Atacama"},
+  {v:"4",n:"Región de Coquimbo"},{v:"5",n:"Región de Valparaíso"},
+  {v:"13",n:"Región Metropolitana"},{v:"6",n:"Región de O'Higgins"},
+  {v:"7",n:"Región del Maule"},{v:"16",n:"Región de Ñuble"},
+  {v:"8",n:"Región del Biobío"},{v:"9",n:"Región de La Araucanía"},
+  {v:"14",n:"Región de Los Ríos"},{v:"10",n:"Región de Los Lagos"},
+  {v:"11",n:"Región de Aysén"},{v:"12",n:"Región de Magallanes"}
+];
+var resultados=[], historial=[], loading=false, ctrl=null;
+
+var ce=document.getElementById("chips");
+for(var ci=0;ci<CHIPS.length;ci++){
+  (function(s){
+    var b=document.createElement("button"); b.className="chip"; b.textContent=s;
+    b.onclick=function(){ document.getElementById("kw").value=s; };
+    ce.appendChild(b);
+  })(CHIPS[ci]);
+}
+
+try{ historial=JSON.parse(localStorage.getItem(SK)||"[]"); renderHist(); }catch(e){}
+
+function getSel(){
+  var d=document.getElementById("desde").value;
+  var h=document.getElementById("hasta").value;
+  if(d==="todas"&&h==="todas") return [];
+  var id=d==="todas"?0:idxR(d), ih=h==="todas"?REGIONES.length-1:idxR(h);
+  var s=Math.min(id<0?0:id,ih<0?REGIONES.length-1:ih);
+  var e=Math.max(id<0?0:id,ih<0?REGIONES.length-1:ih);
+  return REGIONES.slice(s,e+1);
+}
+function idxR(v){ for(var i=0;i<REGIONES.length;i++) if(REGIONES[i].v===v) return i; return -1; }
+
+function updatePreview(){
+  var sel=getSel(), p=document.getElementById("preview");
+  if(!sel.length){ p.textContent="🌎 Buscando en todas las regiones de Chile"; return; }
+  if(sel.length===1){ p.textContent="📍 Solo: "+sel[0].n; return; }
+  var nombres=sel.map(function(r){ return r.n.replace("Región de ","").replace("Región del ","").replace("Región Metropolitana","RM"); });
+  p.textContent="📍 "+sel.length+" regiones: "+nombres.join(" → ");
+}
+
+function goTab(name,btn){
+  ["buscar","resultados","historial"].forEach(function(t){ document.getElementById("pane-"+t).style.display="none"; });
+  document.querySelectorAll(".tab").forEach(function(b){ b.classList.remove("active"); });
+  document.getElementById("pane-"+name).style.display="block";
+  if(btn) btn.classList.add("active");
+}
+
+function setLoad(v){
+  loading=v;
+  var b=document.getElementById("btn-b");
+  b.disabled=v; b.textContent=v?"⏳ Buscando...":"🚀 Buscar en Diario Oficial";
+  document.getElementById("btn-c").style.display=v?"inline-block":"none";
+  document.getElementById("btn-r").style.display=v?"inline-block":"none";
+}
+
+function addStep(msg,cls){
+  var el=document.getElementById("steps"); el.style.display="block";
+  var d=document.createElement("div"); d.className="step";
+  d.style.color=cls==="ok"?"#16a34a":"#ea580c";
+  d.innerHTML="<span>"+(cls==="ok"?"✅":"⏳")+"</span><span>"+msg+"</span>";
+  el.appendChild(d);
+}
+
+function showErr(msg){
+  var e=document.getElementById("err");
+  e.style.display=msg?"block":"none"; e.textContent=msg||"";
+}
+
+function parseFecha(f){
+  if(!f||f==="–") return null;
+  var p=f.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if(p) return new Date(+p[3],+p[2]-1,+p[1]);
+  var iso=f.match(/(\d{4})[\/\-](\d{2})[\/\-](\d{2})/);
+  if(iso) return new Date(+iso[1],+iso[2]-1,+iso[3]);
+  return null;
+}
+
+function cancelar(){
+  if(ctrl) ctrl.abort(); ctrl=null;
+  setLoad(false);
+  document.getElementById("steps").innerHTML="";
+  document.getElementById("steps").style.display="none";
+  showErr("");
+}
+
+function reiniciar(){
+  cancelar(); resultados=[];
+  renderResults();
+  goTab("buscar", document.querySelectorAll(".tab")[0]);
+}
+
+function buscar(){
+  var kw=document.getElementById("kw").value.trim();
+  if(!kw||loading) return;
+  ctrl=new AbortController();
+  setLoad(true); showErr("");
+  document.getElementById("steps").innerHTML="";
+  resultados=[];
+
+  var sel=getSel();
+  var hayFiltro=sel.length>0;
+  var regionesNombres=sel.map(function(r){
+    return r.n.replace("Región de ","").replace("Región del ","").replace("Región Metropolitana","Metropolitana");
+  });
+  var fdv=document.getElementById("fd").value;
+  var fhv=document.getElementById("fh").value;
+
+  addStep("Buscando en Diario Oficial...","wait");
+
+  fetch("/diario-oficial/buscar", {
+    method:"POST", signal:ctrl.signal,
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({ keyword:kw, regiones:regionesNombres, hayFiltro:hayFiltro })
+  })
+  .then(function(res){ if(!res.ok) throw new Error("Error "+res.status); return res.json(); })
+  .then(function(data){
+    var todos=data.resultados||[];
+    var dF=fdv?new Date(fdv):null, hF=fhv?new Date(fhv):null;
+    if(dF||hF){
+      todos=todos.filter(function(r){
+        var pub=parseFecha(r.fechaPublicacion);
+        if(!pub) return true;
+        if(dF&&pub<dF) return false;
+        if(hF&&pub>hF) return false;
+        return true;
+      });
+    }
+    resultados=todos;
+    document.getElementById("steps").innerHTML="";
+    document.getElementById("steps").style.display="none";
+    if(resultados.length){
+      addStep("✅ "+resultados.length+" licitaciones encontradas","ok");
+      saveHist(resultados);
+      renderResults();
+      goTab("resultados", document.querySelectorAll(".tab")[1]);
+    } else {
+      showErr("No se encontraron licitaciones. Prueba con otros términos.");
+    }
+    setLoad(false);
+  })
+  .catch(function(e){
+    if(e.name==="AbortError") showErr("Búsqueda cancelada.");
+    else showErr("Error: "+e.message);
+    setLoad(false);
+  });
+}
+
+function analizarIA(i){
+  var item=resultados[i];
+  var panel=document.getElementById("analysis-"+i);
+  var body=document.getElementById("analysis-body-"+i);
+  var btn=document.getElementById("btn-ai-"+i);
+
+  if(panel.style.display==="block"&&body.textContent.trim()!==""){
+    panel.style.display="none";
+    btn.textContent="🤖 Analizar con IA";
+    return;
+  }
+
+  panel.style.display="block";
+  btn.disabled=true;
+  btn.textContent="⏳ Analizando...";
+  body.textContent="⏳ Consultando IA, puede tardar unos segundos...";
+
+  fetch("/diario-oficial/analizar", {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({ item:item })
+  })
+  .then(function(res){ return res.json(); })
+  .then(function(data){
+    body.textContent=data.analysis||"No se pudo obtener el análisis.";
+    btn.disabled=false;
+    btn.textContent="✕ Cerrar análisis";
+    resultados[i]._analysis=data.analysis;
+  })
+  .catch(function(e){
+    body.textContent="Error: "+e.message;
+    btn.disabled=false;
+    btn.textContent="🔄 Reintentar";
+  });
+}
+
+function renderResults(){
+  document.getElementById("tb-res").textContent="📋 Resultados ("+resultados.length+")";
+  document.getElementById("summary").innerHTML="📰 Diario Oficial: <b style='color:#c2410c'>"+resultados.length+"</b> licitaciones encontradas";
+  var el=document.getElementById("list");
+  if(!resultados.length){ el.innerHTML="<div class='empty'>Sin resultados.</div>"; return; }
+  var html="";
+  for(var i=0;i<resultados.length;i++){
+    var r=resultados[i];
+    html+="<div class='rcard' id='card-"+i+"'>"+
+      "<div style='font-weight:700;font-size:14px;line-height:1.4;margin-bottom:8px'>"+r.titulo+"</div>"+
+      "<div class='rmeta'>"+
+      "<span>🏛️ "+(r.organismo||"–")+"</span>"+
+      "<span>📅 "+(r.fechaPublicacion||"–")+"</span>"+
+      (r.region?"<span class='rtag'>📍 "+r.region+"</span>":"")+
+      "<span>⏰ Cierre: "+(r.fechaCierre||"–")+"</span>"+
+      (r.monto?"<span style='color:#059669;font-weight:600'>💰 "+r.monto+"</span>":"")+
+      "</div>"+
+      (r.descripcion?"<div style='font-size:12px;color:#475569;margin-bottom:10px;line-height:1.6;font-style:italic'>"+r.descripcion+"</div>":"")+
+      "<div class='rbtns'>"+
+      "<button class='btn-ai' id='btn-ai-"+i+"' onclick='analizarIA("+i+")'>🤖 Analizar con IA</button>"+
+      (r.url?"<a href='"+r.url+"' target='_blank' class='btn-link'>🔗 Ver en DO</a>":"")+
+      "</div>"+
+      "<div class='analysis-panel' id='analysis-"+i+"'>"+
+      "<div style='font-weight:700;font-size:14px;color:#c2410c;margin-bottom:4px'>📊 Análisis LEN Ingeniería</div>"+
+      "<div class='analysis-body' id='analysis-body-"+i+"'></div>"+
+      "</div>"+
+      "</div>";
+  }
+  el.innerHTML=html;
+}
+
+function saveHist(items){
+  var m=items.map(function(i){ var o=Object.assign({},i); o._at=new Date().toLocaleDateString("es-CL"); return o; });
+  historial=m.concat(historial).slice(0,100);
+  try{ localStorage.setItem(SK,JSON.stringify(historial)); }catch(e){}
+  renderHist();
+}
+
+function renderHist(){
+  document.getElementById("tb-hist").textContent="🕐 Historial ("+historial.length+")";
+  var el=document.getElementById("hist-list");
+  if(!historial.length){ el.innerHTML="<div class='empty'>Sin historial aún.</div>"; return; }
+  var html="<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:12px'>"+
+    "<span style='font-size:13px;color:#64748b'>"+historial.length+" licitaciones</span>"+
+    "<button onclick='clearHist()' style='background:#fee2e2;color:#dc2626;border:none;padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600'>🗑️ Limpiar</button></div>";
+  for(var i=0;i<historial.length;i++){
+    var r=historial[i];
+    html+="<div class='hcard'>"+
+      (r.region?"<span class='rtag'>📍 "+r.region+"</span> ":"")+
+      "<div style='font-weight:600;font-size:13px;margin-top:4px'>"+r.titulo+"</div>"+
+      "<div style='font-size:11px;color:#94a3b8;margin-top:3px'>"+(r.organismo||"–")+" · Cierre: "+(r.fechaCierre||"–")+" · "+r._at+"</div>"+
+      (r._analysis?"<details style='margin-top:8px'><summary style='font-size:12px;color:#c2410c;cursor:pointer;font-weight:600'>📊 Ver análisis guardado</summary><div style='font-size:12px;line-height:1.8;white-space:pre-wrap;color:#334155;margin-top:8px;padding:10px;background:white;border-radius:6px;border:1px solid #e2e8f0'>"+r._analysis+"</div></details>":"")+
+      "</div>";
+  }
+  el.innerHTML=html;
+}
+
+function clearHist(){
+  historial=[];
+  try{ localStorage.removeItem(SK); }catch(e){}
+  renderHist();
+}
+
+updatePreview();
+</script>
+</body>
+</html>
