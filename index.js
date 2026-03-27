@@ -73,7 +73,7 @@ app.get("/buscar", async (req, res) => {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 90000);
-    const url = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?estado=activas&ticket=${TICKET}`;
+    const url = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?estado=activas&busqueda=${encodeURIComponent(keyword)}&ticket=${TICKET}`;
     const mpRes = await fetch(url, { signal: controller.signal });
     clearTimeout(timeoutId);
     if (!mpRes.ok) throw new Error(`API MP respondió ${mpRes.status}`);
