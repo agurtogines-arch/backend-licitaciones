@@ -69,8 +69,10 @@ app.get("/buscar", async (req, res) => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 90000);
 
-    // FIX CLAVE: pasar busqueda= para que la API filtre en origen y no timeout
-    const url = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?estado=activas&busqueda=${encodeURIComponent(keyword)}&ticket=${TICKET}`;
+    // Usar parámetro "nombre" que sí acepta la API de MP
+    const terms = keyword.split(/\s+/).filter(Boolean);
+    const primerTerm = terms[0];
+    const url = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?estado=activas&nombre=${encodeURIComponent(primerTerm)}&ticket=${TICKET}`;
 
     const mpRes = await fetch(url, { signal: controller.signal });
     clearTimeout(timeoutId);
@@ -78,7 +80,12 @@ app.get("/buscar", async (req, res) => {
     const data = await mpRes.json();
     const licitaciones = data.Listado || [];
 
-    const resultado = licitaciones.map(l => {
+    const terms = keyword.split(/\s+/).filter(Boolean);
+
+    const resultado = licitaciones.filter(l => {
+      const texto = `${l.Nombre || ""} ${l.Descripcion || ""}`.toLowerCase();
+      return terms.every(t => texto.includes(t));
+    }).map(l => {
       const textoCompleto = `${l.Nombre || ""} ${l.Descripcion || ""}`;
       const regionExtraida = extraerRegionDeTexto(textoCompleto);
       return {
