@@ -1,504 +1,296 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Agente Licitaciones – Mercado Público</title>
-<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-<style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:system-ui,sans-serif;background:#f8fafc;color:#1e293b;min-height:100vh}
-  a{text-decoration:none}
-</style>
-</head>
-<body>
-<div id="root"></div>
-<script type="text/babel">
-const { useState, useRef, useEffect } = React;
+const express = require("express");
+const cors = require("cors");
+const fetch = require("node-fetch");
+const path = require("path");
 
-const BACKEND_URL = "";   // vacío = mismo origen (Railway sirve el frontend y el backend)
-const ANTHROPIC_KEY = ""; // pon aquí tu API key de Anthropic si quieres análisis IA
+const app = express();
+const PORT = process.env.PORT || 8080;
+const TICKET = process.env.MP_TICKET || "1FC8A3E9-5D72-495C-8340-83E5B1749B79";
+
+app.use(cors({ origin: "*" }));
+app.options("*", cors());
+app.use(express.json());
+app.use(express.static(path.join(__dirname, "public")));
 
 const REGIONES = [
-  { value:"todas", label:"Todas las regiones" },
-  { value:"15", label:"Arica y Parinacota" },
-  { value:"1",  label:"Tarapacá" },
-  { value:"2",  label:"Antofagasta" },
-  { value:"3",  label:"Atacama" },
-  { value:"4",  label:"Coquimbo" },
-  { value:"5",  label:"Valparaíso" },
-  { value:"13", label:"Metropolitana" },
-  { value:"6",  label:"O'Higgins" },
-  { value:"7",  label:"Maule" },
-  { value:"16", label:"Ñuble" },
-  { value:"8",  label:"Biobío" },
-  { value:"9",  label:"La Araucanía" },
-  { value:"14", label:"Los Ríos" },
-  { value:"10", label:"Los Lagos" },
-  { value:"11", label:"Aysén" },
-  { value:"12", label:"Magallanes" },
+  { codigo: "15", nombre: "Región de Arica y Parinacota", oficial: "arica" },
+  { codigo: "1",  nombre: "Región de Tarapacá",           oficial: "tarapacá" },
+  { codigo: "2",  nombre: "Región de Antofagasta",         oficial: "antofagasta" },
+  { codigo: "3",  nombre: "Región de Atacama",             oficial: "atacama" },
+  { codigo: "4",  nombre: "Región de Coquimbo",            oficial: "coquimbo" },
+  { codigo: "5",  nombre: "Región de Valparaíso",          oficial: "valparaíso" },
+  { codigo: "13", nombre: "Región Metropolitana",          oficial: "metropolitana" },
+  { codigo: "6",  nombre: "Región de O'Higgins",           oficial: "o'higgins" },
+  { codigo: "7",  nombre: "Región del Maule",              oficial: "maule" },
+  { codigo: "16", nombre: "Región de Ñuble",               oficial: "ñuble" },
+  { codigo: "8",  nombre: "Región del Biobío",             oficial: "biobío" },
+  { codigo: "9",  nombre: "Región de La Araucanía",        oficial: "araucanía" },
+  { codigo: "14", nombre: "Región de Los Ríos",            oficial: "los ríos" },
+  { codigo: "10", nombre: "Región de Los Lagos",           oficial: "los lagos" },
+  { codigo: "11", nombre: "Región de Aysén",               oficial: "aysén" },
+  { codigo: "12", nombre: "Región de Magallanes",          oficial: "magallanes" }
 ];
 
-const KEYWORDS_VIAL = [
-  "Ingeniería Vial","Diseño Geométrico","Seguridad Vial",
-  "Estudio de Tránsito","Prefactibilidad Vial","Factibilidad Vial",
-  "Diseño de Pavimentos","Caminos","Puentes","Obras Viales","Topografía Vial",
-];
-const KEYWORDS_HIDRAULICA = [
-  "Hidráulica","Hidrología","Drenaje","Aguas Lluvias",
-  "Modificación de Cauces","Inundaciones","Estudio Hidrológico","Cuencas Hidrográficas",
-];
-const KEYWORDS_ORGANISMOS = [
-  "MOP","SERVIU","Vialidad","DOH","DIRPLAN","SEREMI MOP",
-];
-const ALL_KEYWORDS = [...KEYWORDS_VIAL, ...KEYWORDS_HIDRAULICA, ...KEYWORDS_ORGANISMOS];
-
-function normalizar(s){ return (s||"").toLowerCase().replace(/\s+/g," ").trim(); }
-function deduplicar(arr){
-  const seen=new Set();
-  return arr.filter(r=>{ const k=normalizar(r.titulo||""); if(seen.has(k))return false; seen.add(k); return true; });
-}
-function getIdxRango(desde,hasta){
-  if(desde==="todas"&&hasta==="todas") return null;
-  const iD=desde==="todas"?1:REGIONES.findIndex(r=>r.value===desde);
-  const iH=hasta==="todas"?REGIONES.length-1:REGIONES.findIndex(r=>r.value===hasta);
-  const s=Math.min(iD<1?1:iD,iH<1?REGIONES.length-1:iH);
-  const e=Math.max(iD<1?1:iD,iH<1?REGIONES.length-1:iH);
-  return REGIONES.slice(s,e+1).map(r=>r.value);
+function extraerRegionDeTexto(texto) {
+  if (!texto) return null;
+  const t = texto.toLowerCase();
+  for (const r of REGIONES) {
+    if (t.includes(r.oficial)) return r;
+  }
+  return null;
 }
 
-async function buscarEnBackend(keyword, regionDesde, regionHasta, signal){
-  const params=new URLSearchParams({q:keyword});
-  if(regionDesde!=="todas") params.set("desde",regionDesde);
-  if(regionHasta!=="todas") params.set("hasta",regionHasta);
-  let res;
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
+app.get("/regiones", (req, res) => {
+  res.json(REGIONES);
+});
+
+// ── Búsqueda Mercado Público ──────────────────────────────────────────────────
+app.get("/buscar", async (req, res) => {
+  const keyword    = (req.query.q || "").trim().toLowerCase();
+  const desdeParam = req.query.desde || "todas";
+  const hastaParam = req.query.hasta || "todas";
+
+  if (!keyword) return res.status(400).json({ error: "Parámetro q requerido" });
+
+  let codigosValidos = null;
+  if (desdeParam !== "todas" || hastaParam !== "todas") {
+    const idxDesde = desdeParam === "todas" ? 0 : REGIONES.findIndex(r => r.codigo === desdeParam);
+    const idxHasta = hastaParam === "todas" ? REGIONES.length - 1 : REGIONES.findIndex(r => r.codigo === hastaParam);
+    const start = Math.min(idxDesde < 0 ? 0 : idxDesde, idxHasta < 0 ? REGIONES.length - 1 : idxHasta);
+    const end   = Math.max(idxDesde < 0 ? 0 : idxDesde, idxHasta < 0 ? REGIONES.length - 1 : idxHasta);
+    codigosValidos = new Set(REGIONES.slice(start, end + 1).map(r => r.codigo));
+  }
+
   try {
-    res = await fetch(`/buscar?${params}`,{signal});
-  } catch(e){
-    if(e.name==="AbortError") throw e;
-    throw new Error("No se pudo conectar al backend. Puede estar iniciando — espera 30 s y reintenta.");
+    const terms = keyword.split(/\s+/).filter(Boolean);
+    const primerTerm = terms[0];
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 90000);
+
+    const url = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?estado=activas&nombre=${encodeURIComponent(primerTerm)}&ticket=${TICKET}`;
+
+    const mpRes = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (!mpRes.ok) throw new Error(`API MP respondió ${mpRes.status}`);
+    const data = await mpRes.json();
+    const licitaciones = data.Listado || [];
+
+    const terms2 = keyword.split(/\s+/).filter(Boolean);
+    const filtradas = licitaciones.filter(l => {
+      const texto = `${l.Nombre || ""} ${l.Descripcion || ""}`.toLowerCase();
+      return terms2.every(t => texto.includes(t));
+    });
+
+    const resultado = filtradas.map(l => {
+      const textoCompleto = `${l.Nombre || ""} ${l.Descripcion || ""}`;
+      const regionExtraida = extraerRegionDeTexto(textoCompleto);
+      return {
+        titulo:           l.Nombre || "Sin título",
+        codigo:           l.CodigoExterno || "",
+        organismo:        "–",
+        region:           regionExtraida?.nombre || null,
+        regionOficial:    regionExtraida?.oficial || null,
+        estado:           estadoTexto(l.CodigoEstado),
+        fechaPublicacion: formatFecha(l.FechaPublicacion),
+        fechaCierre:      formatFecha(l.FechaCierre),
+        monto:            null,
+        descripcion:      "",
+        url:              `https://www.mercadopublico.cl/Procurement/Modules/RFB/DetailsAcquisition.aspx?idlicitacion=${l.CodigoExterno}`,
+        fuente:           "Mercado Público",
+        detalleCompleto:  false
+      };
+    });
+
+    res.json({
+      total: resultado.length,
+      keyword,
+      desde: desdeParam,
+      hasta: hastaParam,
+      codigosValidos: codigosValidos ? Array.from(codigosValidos) : null,
+      resultados: resultado
+    });
+
+  } catch (err) {
+    console.error("Error /buscar:", err.message);
+    res.status(500).json({ error: err.message });
   }
-  if(!res.ok) throw new Error(`El backend respondió ${res.status}`);
-  const data=await res.json();
-  return (data.resultados||[]).map(r=>({...r,fuente:"Mercado Público"}));
-}
+});
 
-function parseFecha(str){
-  if(!str||str==="–") return null;
-  // formato dd-mm-yyyy o dd/mm/yyyy
-  const p=str.split(/[-\/]/);
-  if(p.length===3){
-    const [d,m,y]=p;
-    if(y.length===4) return new Date(`${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`);
+// ── Detalle individual ────────────────────────────────────────────────────────
+app.get("/detalle/:codigo", async (req, res) => {
+  const codigo = req.params.codigo;
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    const url = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?codigo=${codigo}&ticket=${TICKET}`;
+    const mpRes = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (!mpRes.ok) throw new Error(`API MP respondió ${mpRes.status}`);
+    const data = await mpRes.json();
+    const l = data.Listado?.[0];
+    if (!l) return res.status(404).json({ error: "No encontrada" });
+
+    const regionTexto = l.Comprador?.RegionUnidad || "";
+    const regionExtraida = extraerRegionDeTexto(regionTexto) ||
+                           extraerRegionDeTexto(`${l.Nombre || ""} ${l.Descripcion || ""}`);
+
+    res.json({
+      organismo:     l.Comprador?.NombreOrganismo || "–",
+      region:        regionTexto || regionExtraida?.nombre || null,
+      regionOficial: regionExtraida?.oficial || null,
+      monto:         l.MontoEstimado ? `$${Number(l.MontoEstimado).toLocaleString("es-CL")} CLP` : null,
+      descripcion:   l.Descripcion || ""
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-  return new Date(str);
-}
+});
 
-function filtrarPorFecha(arr, soloVigentes, fechaInicio, fechaFin){
-  const hoy = new Date(); hoy.setHours(0,0,0,0);
-  return arr.filter(r=>{
-    const cierre = parseFecha(r.fechaCierre);
-    if(soloVigentes){
-      if(cierre && cierre < hoy) return false;
-    } else {
-      if(fechaInicio){
-        const fi=new Date(fechaInicio);
-        const pub=parseFecha(r.fechaPublicacion);
-        if(pub && pub < fi) return false;
-      }
-      if(fechaFin){
-        const ff=new Date(fechaFin);
-        if(cierre && cierre > ff) return false;
-      }
-    }
-    return true;
-  });
-}
+// ── Proxy Claude ──────────────────────────────────────────────────────────────
+app.post("/claude", async (req, res) => {
+  const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || "";
+  if (!ANTHROPIC_KEY) return res.status(500).json({ error: "ANTHROPIC_API_KEY no configurada" });
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "anthropic-version": "2023-06-01",
+        "x-api-key": ANTHROPIC_KEY
+      },
+      body: JSON.stringify(req.body)
+    });
+    const data = await response.json();
+    res.status(response.status).json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-function abrirAnalisisEnClaude(item){
-  const msg=`Analiza esta licitación de Mercado Público Chile para una empresa consultora de ingeniería vial especializada en estudios geométricos, seguridad vial, hidráulica e hidrología, diseño vial y prefactibilidad de rutas. NO es empresa constructora.
+// ── Diario Oficial — Búsqueda ─────────────────────────────────────────────────
+app.post("/diario-oficial/buscar", async (req, res) => {
+  const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || "";
+  if (!ANTHROPIC_KEY) return res.status(500).json({ error: "ANTHROPIC_API_KEY no configurada" });
 
-Título: ${item.titulo||"N/A"}
-Código: ${item.codigo||"N/A"}
-Organismo: ${item.organismo||"N/A"}
-Región: ${item.region||"No especificada"}
-Estado: ${item.estado||"N/A"}
-Fecha publicación: ${item.fechaPublicacion||"N/A"}
-Cierre: ${item.fechaCierre||"N/A"}
-Monto: ${item.monto||"No especificado"}
-URL: ${item.url||"No disponible"}
+  const { keyword, regiones, hayFiltro } = req.body;
+  if (!keyword) return res.status(400).json({ error: "keyword requerido" });
 
-Por favor accede a la URL, lee el contenido completo de la licitación y entrega:
-1. Objeto de la licitación (2-3 líneas con el detalle real del documento)
-2. Relevancia para consultoría vial: Alta / Media / Baja — ¿requiere estudios, diseños o asesorías técnicas?
-3. Plazos clave (fechas importantes del proceso)
-4. Requisitos técnicos destacados (si los hay en el documento)
-5. Recomendación: ¿Aplica para una consultora de ingeniería vial? ¿Participar / Evaluar / Descartar?`;
+  const regionQuery = hayFiltro && regiones?.length
+    ? ` (${regiones.slice(0,3).join(" OR ")})`
+    : "";
 
-  const url=`https://claude.ai/new?q=${encodeURIComponent(msg)}`;
-  window.open(url,"_blank");
-}
-
-function KwChip({kw,on,color,toggle}){
-  return (
-    <button onClick={()=>toggle(kw)} style={{
-      padding:"4px 11px",borderRadius:20,fontSize:12,cursor:"pointer",fontWeight:600,
-      border:`2px solid ${on?color:"#e2e8f0"}`,
-      background:on?color+"18":"#f8fafc",
-      color:on?color:"#94a3b8",
-      transition:"all .15s",
-    }}>{on?"✓ ":""}{kw}</button>
-  );
-}
-
-function App(){
-  const [tab,setTab]=useState("buscar");
-  const [activeKw,setActiveKw]=useState(new Set(ALL_KEYWORDS));
-  const [regionDesde,setRegionDesde]=useState("todas");
-  const [regionHasta,setRegionHasta]=useState("todas");
-  const [fechaInicio,setFechaInicio]=useState(new Date().toISOString().split("T")[0]);
-  const [fechaFin,setFechaFin]=useState("");
-  const [soloVigentes,setSoloVigentes]=useState(true);
-  const [loading,setLoading]=useState(false);
-  const [steps,setSteps]=useState([]);
-  const [results,setResults]=useState([]);
-  const [history,setHistory]=useState([]);
-  const [selected,setSelected]=useState(null);
-  const [analysis,setAnalysis]=useState("");
-  const [analysisLoading,setAnalysisLoading]=useState(false);
-  const [error,setError]=useState("");
-  const [elapsed,setElapsed]=useState(0);
-  const abortRef=useRef(null);
-  const timerRef=useRef(null);
-
-  const toggleKw=kw=>{
-    setActiveKw(prev=>{ const n=new Set(prev); n.has(kw)?n.delete(kw):n.add(kw); return n; });
-  };
-  const toggleGroup=group=>{
-    const allOn=group.every(k=>activeKw.has(k));
-    setActiveKw(prev=>{ const n=new Set(prev); group.forEach(k=>allOn?n.delete(k):n.add(k)); return n; });
-  };
-  const addStep=(msg,state="wait")=>setSteps(p=>[...p,{msg,state}]);
-  const doneStep=st=>setSteps(p=>{ const a=[...p]; if(a.length) a[a.length-1].state=st; return a; });
-  const stepIcon=s=>s==="wait"?"⏳":s==="ok"?"✅":"⚪";
-
-  const buscar=async()=>{
-    const kws=ALL_KEYWORDS.filter(k=>activeKw.has(k));
-    if(!kws.length){ setError("Selecciona al menos una palabra clave."); return; }
-    setLoading(true); setError(""); setSteps([]); setResults([]);
-    abortRef.current=new AbortController();
-    timerRef.current=setInterval(()=>setElapsed(e=>e+1),1000);
-    const regionFilter=getIdxRango(regionDesde,regionHasta);
-    const found=[];
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "anthropic-version": "2023-06-01",
+        "x-api-key": ANTHROPIC_KEY
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 3000,
+        system: `Eres un agente experto en buscar licitaciones en el Diario Oficial de Chile (diariooficial.interior.gob.cl).
+Usa web_search para encontrar licitaciones REALES publicadas en el Diario Oficial.
+Responde ÚNICAMENTE con un array JSON válido. Sin texto, sin markdown, sin explicaciones.
+Schema de cada objeto:
+{"titulo":"","organismo":"","estado":"Publicada","fechaPublicacion":"","fechaCierre":"","monto":null,"descripcion":"","url":"","region":""}`,
+        messages: [{
+          role: "user",
+          content: `Busca licitaciones en el Diario Oficial de Chile relacionadas con: "${keyword}"${hayFiltro ? ` en las regiones: ${regiones?.join(", ")}` : ""}.
+Ejecuta estas búsquedas:
+1. site:diariooficial.interior.gob.cl licitacion "${keyword}"${regionQuery}
+2. diario oficial chile licitacion "${keyword}"${regionQuery} 2024 2025 2026
+3. diariooficial.interior.gob.cl concurso "${keyword}"${regionQuery}
+Para cada resultado extrae título, organismo, fechas, URL y región.
+${hayFiltro ? `Prioriza resultados que mencionen: ${regiones?.join(", ")}.` : "Incluye resultados de todo Chile."}
+Devuelve array JSON con todos los resultados encontrados.`
+        }],
+        tools: [{ type: "web_search_20250305", name: "web_search" }]
+      })
+    });
+    const data = await response.json();
+    const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("\n");
     try {
-      for(const kw of kws){
-        addStep(`Buscando «${kw}»...`);
-        const r=await buscarEnBackend(kw,regionDesde,regionHasta,abortRef.current.signal);
-        const filtradas=filtrarPorFecha(r,soloVigentes,fechaInicio,fechaFin);
-        doneStep(filtradas.length?"ok":"empty");
-        if(filtradas.length){ addStep(`✅ ${filtradas.length} resultado(s) con «${kw}»`,"ok"); found.push(...filtradas); }
-      }
-      clearInterval(timerRef.current);
-      const uniq=deduplicar(found);
-      if(uniq.length){
-        setResults(uniq);
-        setHistory(prev=>deduplicar([...uniq,...prev]).slice(0,100));
-        setTab("resultados");
-        addStep(`✅ Total: ${uniq.length} licitaciones únicas`,"ok");
-      } else {
-        setError("Sin resultados. Prueba con otras palabras clave o un rango de fechas más amplio.");
-      }
-    } catch(e){
-      clearInterval(timerRef.current);
-      if(e.name==="AbortError") setError("Búsqueda cancelada.");
-      else setError(`Error: ${e.message}`);
-    }
-    setLoading(false); setElapsed(0);
-  };
+      const clean = text.replace(/```json|```/g, "").trim();
+      const match = clean.match(/\[[\s\S]*\]/);
+      res.json({ resultados: match ? JSON.parse(match[0]) : [] });
+    } catch { res.json({ resultados: [] }); }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-  const cancelar=()=>{ abortRef.current?.abort(); clearInterval(timerRef.current); };
+// ── Diario Oficial — Análisis IA ──────────────────────────────────────────────
+app.post("/diario-oficial/analizar", async (req, res) => {
+  const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || "";
+  if (!ANTHROPIC_KEY) return res.status(500).json({ error: "ANTHROPIC_API_KEY no configurada" });
 
-  const verDetalle=async item=>{
-    setSelected(item); setAnalysis(""); setAnalysisLoading(true); setTab("detalle");
-    abortRef.current=new AbortController();
-    try { setAnalysis(await analizarLicitacion(item,abortRef.current.signal)); }
-    catch { setAnalysis("No se pudo obtener el análisis."); }
-    setAnalysisLoading(false);
-  };
+  const { item } = req.body;
+  if (!item) return res.status(400).json({ error: "item requerido" });
 
-  const TABS=[
-    ["buscar","🔎 Buscar"],
-    ["resultados",`📋 Resultados (${results.length})`],
-    ["detalle","📄 Análisis IA"],
-    ["historial",`🕐 Historial (${history.length})`],
-  ];
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "anthropic-version": "2023-06-01",
+        "x-api-key": ANTHROPIC_KEY
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 1500,
+        system: `Eres experto en licitaciones públicas chilenas para LEN Ingeniería (LEN & Asociados Ingenieros Consultores Ltda.), empresa consultora multidisciplinaria fundada en 1974, con más de 250 colaboradores.
+Divisiones de LEN: Infraestructura de Transporte, Inspección Técnica de Obra (ITO), Obras Hidráulicas y Riego, Proyectos Civiles, Medio Ambiente y Territorio, Energía, Minería, Ingeniería Zona Sur.
+LEN NO ejecuta obras físicas directamente, pero SÍ realiza ITO (presencia en terreno).
+LEN tiene experiencia como subcontratista de concesionarias viales en proyectos MOP de gran escala.
+Cuando analices licitaciones de concesiones, evalúa objetivamente si LEN podría participar como subcontratista: identifica posibles concesionarios, qué servicios suelen subcontratar, y si el perfil de LEN calza. Basa el análisis solo en información verificable.`,
+        messages: [{
+          role: "user",
+          content: `Analiza esta licitación del Diario Oficial para LEN Ingeniería:
 
-  const GroupHeader=({label,color,bg,border,group})=>(
-    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-      <span style={{fontSize:11,fontWeight:700,color,textTransform:"uppercase",letterSpacing:1}}>{label}</span>
-      <button onClick={()=>toggleGroup(group)} style={{fontSize:10,padding:"2px 8px",borderRadius:10,border:`1px solid ${border}`,background:bg,color,cursor:"pointer",fontWeight:600}}>
-        {group.every(k=>activeKw.has(k))?"Desactivar todos":"Activar todos"}
-      </button>
-    </div>
-  );
+Título: ${item.titulo}
+Organismo: ${item.organismo}
+Región: ${item.region || "No especificada"}
+Publicación: ${item.fechaPublicacion} | Cierre: ${item.fechaCierre}
+Monto: ${item.monto || "No especificado"}
+URL: ${item.url || ""}
 
-  return (
-    <div style={{fontFamily:"system-ui,sans-serif",maxWidth:900,margin:"0 auto",padding:16,color:"#1e293b",background:"#f8fafc",minHeight:"100vh"}}>
+${item.url ? "Accede a la URL para más detalles." : ""}
 
-      {/* Header */}
-      <div style={{background:"linear-gradient(135deg,#1e3a5f,#2563eb)",borderRadius:12,padding:"20px 24px",marginBottom:20,color:"white"}}>
-        <div style={{fontSize:22,fontWeight:800}}>🏛️ Agente Mercado Público</div>
-        <div style={{fontSize:12,opacity:.8,marginTop:3}}>Licitaciones · Ingeniería Vial · Chile · API Oficial</div>
-      </div>
+**1. Objeto** (2-3 líneas)
+**2. División LEN más relevante**
+**3. Relevancia para LEN** Alta/Media/Baja
+**4. Modalidad de participación** — ¿directa o como subcontratista de concesionaria? Analiza objetivamente.
+**5. Plazos clave**
+**6. Recomendación final**`
+        }],
+        tools: [{ type: "web_search_20250305", name: "web_search" }]
+      })
+    });
+    const data = await response.json();
+    const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("\n");
+    res.json({ analysis: text || "No se pudo obtener el análisis." });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-      {/* Tabs */}
-      <div style={{display:"flex",gap:6,marginBottom:20,flexWrap:"wrap"}}>
-        {TABS.map(([k,l])=>(
-          <button key={k} onClick={()=>setTab(k)} style={{
-            padding:"8px 16px",borderRadius:8,border:"none",cursor:"pointer",
-            fontSize:13,fontWeight:600,
-            background:tab===k?"#2563eb":"white",
-            color:tab===k?"white":"#475569",
-            boxShadow:"0 1px 3px rgba(0,0,0,.08)",
-          }}>{l}</button>
-        ))}
-      </div>
-
-      {/* ── BUSCAR ── */}
-      {tab==="buscar" && (
-        <div style={{display:"flex",flexDirection:"column",gap:16}}>
-
-          {/* Keywords */}
-          <div style={{background:"white",borderRadius:12,padding:20,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-              <div style={{fontWeight:700,fontSize:14}}>🏷️ Palabras clave</div>
-              <div style={{fontSize:12,color:"#64748b"}}>
-                <b style={{color:activeKw.size===ALL_KEYWORDS.length?"#16a34a":"#ea580c"}}>{activeKw.size}</b> / {ALL_KEYWORDS.length} activas
-              </div>
-            </div>
-
-            <div style={{marginBottom:14}}>
-              <GroupHeader label="Ingeniería Vial" color="#2563eb" bg="#eff6ff" border="#bfdbfe" group={KEYWORDS_VIAL}/>
-              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                {KEYWORDS_VIAL.map(kw=><KwChip key={kw} kw={kw} on={activeKw.has(kw)} color="#2563eb" toggle={toggleKw}/>)}
-              </div>
-            </div>
-
-            <div style={{marginBottom:14}}>
-              <GroupHeader label="Hidráulica / Hidrología" color="#0891b2" bg="#ecfeff" border="#a5f3fc" group={KEYWORDS_HIDRAULICA}/>
-              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                {KEYWORDS_HIDRAULICA.map(kw=><KwChip key={kw} kw={kw} on={activeKw.has(kw)} color="#0891b2" toggle={toggleKw}/>)}
-              </div>
-            </div>
-
-            <div>
-              <GroupHeader label="Organismos" color="#7c3aed" bg="#f5f3ff" border="#ddd6fe" group={KEYWORDS_ORGANISMOS}/>
-              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                {KEYWORDS_ORGANISMOS.map(kw=><KwChip key={kw} kw={kw} on={activeKw.has(kw)} color="#7c3aed" toggle={toggleKw}/>)}
-              </div>
-            </div>
-          </div>
-
-          {/* Regiones */}
-          <div style={{background:"white",borderRadius:12,padding:20,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
-            <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>📍 Rango de regiones</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:12,alignItems:"end"}}>
-              <div>
-                <div style={{fontSize:12,fontWeight:600,color:"#64748b",marginBottom:6}}>Desde</div>
-                <select value={regionDesde} onChange={e=>setRegionDesde(e.target.value)}
-                  style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid #cbd5e1",fontSize:13,background:"white"}}>
-                  {REGIONES.map(r=><option key={r.value} value={r.value}>{r.label}</option>)}
-                </select>
-              </div>
-              <div style={{fontSize:18,color:"#94a3b8",paddingBottom:8,textAlign:"center"}}>→</div>
-              <div>
-                <div style={{fontSize:12,fontWeight:600,color:"#64748b",marginBottom:6}}>Hasta</div>
-                <select value={regionHasta} onChange={e=>setRegionHasta(e.target.value)}
-                  style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid #cbd5e1",fontSize:13,background:"white"}}>
-                  {REGIONES.map(r=><option key={r.value} value={r.value}>{r.label}</option>)}
-                </select>
-              </div>
-            </div>
-            <div style={{fontSize:11,color:"#94a3b8",marginTop:8}}>💡 El filtro de región lo aplica el backend directamente en la consulta a Mercado Público.</div>
-          </div>
-
-          {/* Fechas */}
-          <div style={{background:"white",borderRadius:12,padding:20,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
-            <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>📅 Filtro de fechas</div>
-
-            {/* Toggle vigentes / manual */}
-            <div style={{display:"flex",gap:8,marginBottom:16}}>
-              <button onClick={()=>{
-                setSoloVigentes(true);
-                const hoy=new Date().toISOString().split("T")[0];
-                setFechaInicio(hoy); setFechaFin("");
-              }} style={{
-                flex:1,padding:"9px 0",borderRadius:8,border:"2px solid",fontSize:13,fontWeight:600,cursor:"pointer",
-                borderColor:soloVigentes?"#2563eb":"#e2e8f0",
-                background:soloVigentes?"#eff6ff":"white",
-                color:soloVigentes?"#2563eb":"#94a3b8",
-              }}>✅ Solo vigentes</button>
-              <button onClick={()=>{
-                setSoloVigentes(false);
-                setFechaInicio(""); setFechaFin("");
-              }} style={{
-                flex:1,padding:"9px 0",borderRadius:8,border:"2px solid",fontSize:13,fontWeight:600,cursor:"pointer",
-                borderColor:!soloVigentes?"#2563eb":"#e2e8f0",
-                background:!soloVigentes?"#eff6ff":"white",
-                color:!soloVigentes?"#2563eb":"#94a3b8",
-              }}>📅 Rango manual</button>
-            </div>
-
-            {soloVigentes ? (
-              <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#15803d"}}>
-                ✅ Se buscarán licitaciones con cierre igual o posterior a hoy (<b>{new Date().toLocaleDateString("es-CL")}</b>).
-              </div>
-            ) : (
-              <>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                  <div>
-                    <div style={{fontSize:12,fontWeight:600,color:"#64748b",marginBottom:6}}>Fecha inicio</div>
-                    <input type="date" value={fechaInicio} onChange={e=>setFechaInicio(e.target.value)}
-                      style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid #cbd5e1",fontSize:13}}/>
-                  </div>
-                  <div>
-                    <div style={{fontSize:12,fontWeight:600,color:"#64748b",marginBottom:6}}>Fecha fin</div>
-                    <input type="date" value={fechaFin} onChange={e=>setFechaFin(e.target.value)}
-                      style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid #cbd5e1",fontSize:13}}/>
-                  </div>
-                </div>
-                <div style={{fontSize:11,color:"#94a3b8",marginTop:8}}>Deja ambos campos vacíos para buscar sin filtro de fecha.</div>
-              </>
-            )}
-          </div>
-
-          {/* Botón + progreso */}
-          <div style={{background:"white",borderRadius:12,padding:20,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
-            <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
-              <button onClick={buscar} disabled={loading} style={{
-                background:loading?"#94a3b8":"#2563eb",color:"white",border:"none",
-                padding:"12px 32px",borderRadius:8,fontSize:15,fontWeight:700,
-                cursor:loading?"not-allowed":"pointer",
-                boxShadow:loading?"none":"0 2px 8px rgba(37,99,235,.35)",
-              }}>
-                {loading?`⏳ Buscando... ${elapsed}s`:"🚀 Buscar Licitaciones"}
-              </button>
-              {loading && (
-                <button onClick={cancelar} style={{background:"#fee2e2",color:"#dc2626",border:"none",padding:"12px 20px",borderRadius:8,fontSize:14,fontWeight:600,cursor:"pointer"}}>
-                  ✕ Cancelar
-                </button>
-              )}
-            </div>
-
-            {error && (
-              <div style={{marginTop:12,background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",fontSize:13,color:"#dc2626"}}>
-                ⚠️ {error}
-              </div>
-            )}
-
-            {steps.length>0 && (
-              <div style={{marginTop:16}}>
-                <div style={{fontSize:12,fontWeight:700,color:"#64748b",marginBottom:8}}>Progreso de búsqueda</div>
-                {steps.map((s,i)=>(
-                  <div key={i} style={{fontSize:12,color:s.state==="ok"?"#15803d":s.state==="empty"?"#94a3b8":"#2563eb",display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
-                    <span>{stepIcon(s.state)}</span><span>{s.msg}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ── RESULTADOS ── */}
-      {tab==="resultados" && (
-        <div>
-          {results.length===0
-            ? <div style={{textAlign:"center",color:"#94a3b8",padding:48,background:"white",borderRadius:12}}>Sin resultados. Realiza una búsqueda primero.</div>
-            : <>
-                <div style={{fontSize:13,color:"#64748b",marginBottom:12}}>{results.length} licitaciones encontradas</div>
-                {results.map((r,i)=>(
-                  <div key={i} style={{background:"white",border:"1px solid #e2e8f0",borderRadius:10,padding:16,marginBottom:10,boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}>
-                    <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
-                      <span style={{background:"#eff6ff",color:"#2563eb",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>🏛️ Mercado Público</span>
-                      {r.estado && <span style={{background:"#f0fdf4",color:"#15803d",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>● {r.estado}</span>}
-                      {r.region && <span style={{background:"#fefce8",color:"#854d0e",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>📍 {r.region}</span>}
-                    </div>
-                    <div style={{fontWeight:700,fontSize:14,marginBottom:4,lineHeight:1.4}}>{r.titulo||"Sin título"}</div>
-                    <div style={{fontSize:12,color:"#64748b",marginBottom:4}}>{r.organismo}</div>
-                    {r.codigo && <div style={{fontSize:11,color:"#94a3b8",marginBottom:4}}>Código: {r.codigo}</div>}
-                    <div style={{display:"flex",gap:16,fontSize:12,color:"#94a3b8",flexWrap:"wrap"}}>
-                      {r.fechaPublicacion && <span>📅 {r.fechaPublicacion}</span>}
-                      {r.fechaCierre && <span>⏰ Cierre: {r.fechaCierre}</span>}
-                      {r.monto && <span>💰 {r.monto}</span>}
-                    </div>
-                    {r.descripcion && <div style={{fontSize:12,color:"#475569",marginTop:8,lineHeight:1.5}}>{r.descripcion}</div>}
-                    <div style={{display:"flex",gap:8,marginTop:10,flexWrap:"wrap"}}>
-                      <button onClick={()=>abrirAnalisisEnClaude(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>
-                        🤖 Analizar con IA
-                      </button>
-                      {r.url && <a href={r.url} target="_blank" rel="noreferrer" style={{background:"#f8fafc",color:"#475569",border:"1px solid #e2e8f0",padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600}}>
-                        🔗 Ver en MP
-                      </a>}
-                    </div>
-                  </div>
-                ))}
-              </>
-          }
-        </div>
-      )}
-
-      {/* ── ANÁLISIS IA ── */}
-      {tab==="detalle" && (
-        <div style={{background:"white",borderRadius:12,padding:24,boxShadow:"0 1px 4px rgba(0,0,0,.07)",textAlign:"center"}}>
-          <div style={{fontSize:40,marginBottom:12}}>🤖</div>
-          <div style={{fontWeight:700,fontSize:16,marginBottom:8}}>Análisis en Claude.ai</div>
-          <div style={{fontSize:13,color:"#64748b",lineHeight:1.7,maxWidth:480,margin:"0 auto 20px"}}>
-            El análisis se realiza directamente en Claude.ai usando tu suscripción existente.<br/>
-            Haz clic en <b>🤖 Analizar con IA</b> en cualquier licitación de los Resultados o el Historial para abrir Claude con el contexto prellenado.
-          </div>
-          <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:10,padding:"12px 20px",fontSize:12,color:"#1e40af",display:"inline-block"}}>
-            ✅ Gratis · Usa tu suscripción de Claude · Accede al enlace completo de la licitación
-          </div>
-        </div>
-      )}
-
-      {/* ── HISTORIAL ── */}
-      {tab==="historial" && (
-        <div>
-          {history.length===0
-            ? <div style={{textAlign:"center",color:"#94a3b8",padding:48,background:"white",borderRadius:12}}>Sin historial aún.</div>
-            : <>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-                  <div style={{fontSize:13,color:"#64748b"}}>{history.length} licitaciones guardadas</div>
-                  <button onClick={()=>setHistory([])} style={{background:"#fee2e2",color:"#dc2626",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>
-                    🗑️ Limpiar
-                  </button>
-                </div>
-                {history.map((r,i)=>(
-                  <div key={i} style={{background:"white",border:"1px solid #e2e8f0",borderRadius:8,padding:12,marginBottom:8}}>
-                    <div style={{display:"flex",gap:6,marginBottom:4,flexWrap:"wrap"}}>
-                      {r.estado && <span style={{background:"#f0fdf4",color:"#15803d",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>● {r.estado}</span>}
-                      {r.region && <span style={{background:"#fefce8",color:"#854d0e",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>📍 {r.region}</span>}
-                    </div>
-                    <div style={{fontWeight:600,fontSize:13}}>{r.titulo}</div>
-                    <div style={{fontSize:11,color:"#94a3b8",marginTop:3}}>{r.organismo}{r.fechaCierre?` · Cierre: ${r.fechaCierre}`:""}</div>
-                    <button onClick={()=>abrirAnalisisEnClaude(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"4px 10px",borderRadius:6,fontSize:11,cursor:"pointer",marginTop:8,fontWeight:600}}>
-                      🤖 Analizar
-                    </button>
-                  </div>
-                ))}
-              </>
-          }
-        </div>
-      )}
-    </div>
-  );
+function estadoTexto(codigo) {
+  const m = { "5":"Publicada","6":"Cerrada","7":"Desierta","8":"Adjudicada","9":"Revocada","10":"Suspendida","15":"Publicada","18":"Adjudicada" };
+  return m[String(codigo)] || "Publicada";
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
-</script>
-</body>
-</html>
+function formatFecha(str) {
+  if (!str) return "–";
+  const match = String(str).match(/\/Date\((\d+)\)\//);
+  if (match) return new Date(Number(match[1])).toLocaleDateString("es-CL");
+  return String(str).substring(0, 10);
+}
+
+app.listen(PORT, () => console.log(`Backend licitaciones corriendo en puerto ${PORT}`));
