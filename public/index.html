@@ -126,8 +126,9 @@ function App(){
   const [activeKw,setActiveKw]=useState(new Set(ALL_KEYWORDS));
   const [regionDesde,setRegionDesde]=useState("todas");
   const [regionHasta,setRegionHasta]=useState("todas");
-  const [fechaInicio,setFechaInicio]=useState("");
+  const [fechaInicio,setFechaInicio]=useState(new Date().toISOString().split("T")[0]);
   const [fechaFin,setFechaFin]=useState("");
+  const [soloVigentes,setSoloVigentes]=useState(true);
   const [loading,setLoading]=useState(false);
   const [steps,setSteps]=useState([]);
   const [results,setResults]=useState([]);
@@ -293,20 +294,52 @@ function App(){
 
           {/* Fechas */}
           <div style={{background:"white",borderRadius:12,padding:20,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
-            <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>📅 Rango de fechas</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-              <div>
-                <div style={{fontSize:12,fontWeight:600,color:"#64748b",marginBottom:6}}>Fecha inicio</div>
-                <input type="date" value={fechaInicio} onChange={e=>setFechaInicio(e.target.value)}
-                  style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid #cbd5e1",fontSize:13}}/>
-              </div>
-              <div>
-                <div style={{fontSize:12,fontWeight:600,color:"#64748b",marginBottom:6}}>Fecha fin</div>
-                <input type="date" value={fechaFin} onChange={e=>setFechaFin(e.target.value)}
-                  style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid #cbd5e1",fontSize:13}}/>
-              </div>
+            <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>📅 Filtro de fechas</div>
+
+            {/* Toggle vigentes / manual */}
+            <div style={{display:"flex",gap:8,marginBottom:16}}>
+              <button onClick={()=>{
+                setSoloVigentes(true);
+                const hoy=new Date().toISOString().split("T")[0];
+                setFechaInicio(hoy); setFechaFin("");
+              }} style={{
+                flex:1,padding:"9px 0",borderRadius:8,border:"2px solid",fontSize:13,fontWeight:600,cursor:"pointer",
+                borderColor:soloVigentes?"#2563eb":"#e2e8f0",
+                background:soloVigentes?"#eff6ff":"white",
+                color:soloVigentes?"#2563eb":"#94a3b8",
+              }}>✅ Solo vigentes</button>
+              <button onClick={()=>{
+                setSoloVigentes(false);
+                setFechaInicio(""); setFechaFin("");
+              }} style={{
+                flex:1,padding:"9px 0",borderRadius:8,border:"2px solid",fontSize:13,fontWeight:600,cursor:"pointer",
+                borderColor:!soloVigentes?"#2563eb":"#e2e8f0",
+                background:!soloVigentes?"#eff6ff":"white",
+                color:!soloVigentes?"#2563eb":"#94a3b8",
+              }}>📅 Rango manual</button>
             </div>
-            <div style={{fontSize:11,color:"#94a3b8",marginTop:8}}>Deja vacío para buscar sin filtro de fecha.</div>
+
+            {soloVigentes ? (
+              <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#15803d"}}>
+                ✅ Se buscarán licitaciones con cierre igual o posterior a hoy (<b>{new Date().toLocaleDateString("es-CL")}</b>).
+              </div>
+            ) : (
+              <>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                  <div>
+                    <div style={{fontSize:12,fontWeight:600,color:"#64748b",marginBottom:6}}>Fecha inicio</div>
+                    <input type="date" value={fechaInicio} onChange={e=>setFechaInicio(e.target.value)}
+                      style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid #cbd5e1",fontSize:13}}/>
+                  </div>
+                  <div>
+                    <div style={{fontSize:12,fontWeight:600,color:"#64748b",marginBottom:6}}>Fecha fin</div>
+                    <input type="date" value={fechaFin} onChange={e=>setFechaFin(e.target.value)}
+                      style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid #cbd5e1",fontSize:13}}/>
+                  </div>
+                </div>
+                <div style={{fontSize:11,color:"#94a3b8",marginTop:8}}>Deja ambos campos vacíos para buscar sin filtro de fecha.</div>
+              </>
+            )}
           </div>
 
           {/* Botón + progreso */}
