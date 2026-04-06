@@ -101,10 +101,11 @@ app.get("/buscar", async (req, res) => {
       }
     };
 
-    // Llamada sin tipo (cubre LP y LE) + llamada específica para SC
+    // Llamada sin tipo con estado=activas (cubre LP y LE)
+    // Llamada SC sin filtro de estado (las SC pueden tener estado distinto en la API)
     const [sinTipo, conSC] = await Promise.all([
       fetchMP(""),
-      fetchMP("&tipo=SC")
+      fetchMP("&tipo=SC&estado=todos")
     ]);
     clearTimeout(timeoutId);
 
