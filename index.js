@@ -78,48 +78,44 @@ app.get("/buscar", async (req, res) => {
   }
 
   try {
-    // Usa solo la primera palabra para la búsqueda en MP (la API no soporta frases)
     const primerTerm = keyword.split(/\s+/).filter(Boolean)[0] || keyword;
-
-    // Consultar los tres tipos de proceso en paralelo: LP, LE y SC
-    const TIPOS = ["LP", "LE", "SC"];
     const controller = new AbortController();
     const timeoutId  = setTimeout(() => controller.abort(), 90000);
 
-    console.log(`[buscar] keyword="${keyword}" primerTerm="${primerTerm}" tipos=${TIPOS.join(",")}`);
+    console.log(`[buscar] keyword="${keyword}" primerTerm="${primerTerm}"`);
 
-    const fetchTipo = async (tipo) => {
+    const fetchMP = async (extraParams) => {
       const mpUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json` +
-                    `?estado=activas&nombre=${encodeURIComponent(primerTerm)}&tipo=${tipo}&ticket=${TICKET}`;
-      const mpRes = await fetch(mpUrl, { signal: controller.signal });
-      const rawText = await mpRes.text();
-      console.log(`[buscar] tipo=${tipo} status=${mpRes.status} body=${rawText.substring(0, 200)}`);
-      if (!mpRes.ok) {
-        console.warn(`[buscar] tipo=${tipo} falló con ${mpRes.status}`);
-        return [];
-      }
+                    `?estado=activas&nombre=${encodeURIComponent(primerTerm)}&ticket=${TICKET}${extraParams}`;
       try {
+        const mpRes = await fetch(mpUrl, { signal: controller.signal });
+        const rawText = await mpRes.text();
+        console.log(`[buscar] params="${extraParams}" status=${mpRes.status} snippet=${rawText.substring(0,150)}`);
+        if (!mpRes.ok) return [];
         const data = JSON.parse(rawText);
         return data.Listado || [];
-      } catch {
-        console.warn(`[buscar] tipo=${tipo} devolvió JSON inválido`);
+      } catch (e) {
+        if (e.name === "AbortError") throw e;
+        console.warn(`[buscar] error con params="${extraParams}": ${e.message}`);
         return [];
       }
     };
 
-    const resultadosPorTipo = await Promise.all(TIPOS.map(fetchTipo));
+    // Llamada sin tipo (cubre LP y LE) + llamada específica para SC
+    const [sinTipo, conSC] = await Promise.all([
+      fetchMP(""),
+      fetchMP("&tipo=SC")
+    ]);
     clearTimeout(timeoutId);
 
     // Fusionar y deduplicar por CodigoExterno
     const vistos = new Set();
     const licitaciones = [];
-    for (const lista of resultadosPorTipo) {
-      for (const l of lista) {
-        const cod = l.CodigoExterno || JSON.stringify(l);
-        if (!vistos.has(cod)) { vistos.add(cod); licitaciones.push(l); }
-      }
+    for (const l of [...sinTipo, ...conSC]) {
+      const cod = l.CodigoExterno || JSON.stringify(l);
+      if (!vistos.has(cod)) { vistos.add(cod); licitaciones.push(l); }
     }
-    console.log(`[buscar] Total tras fusionar LP+LE+SC: ${licitaciones.length}`);
+    console.log(`[buscar] sinTipo=${sinTipo.length} SC=${conSC.length} total dedup=${licitaciones.length}`);
 
     // Filtrar por todas las palabras del keyword
     const terms = keyword.toLowerCase().split(/\s+/).filter(Boolean);
