@@ -81,40 +81,45 @@ app.get("/buscar", async (req, res) => {
     // Usa solo la primera palabra para la búsqueda en MP (la API no soporta frases)
     const primerTerm = keyword.split(/\s+/).filter(Boolean)[0] || keyword;
 
+    // Consultar los tres tipos de proceso en paralelo: LP, LE y SC
+    const TIPOS = ["LP", "LE", "SC"];
     const controller = new AbortController();
     const timeoutId  = setTimeout(() => controller.abort(), 90000);
 
-    const mpUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json` +
-                  `?estado=activas&nombre=${encodeURIComponent(primerTerm)}&ticket=${TICKET}`;
+    console.log(`[buscar] keyword="${keyword}" primerTerm="${primerTerm}" tipos=${TIPOS.join(",")}`);
 
-    console.log(`[buscar] keyword="${keyword}" primerTerm="${primerTerm}" url=${mpUrl}`);
+    const fetchTipo = async (tipo) => {
+      const mpUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json` +
+                    `?estado=activas&nombre=${encodeURIComponent(primerTerm)}&tipo=${tipo}&ticket=${TICKET}`;
+      const mpRes = await fetch(mpUrl, { signal: controller.signal });
+      const rawText = await mpRes.text();
+      console.log(`[buscar] tipo=${tipo} status=${mpRes.status} body=${rawText.substring(0, 200)}`);
+      if (!mpRes.ok) {
+        console.warn(`[buscar] tipo=${tipo} falló con ${mpRes.status}`);
+        return [];
+      }
+      try {
+        const data = JSON.parse(rawText);
+        return data.Listado || [];
+      } catch {
+        console.warn(`[buscar] tipo=${tipo} devolvió JSON inválido`);
+        return [];
+      }
+    };
 
-    const mpRes = await fetch(mpUrl, { signal: controller.signal });
+    const resultadosPorTipo = await Promise.all(TIPOS.map(fetchTipo));
     clearTimeout(timeoutId);
 
-    // Leer el cuerpo como texto primero para diagnóstico
-    const rawText = await mpRes.text();
-    console.log(`[buscar] MP status=${mpRes.status} body=${rawText.substring(0, 300)}`);
-
-    if (!mpRes.ok) {
-      return res.status(502).json({
-        error: `API de Mercado Público respondió ${mpRes.status}`,
-        detalle: rawText.substring(0, 500)
-      });
+    // Fusionar y deduplicar por CodigoExterno
+    const vistos = new Set();
+    const licitaciones = [];
+    for (const lista of resultadosPorTipo) {
+      for (const l of lista) {
+        const cod = l.CodigoExterno || JSON.stringify(l);
+        if (!vistos.has(cod)) { vistos.add(cod); licitaciones.push(l); }
+      }
     }
-
-    let data;
-    try {
-      data = JSON.parse(rawText);
-    } catch (parseErr) {
-      return res.status(502).json({
-        error: "La API de Mercado Público devolvió una respuesta no válida (no es JSON)",
-        detalle: rawText.substring(0, 500)
-      });
-    }
-
-    const licitaciones = data.Listado || [];
-    console.log(`[buscar] Total licitaciones recibidas: ${licitaciones.length}`);
+    console.log(`[buscar] Total tras fusionar LP+LE+SC: ${licitaciones.length}`);
 
     // Filtrar por todas las palabras del keyword
     const terms = keyword.toLowerCase().split(/\s+/).filter(Boolean);
