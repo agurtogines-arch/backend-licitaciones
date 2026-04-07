@@ -79,6 +79,7 @@ app.get("/buscar", async (req, res) => {
 
   try {
     const primerTerm = keyword.split(/\s+/).filter(Boolean)[0] || keyword;
+    const controller = new AbortController();
     const timeoutId  = setTimeout(() => controller.abort(), 90000);
 
     console.log(`[buscar] keyword="${keyword}" primerTerm="${primerTerm}"`);
@@ -152,7 +153,7 @@ app.get("/buscar", async (req, res) => {
       resultado = resultado.filter(r => r.codigoRegion && codigosValidos.has(r.codigoRegion));
     }
 
-    res.json({ total: resultado.length, resultados: resultado });
+    res.json({ total: resultado.length, keyword, resultados: resultado });
 
   } catch (err) {
     if (err.name === "AbortError") {
