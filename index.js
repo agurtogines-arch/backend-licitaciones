@@ -79,7 +79,6 @@ app.get("/buscar", async (req, res) => {
 
   try {
     const primerTerm = keyword.split(/\s+/).filter(Boolean)[0] || keyword;
-    const controller = new AbortController();
     const timeoutId  = setTimeout(() => controller.abort(), 90000);
 
     console.log(`[buscar] keyword="${keyword}" primerTerm="${primerTerm}"`);
