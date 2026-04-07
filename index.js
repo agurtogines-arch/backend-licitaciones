@@ -152,7 +152,7 @@ app.get("/buscar", async (req, res) => {
       resultado = resultado.filter(r => r.codigoRegion && codigosValidos.has(r.codigoRegion));
     }
 
-    res.json({ total: resultado.length, keyword, resultados: resultado });
+    res.json({ total: resultado.length, resultados: resultado });
 
   } catch (err) {
     if (err.name === "AbortError") {
