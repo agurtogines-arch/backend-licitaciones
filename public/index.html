@@ -18,7 +18,7 @@
 <script type="text/babel">
 const { useState, useRef, useEffect } = React;
 
-const BACKEND_URL = "https://backend-licitaciones.onrender.com";   // vacío = mismo origen (Railway sirve el frontend y el backend)
+const BACKEND_URL = "";   // vacío = mismo origen (Railway sirve el frontend y el backend)
 const ANTHROPIC_KEY = ""; // pon aquí tu API key de Anthropic si quieres análisis IA
 
 const REGIONES = [
@@ -53,7 +53,7 @@ const KEYWORDS_HIDRAULICA = [
 const KEYWORDS_ORGANISMOS = [
   "MOP","SERVIU","Vialidad","DOH","DIRPLAN","SEREMI MOP",
 ];
-const ALL_KEYWORDS = [...KEYWORDS_VIAL, ...KEYWORDS_HIDRAULICA, ...KEYWORDS_ORGANISMOS];
+const ALL_KEYWORDS = [...KEYWORDS_VIAL, ...KEYWORDS_HIDRAULICA];
 
 function normalizar(s){ return (s||"").toLowerCase().replace(/\s+/g," ").trim(); }
 function deduplicar(arr){
@@ -157,11 +157,9 @@ function App(){
   const [tab,setTab]=useState("buscar");
   const [kwVial,setKwVial]=useState([...KEYWORDS_VIAL]);
   const [kwHidro,setKwHidro]=useState([...KEYWORDS_HIDRAULICA]);
-  const [kwOrg,setKwOrg]=useState([...KEYWORDS_ORGANISMOS]);
   const [activeKw,setActiveKw]=useState(new Set(ALL_KEYWORDS));
   const [newKwVial,setNewKwVial]=useState("");
   const [newKwHidro,setNewKwHidro]=useState("");
-  const [newKwOrg,setNewKwOrg]=useState("");
   const [regionDesde,setRegionDesde]=useState("todas");
   const [regionHasta,setRegionHasta]=useState("todas");
   const [fechaInicio,setFechaInicio]=useState(new Date().toISOString().split("T")[0]);
@@ -179,7 +177,7 @@ function App(){
   const abortRef=useRef(null);
   const timerRef=useRef(null);
 
-  const allKws=()=>[...kwVial,...kwHidro,...kwOrg];
+  const allKws=()=>[...kwVial,...kwHidro];
 
   const toggleKw=kw=>{
     setActiveKw(prev=>{ const n=new Set(prev); n.has(kw)?n.delete(kw):n.add(kw); return n; });
@@ -300,9 +298,8 @@ function App(){
             </div>
 
             {[
-              {label:"Ingeniería Vial",  color:"#2563eb", bg:"#eff6ff", border:"#bfdbfe", list:kwVial,  setList:setKwVial,  input:newKwVial,  setInput:setNewKwVial},
+              {label:"Ingeniería Vial", color:"#2563eb", bg:"#eff6ff", border:"#bfdbfe", list:kwVial, setList:setKwVial, input:newKwVial, setInput:setNewKwVial},
               {label:"Hidráulica / Hidrología", color:"#0891b2", bg:"#ecfeff", border:"#a5f3fc", list:kwHidro, setList:setKwHidro, input:newKwHidro, setInput:setNewKwHidro},
-              {label:"Organismos",       color:"#7c3aed", bg:"#f5f3ff", border:"#ddd6fe", list:kwOrg,   setList:setKwOrg,   input:newKwOrg,  setInput:setNewKwOrg},
             ].map(({label,color,bg,border,list,setList,input,setInput})=>(
               <div key={label} style={{marginBottom:18}}>
                 <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
