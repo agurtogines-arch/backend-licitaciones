@@ -84,13 +84,16 @@ app.get("/buscar", async (req, res) => {
 
     console.log(`[buscar] keyword="${keyword}" primerTerm="${primerTerm}"`);
 
+    const mpUrlBase = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json`;
+
     const fetchMP = async (extraParams) => {
-      const mpUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json` +
-                    `?estado=activas&nombre=${encodeURIComponent(primerTerm)}&ticket=${TICKET}${extraParams}`;
+      // Para SC no usamos estado=activas porque la API las clasifica distinto
+      const usaEstado = !extraParams.includes("tipo=SC");
+      const mpUrl = `${mpUrlBase}?${usaEstado ? "estado=activas&" : ""}nombre=${encodeURIComponent(primerTerm)}&ticket=${TICKET}${extraParams}`;
       try {
         const mpRes = await fetch(mpUrl, { signal: controller.signal });
         const rawText = await mpRes.text();
-        console.log(`[buscar] params="${extraParams}" status=${mpRes.status} snippet=${rawText.substring(0,150)}`);
+        console.log(`[buscar] params="${extraParams}" estado=${usaEstado?"activas":"sin filtro"} status=${mpRes.status} snippet=${rawText.substring(0,150)}`);
         if (!mpRes.ok) return [];
         const data = JSON.parse(rawText);
         return data.Listado || [];
