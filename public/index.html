@@ -98,19 +98,29 @@ function parseFecha(str){
 
 function filtrarPorFecha(arr, soloVigentes, fechaInicio, fechaFin){
   const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const DESDE_DEFAULT = new Date("2026-01-01");
+
   return arr.filter(r=>{
     const cierre = parseFecha(r.fechaCierre);
+    const pub    = parseFecha(r.fechaPublicacion);
+
     if(soloVigentes){
+      // Solo licitaciones con cierre igual o posterior a hoy
       if(cierre && cierre < hoy) return false;
     } else {
-      if(fechaInicio){
-        const fi=new Date(fechaInicio);
-        const pub=parseFecha(r.fechaPublicacion);
-        if(pub && pub < fi) return false;
-      }
-      if(fechaFin){
-        const ff=new Date(fechaFin);
-        if(cierre && cierre > ff) return false;
+      if(fechaInicio || fechaFin){
+        // Rango manual con fechas definidas por el usuario
+        if(fechaInicio){
+          const fi=new Date(fechaInicio);
+          if(pub && pub < fi) return false;
+        }
+        if(fechaFin){
+          const ff=new Date(fechaFin); ff.setHours(23,59,59,999);
+          if(cierre && cierre > ff) return false;
+        }
+      } else {
+        // Rango manual sin fechas → desde el 01-01-2026 en adelante
+        if(pub && pub < DESDE_DEFAULT) return false;
       }
     }
     return true;
@@ -393,17 +403,22 @@ function App(){
               <>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
                   <div>
-                    <div style={{fontSize:12,fontWeight:600,color:"#64748b",marginBottom:6}}>Fecha inicio</div>
+                    <div style={{fontSize:12,fontWeight:600,color:"#64748b",marginBottom:6}}>Fecha inicio publicación</div>
                     <input type="date" value={fechaInicio} onChange={e=>setFechaInicio(e.target.value)}
                       style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid #cbd5e1",fontSize:13}}/>
                   </div>
                   <div>
-                    <div style={{fontSize:12,fontWeight:600,color:"#64748b",marginBottom:6}}>Fecha fin</div>
+                    <div style={{fontSize:12,fontWeight:600,color:"#64748b",marginBottom:6}}>Fecha fin cierre</div>
                     <input type="date" value={fechaFin} onChange={e=>setFechaFin(e.target.value)}
                       style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid #cbd5e1",fontSize:13}}/>
                   </div>
                 </div>
-                <div style={{fontSize:11,color:"#94a3b8",marginTop:8}}>Deja ambos campos vacíos para buscar sin filtro de fecha.</div>
+                <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#1e40af",marginTop:8}}>
+                  {fechaInicio||fechaFin
+                    ? `📅 Mostrando licitaciones publicadas desde ${fechaInicio||"cualquier fecha"} con cierre hasta ${fechaFin||"cualquier fecha"}.`
+                    : "📅 Sin fechas definidas: se mostrarán licitaciones publicadas desde el 01-01-2026 en adelante, incluyendo vencidas."
+                  }
+                </div>
               </>
             )}
           </div>
