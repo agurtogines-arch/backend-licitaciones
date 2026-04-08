@@ -112,11 +112,16 @@ app.get("/buscar", async (req, res) => {
       if (!vistos.has(cod)) { vistos.add(cod); licitaciones.push(l); }
     }
 
-    // Filtrar por todas las palabras del keyword
+    // Filtrar: truncar términos largos para manejar variaciones de género/número en español
     const terms = keyword.toLowerCase().split(/\s+/).filter(Boolean);
     const filtradas = licitaciones.filter(l => {
       const texto = `${l.Nombre || ""} ${l.Descripcion || ""}`.toLowerCase();
-      return terms.every(t => texto.includes(t));
+      return terms.every(t => {
+        // Para términos de 6+ letras, truncar las últimas 2 para cubrir variaciones
+        // hidráulico → hidráuli, hidráulica ✓, hidráulicos ✓
+        const stem = t.length >= 6 ? t.slice(0, -2) : t;
+        return texto.includes(stem);
+      });
     });
 
     // Mapear resultados
