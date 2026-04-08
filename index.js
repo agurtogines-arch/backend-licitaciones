@@ -67,10 +67,9 @@ app.get("/buscar", async (req, res) => {
 
   if (!keyword) return res.status(400).json({ error: "Parámetro q requerido" });
 
-  // Calcular rango de regiones válidas
   let codigosValidos = null;
   if (desdeParam !== "todas" || hastaParam !== "todas") {
-    const idxDesde = desdeParam === "todas" ? 0              : REGIONES.findIndex(r => r.codigo === desdeParam);
+    const idxDesde = desdeParam === "todas" ? 0 : REGIONES.findIndex(r => r.codigo === desdeParam);
     const idxHasta = hastaParam === "todas" ? REGIONES.length - 1 : REGIONES.findIndex(r => r.codigo === hastaParam);
     const start = Math.min(idxDesde < 0 ? 0 : idxDesde, idxHasta < 0 ? REGIONES.length - 1 : idxHasta);
     const end   = Math.max(idxDesde < 0 ? 0 : idxDesde, idxHasta < 0 ? REGIONES.length - 1 : idxHasta);
@@ -82,44 +81,36 @@ app.get("/buscar", async (req, res) => {
     const controller = new AbortController();
     const timeoutId  = setTimeout(() => controller.abort(), 90000);
 
-    console.log(`[buscar] keyword="${keyword}" primerTerm="${primerTerm}"`);
-
-    const mpUrlBase = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json`;
-
     const fetchMP = async (extraParams) => {
-      // Para SC no usamos estado=activas porque la API las clasifica distinto
       const usaEstado = !extraParams.includes("tipo=SC");
-      const mpUrl = `${mpUrlBase}?${usaEstado ? "estado=activas&" : ""}nombre=${encodeURIComponent(primerTerm)}&ticket=${TICKET}${extraParams}`;
+      const mpUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json` +
+                    `?${usaEstado ? "estado=activas&" : ""}nombre=${encodeURIComponent(primerTerm)}&ticket=${TICKET}${extraParams}`;
       try {
         const mpRes = await fetch(mpUrl, { signal: controller.signal });
         const rawText = await mpRes.text();
-        console.log(`[buscar] params="${extraParams}" estado=${usaEstado?"activas":"sin filtro"} status=${mpRes.status} snippet=${rawText.substring(0,150)}`);
         if (!mpRes.ok) return [];
         const data = JSON.parse(rawText);
         return data.Listado || [];
       } catch (e) {
         if (e.name === "AbortError") throw e;
-        console.warn(`[buscar] error con params="${extraParams}": ${e.message}`);
         return [];
       }
     };
 
-    // Llamada sin tipo con estado=activas (cubre LP y LE)
-    // Llamada SC sin parámetro estado (la API de MP no acepta "todos" para SC)
-    const [sinTipo, conSC] = await Promise.all([
+    const [sinTipo, conSC, porDescripcion] = await Promise.all([
       fetchMP(""),
-      fetchMP("&tipo=SC")
+      fetchMP("&tipo=SC"),
+      fetchMP(`&descripcion=${encodeURIComponent(primerTerm)}`).catch(() => [])
     ]);
     clearTimeout(timeoutId);
 
-    // Fusionar y deduplicar por CodigoExterno
+    // Fusionar y deduplicar
     const vistos = new Set();
     const licitaciones = [];
-    for (const l of [...sinTipo, ...conSC]) {
+    for (const l of [...sinTipo, ...conSC, ...porDescripcion]) {
       const cod = l.CodigoExterno || JSON.stringify(l);
       if (!vistos.has(cod)) { vistos.add(cod); licitaciones.push(l); }
     }
-    console.log(`[buscar] sinTipo=${sinTipo.length} SC=${conSC.length} total dedup=${licitaciones.length}`);
 
     // Filtrar por todas las palabras del keyword
     const terms = keyword.toLowerCase().split(/\s+/).filter(Boolean);
@@ -153,14 +144,11 @@ app.get("/buscar", async (req, res) => {
       resultado = resultado.filter(r => r.codigoRegion && codigosValidos.has(r.codigoRegion));
     }
 
-    res.json({ total: resultado.length, keyword, resultados: resultado });
+    res.json({ total: resultado.length, resultados: resultado });
 
   } catch (err) {
-    if (err.name === "AbortError") {
-      console.error("[buscar] Timeout esperando respuesta de MP");
-      return res.status(504).json({ error: "Tiempo de espera agotado consultando Mercado Público (>90s)" });
-    }
-    console.error("[buscar] Error inesperado:", err.message);
+    if (err.name === "AbortError") return res.status(504).json({ error: "Tiempo de espera agotado" });
+    console.error("[buscar] Error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -200,11 +188,7 @@ app.post("/claude", async (req, res) => {
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "anthropic-version": "2023-06-01",
-        "x-api-key": ANTHROPIC_KEY
-      },
+      headers: { "Content-Type":"application/json","anthropic-version":"2023-06-01","x-api-key":ANTHROPIC_KEY },
       body: JSON.stringify(req.body)
     });
     const data = await response.json();
@@ -227,12 +211,10 @@ app.post("/diario-oficial/buscar", async (req, res) => {
       headers: { "Content-Type":"application/json","anthropic-version":"2023-06-01","x-api-key":ANTHROPIC_KEY },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514", max_tokens: 3000,
-        system: `Eres un agente experto en buscar licitaciones en el Diario Oficial de Chile (diariooficial.interior.gob.cl).
-Usa web_search para encontrar licitaciones REALES publicadas en el Diario Oficial.
+        system: `Eres un agente experto en buscar licitaciones en el Diario Oficial de Chile.
 Responde ÚNICAMENTE con un array JSON válido. Sin texto, sin markdown, sin explicaciones.
-Schema de cada objeto:
-{"titulo":"","organismo":"","estado":"Publicada","fechaPublicacion":"","fechaCierre":"","monto":null,"descripcion":"","url":"","region":""}`,
-        messages: [{ role:"user", content:`Busca licitaciones en el Diario Oficial de Chile relacionadas con: "${keyword}"${hayFiltro?` en las regiones: ${regiones?.join(", ")}`:""}.\nEjecuta estas búsquedas:\n1. site:diariooficial.interior.gob.cl licitacion "${keyword}"${regionQuery}\n2. diario oficial chile licitacion "${keyword}"${regionQuery} 2024 2025 2026\n3. diariooficial.interior.gob.cl concurso "${keyword}"${regionQuery}\nDevuelve array JSON con todos los resultados.` }],
+Schema: {"titulo":"","organismo":"","estado":"Publicada","fechaPublicacion":"","fechaCierre":"","monto":null,"descripcion":"","url":"","region":""}`,
+        messages: [{ role:"user", content:`Busca licitaciones en el Diario Oficial de Chile relacionadas con: "${keyword}"${hayFiltro?` en las regiones: ${regiones?.join(", ")}`:""}.\n1. site:diariooficial.interior.gob.cl licitacion "${keyword}"${regionQuery}\n2. diario oficial chile licitacion "${keyword}"${regionQuery} 2025 2026\nDevuelve array JSON.` }],
         tools: [{ type:"web_search_20250305", name:"web_search" }]
       })
     });
@@ -258,10 +240,8 @@ app.post("/diario-oficial/analizar", async (req, res) => {
       headers:{ "Content-Type":"application/json","anthropic-version":"2023-06-01","x-api-key":ANTHROPIC_KEY },
       body: JSON.stringify({
         model:"claude-sonnet-4-20250514", max_tokens:1500,
-        system:`Eres experto en licitaciones públicas chilenas para LEN Ingeniería (LEN & Asociados Ingenieros Consultores Ltda.), empresa consultora multidisciplinaria fundada en 1974, con más de 250 colaboradores.
-Divisiones de LEN: Infraestructura de Transporte, Inspección Técnica de Obra (ITO), Obras Hidráulicas y Riego, Proyectos Civiles, Medio Ambiente y Territorio, Energía, Minería, Ingeniería Zona Sur.
-LEN NO ejecuta obras físicas directamente, pero SÍ realiza ITO (presencia en terreno).`,
-        messages:[{ role:"user", content:`Analiza esta licitación del Diario Oficial para LEN Ingeniería:\n\nTítulo: ${item.titulo}\nOrganismo: ${item.organismo}\nRegión: ${item.region||"No especificada"}\nPublicación: ${item.fechaPublicacion} | Cierre: ${item.fechaCierre}\nMonto: ${item.monto||"No especificado"}\nURL: ${item.url||""}\n\n1. Objeto\n2. División LEN más relevante\n3. Relevancia Alta/Media/Baja\n4. Modalidad de participación\n5. Recomendación final` }],
+        system:`Eres experto en licitaciones públicas chilenas para LEN Ingeniería, consultora multidisciplinaria. NO ejecuta obras físicas directamente, pero SÍ realiza ITO.`,
+        messages:[{ role:"user", content:`Analiza esta licitación:\nTítulo: ${item.titulo}\nOrganismo: ${item.organismo}\nRegión: ${item.region||"No especificada"}\nCierre: ${item.fechaCierre}\nURL: ${item.url||""}\n\n1. Objeto\n2. Relevancia Alta/Media/Baja\n3. Modalidad de participación\n4. Recomendación` }],
         tools:[{ type:"web_search_20250305", name:"web_search" }]
       })
     });
