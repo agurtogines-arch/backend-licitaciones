@@ -127,29 +127,21 @@ function filtrarPorFecha(arr, soloVigentes, fechaInicio, fechaFin){
   });
 }
 
-function abrirAnalisisEnClaude(item){
-  const msg=`Analiza esta licitación de Mercado Público Chile para una empresa consultora de ingeniería vial especializada en estudios geométricos, seguridad vial, hidráulica e hidrología, diseño vial y prefactibilidad de rutas. NO es empresa constructora.
-
-Título: ${item.titulo||"N/A"}
-Código: ${item.codigo||"N/A"}
-Organismo: ${item.organismo||"N/A"}
-Región: ${item.region||"No especificada"}
-Estado: ${item.estado||"N/A"}
-Fecha publicación: ${item.fechaPublicacion||"N/A"}
-Cierre: ${item.fechaCierre||"N/A"}
-Monto: ${item.monto||"No especificado"}
-URL: ${item.url||"No disponible"}
-
-Por favor accede a la URL, lee el contenido completo de la licitación y entrega:
-1. Objeto de la licitación (2-3 líneas con el detalle real del documento)
-2. Relevancia para consultoría vial: Alta / Media / Baja — ¿requiere estudios, diseños o asesorías técnicas?
-3. Plazos clave (fechas importantes del proceso)
-4. Requisitos técnicos destacados (si los hay en el documento)
-5. Recomendación: ¿Aplica para una consultora de ingeniería vial? ¿Participar / Evaluar / Descartar?`;
-
-  const url=`https://claude.ai/new?q=${encodeURIComponent(msg)}`;
-  window.open(url,"_blank");
-}
+  const verDetalle = async item => {
+    setSelected(item); setAnalysis(""); setAnalysisLoading(true); setTab("detalle");
+    try {
+      const res = await fetch(`${BACKEND_URL}/mp/analizar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ item })
+      });
+      const data = await res.json();
+      setAnalysis(data.analysis || "No se pudo obtener el análisis.");
+    } catch {
+      setAnalysis("Error al conectar con el backend para el análisis.");
+    }
+    setAnalysisLoading(false);
+  };
 
 function KwChip({kw,on,color,toggle}){
   return (
@@ -485,7 +477,7 @@ function App(){
                     </div>
                     {r.descripcion && <div style={{fontSize:12,color:"#475569",marginTop:8,lineHeight:1.5}}>{r.descripcion}</div>}
                     <div style={{display:"flex",gap:8,marginTop:10,flexWrap:"wrap"}}>
-                      <button onClick={()=>abrirAnalisisEnClaude(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>
+                      <button onClick={()=>verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>
                         🤖 Analizar con IA
                       </button>
                       {r.url && <a href={r.url} target="_blank" rel="noreferrer" style={{background:"#f8fafc",color:"#475569",border:"1px solid #e2e8f0",padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600}}>
@@ -501,16 +493,28 @@ function App(){
 
       {/* ── ANÁLISIS IA ── */}
       {tab==="detalle" && (
-        <div style={{background:"white",borderRadius:12,padding:24,boxShadow:"0 1px 4px rgba(0,0,0,.07)",textAlign:"center"}}>
-          <div style={{fontSize:40,marginBottom:12}}>🤖</div>
-          <div style={{fontWeight:700,fontSize:16,marginBottom:8}}>Análisis en Claude.ai</div>
-          <div style={{fontSize:13,color:"#64748b",lineHeight:1.7,maxWidth:480,margin:"0 auto 20px"}}>
-            El análisis se realiza directamente en Claude.ai usando tu suscripción existente.<br/>
-            Haz clic en <b>🤖 Analizar con IA</b> en cualquier licitación de los Resultados o el Historial para abrir Claude con el contexto prellenado.
-          </div>
-          <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:10,padding:"12px 20px",fontSize:12,color:"#1e40af",display:"inline-block"}}>
-            ✅ Gratis · Usa tu suscripción de Claude · Accede al enlace completo de la licitación
-          </div>
+        <div>
+          {!selected
+            ? <div style={{textAlign:"center",color:"#94a3b8",padding:48,background:"white",borderRadius:12}}>Selecciona una licitación desde Resultados para analizarla.</div>
+            : <div style={{background:"white",borderRadius:12,padding:24,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
+                <div style={{fontWeight:800,fontSize:15,marginBottom:4}}>{selected.titulo}</div>
+                <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>{selected.organismo} · Código: {selected.codigo||"N/A"}</div>
+                <div style={{borderTop:"1px solid #e2e8f0",paddingTop:16}}>
+                  <div style={{fontWeight:700,fontSize:13,marginBottom:10,color:"#2563eb"}}>🤖 Análisis de relevancia</div>
+                  {analysisLoading
+                    ? <div style={{color:"#2563eb",fontSize:14,padding:"20px 0"}}>⏳ Analizando con IA...</div>
+                    : <div style={{fontSize:13,lineHeight:1.9,whiteSpace:"pre-wrap",color:"#334155"}}>{analysis}</div>
+                  }
+                </div>
+                {selected.url && (
+                  <div style={{marginTop:20}}>
+                    <a href={selected.url} target="_blank" rel="noreferrer" style={{background:"#eff6ff",color:"#2563eb",padding:"10px 20px",borderRadius:8,fontSize:13,fontWeight:600,textDecoration:"none"}}>
+                      🔗 Abrir en Mercado Público
+                    </a>
+                  </div>
+                )}
+              </div>
+          }
         </div>
       )}
 
@@ -534,7 +538,7 @@ function App(){
                     </div>
                     <div style={{fontWeight:600,fontSize:13}}>{r.titulo}</div>
                     <div style={{fontSize:11,color:"#94a3b8",marginTop:3}}>{r.organismo}{r.fechaCierre?` · Cierre: ${r.fechaCierre}`:""}</div>
-                    <button onClick={()=>abrirAnalisisEnClaude(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"4px 10px",borderRadius:6,fontSize:11,cursor:"pointer",marginTop:8,fontWeight:600}}>
+                    <button onClick={()=>verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"4px 10px",borderRadius:6,fontSize:11,cursor:"pointer",marginTop:8,fontWeight:600}}>
                       🤖 Analizar
                     </button>
                   </div>
