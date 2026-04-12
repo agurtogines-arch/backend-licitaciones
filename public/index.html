@@ -128,18 +128,19 @@ function filtrarPorFecha(arr, soloVigentes, fechaInicio, fechaFin){
 
   const verDetalle = async item => {
     console.log("verDetalle llamado", item.titulo);
-    setSelected(item); setAnalysis(""); setAnalysisLoading(true); setTab("detalle");
+    setSelected(item);
+    setAnalysis("⏳ Analizando...");
+    setAnalysisLoading(true);
+    setTab("detalle");
+    // Pequeña pausa para que React termine el re-render antes del fetch
+    await new Promise(r => setTimeout(r, 100));
     try {
       console.log("Iniciando fetch a", `${BACKEND_URL}/mp/analizar`);
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000);
       const res = await fetch(`${BACKEND_URL}/mp/analizar`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ item }),
-        signal: controller.signal
+        body: JSON.stringify({ item })
       });
-      clearTimeout(timeoutId);
       console.log("Respuesta recibida", res.status);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -151,8 +152,7 @@ function filtrarPorFecha(arr, soloVigentes, fechaInicio, fechaFin){
       setAnalysis(data.analysis || "No se pudo obtener el análisis.");
     } catch(e) {
       console.error("Error en verDetalle:", e);
-      if (e.name === "AbortError") setAnalysis("Tiempo de espera agotado. El backend puede estar iniciando — intenta de nuevo en 30 segundos.");
-      else setAnalysis(`Error de conexión: ${e.message}`);
+      setAnalysis(`Error de conexión: ${e.message}`);
     }
     setAnalysisLoading(false);
   };
