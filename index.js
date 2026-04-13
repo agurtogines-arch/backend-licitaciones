@@ -250,35 +250,36 @@ app.post("/diario-oficial/analizar", async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── Mercado Público — Análisis IA (Anthropic) ─────────────────────────────────
-// CORRECCIÓN: Cambiado de OpenAI a Anthropic (ANTHROPIC_API_KEY ya está configurada en Render)
+// ── Mercado Público — Análisis IA (OpenAI) ───────────────────────────────────
 app.post("/mp/analizar", async (req, res) => {
-  const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || "";
-  if (!ANTHROPIC_KEY) return res.status(500).json({ error: "ANTHROPIC_API_KEY no configurada en Render" });
+  const OPENAI_KEY = process.env.OPENAI_API_KEY || "";
+  if (!OPENAI_KEY) return res.status(500).json({ error: "OPENAI_API_KEY no configurada en Render" });
 
   const { item } = req.body;
   if (!item) return res.status(400).json({ error: "item requerido" });
 
   try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "anthropic-version": "2023-06-01",
-        "x-api-key": ANTHROPIC_KEY
+        "Authorization": `Bearer ${OPENAI_KEY}`
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
+        model: "gpt-4o",
         max_tokens: 1000,
-        system: `Eres un analista experto en licitaciones públicas chilenas para una consultora de ingeniería civil vial.
+        messages: [
+          {
+            role: "system",
+            content: `Eres un analista experto en licitaciones públicas chilenas para una consultora de ingeniería civil vial.
 La empresa se especializa en: estudios viales, diseño geométrico, seguridad vial, hidráulica, hidrología, puentes, APR y prefactibilidad de rutas. NO es constructora.
 Analiza la licitación y responde en español con:
 1. Relevancia: Alta / Media / Baja (y por qué en 1 línea)
 2. Tipo de servicio requerido
 3. Coincidencia con el perfil de la empresa
 4. Recomendación: Participar / Evaluar / Descartar
-Sé conciso. Máximo 200 palabras.`,
-        messages: [
+Sé conciso. Máximo 200 palabras.`
+          },
           {
             role: "user",
             content: `Analiza esta licitación de Mercado Público Chile:
@@ -298,12 +299,12 @@ URL: ${item.url || ""}`
 
     if (!response.ok) {
       const err = await response.text();
-      return res.status(502).json({ error: `Anthropic respondió ${response.status}: ${err.substring(0, 200)}` });
+      return res.status(502).json({ error: `OpenAI respondió ${response.status}: ${err.substring(0, 200)}` });
     }
 
     const data = await response.json();
-    const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("\n");
-    res.json({ analysis: text || "No se pudo obtener el análisis." });
+    const text = data.choices?.[0]?.message?.content || "No se pudo obtener el análisis.";
+    res.json({ analysis: text });
 
   } catch (err) {
     res.status(500).json({ error: err.message });
