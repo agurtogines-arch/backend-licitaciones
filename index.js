@@ -97,16 +97,17 @@ app.get("/buscar", async (req, res) => {
       }
     };
 
-    const [sinTipo, conSC, porDescripcion] = await Promise.all([
+    const [sinTipo, conSC, conO1, porDescripcion] = await Promise.all([
       fetchMP(""),
       fetchMP("&tipo=SC"),
+      fetchMP("&tipo=O1"),
       fetchMP(`&descripcion=${encodeURIComponent(primerTerm)}`).catch(() => [])
     ]);
     clearTimeout(timeoutId);
 
     const vistos = new Set();
     const licitaciones = [];
-    for (const l of [...sinTipo, ...conSC, ...porDescripcion]) {
+    for (const l of [...sinTipo, ...conSC, ...conO1, ...porDescripcion]) {
       const cod = l.CodigoExterno || JSON.stringify(l);
       if (!vistos.has(cod)) { vistos.add(cod); licitaciones.push(l); }
     }
