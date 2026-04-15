@@ -171,11 +171,11 @@ function KwChip({kw,on,color,toggle}){
 
 function App(){
   const [tab,setTab]=useState("buscar");
-  const [kwVial,setKwVial]=useState(()=>loadKw("kw_vial", KEYWORDS_VIAL));
-  const [kwHidro,setKwHidro]=useState(()=>loadKw("kw_hidro", KEYWORDS_HIDRAULICA));
+  const [kwVial,setKwVial]=useState(loadKw("kw_vial", KEYWORDS_VIAL));
+  const [kwHidro,setKwHidro]=useState(loadKw("kw_hidro", KEYWORDS_HIDRAULICA));
   const [activeKw,setActiveKw]=useState(()=>{
     try {
-      const saved = localStorage.getItem("kw_active");
+      const saved=localStorage.getItem("kw_active");
       return saved ? new Set(JSON.parse(saved)) : new Set([...KEYWORDS_VIAL,...KEYWORDS_HIDRAULICA]);
     } catch { return new Set([...KEYWORDS_VIAL,...KEYWORDS_HIDRAULICA]); }
   });
