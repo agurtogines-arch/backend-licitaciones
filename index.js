@@ -97,30 +97,34 @@ app.get("/buscar", async (req, res) => {
       }
     };
 
-    const [sinTipo, conSC, conO1, porDescripcion] = await Promise.all([
+    const [sinTipo, conSC, porDescripcion] = await Promise.all([
       fetchMP(""),
       fetchMP("&tipo=SC"),
-      fetchMP("&tipo=O1"),
       fetchMP(`&descripcion=${encodeURIComponent(primerTerm)}`).catch(() => [])
     ]);
     clearTimeout(timeoutId);
 
+    // Fusionar y deduplicar
     const vistos = new Set();
     const licitaciones = [];
-    for (const l of [...sinTipo, ...conSC, ...conO1, ...porDescripcion]) {
+    for (const l of [...sinTipo, ...conSC, ...porDescripcion]) {
       const cod = l.CodigoExterno || JSON.stringify(l);
       if (!vistos.has(cod)) { vistos.add(cod); licitaciones.push(l); }
     }
 
+    // Filtrar: truncar términos largos para manejar variaciones de género/número en español
     const terms = keyword.toLowerCase().split(/\s+/).filter(Boolean);
     const filtradas = licitaciones.filter(l => {
       const texto = `${l.Nombre || ""} ${l.Descripcion || ""}`.toLowerCase();
       return terms.every(t => {
+        // Para términos de 6+ letras, truncar las últimas 2 para cubrir variaciones
+        // hidráulico → hidráuli, hidráulica ✓, hidráulicos ✓
         const stem = t.length >= 6 ? t.slice(0, -2) : t;
         return texto.includes(stem);
       });
     });
 
+    // Mapear resultados
     let resultado = filtradas.map(l => {
       const textoCompleto  = `${l.Nombre || ""} ${l.Descripcion || ""}`;
       const regionExtraida = extraerRegionDeTexto(textoCompleto);
@@ -140,6 +144,7 @@ app.get("/buscar", async (req, res) => {
       };
     });
 
+    // Filtrar por rango de regiones si corresponde
     if (codigosValidos) {
       resultado = resultado.filter(r => r.codigoRegion && codigosValidos.has(r.codigoRegion));
     }
@@ -268,6 +273,73 @@ app.post("/mp/analizar", async (req, res) => {
       },
       body: JSON.stringify({
         model: "gpt-4o",
+        max_tokens: 1500,
+        messages: [
+          {
+            role: "system",
+            content: `Eres experto en licitaciones públicas chilenas para LEN Ingeniería (LEN & Asociados Ingenieros Consultores Ltda.), empresa consultora multidisciplinaria fundada en 1974, con más de 250 colaboradores.
+Divisiones de LEN: Infraestructura de Transporte, Inspección Técnica de Obra (ITO), Obras Hidráulicas y Riego, Proyectos Civiles, Medio Ambiente y Territorio, Energía, Minería, Ingeniería Zona Sur.
+LEN NO ejecuta obras físicas directamente, pero SÍ realiza ITO (presencia en terreno).
+LEN tiene experiencia como subcontratista de concesionarias viales en proyectos MOP de gran escala.`
+          },
+          {
+            role: "user",
+            content: `Analiza esta licitación de Mercado Público para LEN Ingeniería:
+
+Título: ${item.titulo}
+Código: ${item.codigo || "N/A"}
+Organismo: ${item.organismo || "N/A"}
+Región: ${item.region || "No especificada"}
+Estado: ${item.estado || "N/A"}
+Publicación: ${item.fechaPublicacion || "N/A"}
+Cierre: ${item.fechaCierre || "N/A"}
+Monto: ${item.monto || "No especificado"}
+URL: ${item.url || ""}
+
+Entrega el análisis en este formato:
+
+**1. Objeto** (2-3 líneas describiendo qué se requiere)
+**2. División LEN más relevante**
+**3. Relevancia para LEN**: Alta / Media / Baja — explica por qué en 1-2 líneas
+**4. Modalidad de participación** — ¿directa o como subcontratista? Analiza objetivamente
+**5. Plazos clave** (fechas importantes del proceso)
+**6. Recomendación final**: Participar / Evaluar / Descartar — con justificación breve`
+          }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      return res.status(502).json({ error: `OpenAI respondió ${response.status}: ${err.substring(0, 200)}` });
+    }
+
+    const data = await response.json();
+    const text = data.choices?.[0]?.message?.content || "No se pudo obtener el análisis.";
+    res.json({ analysis: text });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.listen(PORT, () => console.log(`Backend licitaciones en puerto ${PORT} | Ticket: ${TICKET.substring(0,8)}...`));
+app.post("/mp/analizar", async (req, res) => {
+  const OPENAI_KEY = process.env.OPENAI_API_KEY || "";
+  if (!OPENAI_KEY) return res.status(500).json({ error: "OPENAI_API_KEY no configurada en Render" });
+
+  const { item } = req.body;
+  if (!item) return res.status(400).json({ error: "item requerido" });
+
+  try {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${OPENAI_KEY}`
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
         max_tokens: 1000,
         messages: [
           {
@@ -292,7 +364,9 @@ Región: ${item.region || "No especificada"}
 Estado: ${item.estado || "N/A"}
 Publicación: ${item.fechaPublicacion || "N/A"}
 Cierre: ${item.fechaCierre || "N/A"}
-URL: ${item.url || ""}`
+URL: ${item.url || ""}
+
+Accede a la URL si está disponible para obtener más detalles.`
           }
         ]
       })
@@ -311,5 +385,3 @@ URL: ${item.url || ""}`
     res.status(500).json({ error: err.message });
   }
 });
-
-app.listen(PORT, () => console.log(`Backend licitaciones en puerto ${PORT} | Ticket: ${TICKET.substring(0,8)}...`));
