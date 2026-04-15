@@ -144,9 +144,9 @@ app.get("/buscar", async (req, res) => {
       };
     });
 
-    // Filtrar por rango de regiones si corresponde
+    // Filtrar por rango de regiones — incluir también las que no tienen región identificada
     if (codigosValidos) {
-      resultado = resultado.filter(r => r.codigoRegion && codigosValidos.has(r.codigoRegion));
+      resultado = resultado.filter(r => !r.codigoRegion || codigosValidos.has(r.codigoRegion));
     }
 
     res.json({ total: resultado.length, resultados: resultado });
