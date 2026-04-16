@@ -160,7 +160,7 @@ function App() {
   const doneStep = st => setSteps(p => { const a=[...p]; if(a.length) a[a.length-1].state=st; return a; });
   const stepIcon = s => s==="wait"?"⏳":s==="ok"?"✅":"⚪";
 
-  const enriquecerRegiones = async (items) => {
+  const enriquecerRegiones = async (items, regDesde, regHasta) => {
     const sinRegion = items.filter(r => !r.region && r.codigo);
     if(!sinRegion.length) return;
     try {
@@ -170,11 +170,39 @@ function App() {
       });
       if(!res.ok) return;
       const data = await res.json();
-      setResults(prev => prev.map(r => {
-        const d = data.resultados[r.codigo];
-        if(!d) return r;
-        return { ...r, region: d.region||r.region, organismo: d.organismo||r.organismo, monto: d.monto||r.monto, descripcion: d.descripcion||r.descripcion };
-      }));
+
+      // Calcular códigos válidos para filtrar después del enriquecimiento
+      let codigosValidos = null;
+      if(regDesde !== "todas" || regHasta !== "todas") {
+        const idxD = regDesde === "todas" ? 1 : REGIONES.findIndex(r => r.value === regDesde);
+        const idxH = regHasta === "todas" ? REGIONES.length-1 : REGIONES.findIndex(r => r.value === regHasta);
+        const s = Math.min(idxD<1?1:idxD, idxH<1?REGIONES.length-1:idxH);
+        const e = Math.max(idxD<1?1:idxD, idxH<1?REGIONES.length-1:idxH);
+        codigosValidos = new Set(REGIONES.slice(s,e+1).map(r => r.value));
+      }
+
+      setResults(prev => {
+        const actualizados = prev.map(r => {
+          const d = data.resultados[r.codigo];
+          const regionReal = d ? (d.region || r.region) : r.region;
+          return {
+            ...r,
+            region:      regionReal || "Región no disponible",
+            organismo:   d ? (d.organismo  || r.organismo)   : r.organismo,
+            monto:       d ? (d.monto      || r.monto)       : r.monto,
+            descripcion: d ? (d.descripcion|| r.descripcion) : r.descripcion,
+          };
+        });
+        // Filtrar por región real si hay rango seleccionado
+        // Las licitaciones sin región se incluyen siempre para no perder oportunidades
+        if(!codigosValidos) return actualizados;
+        return actualizados.filter(r => {
+          if(!r.region || r.region === "Región no disponible") return true;
+          const reg = REGIONES.find(reg => r.region && r.region.toLowerCase().includes(reg.label.toLowerCase()));
+          if(!reg || reg.value === "todas") return true;
+          return codigosValidos.has(reg.value);
+        });
+      });
     } catch(e) {}
   };
 
@@ -200,7 +228,7 @@ function App() {
         setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100));
         setTab("resultados");
         addStep(`✅ Total: ${uniq.length} licitaciones únicas`, "ok");
-        enriquecerRegiones(uniq);
+        enriquecerRegiones(uniq, regionDesde, regionHasta);
       } else {
         setError("Sin resultados. Prueba con otras palabras clave o un rango de fechas más amplio.");
       }
