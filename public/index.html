@@ -273,8 +273,32 @@ function App() {
     setAnalysisLoading(false);
   };
 
+  const enriquecerRegiones = async (items) => {
+    const sinRegion = items.filter(r => !r.region && r.codigo);
+    if (!sinRegion.length) return;
+    try {
+      const res = await fetch(`${BACKEND_URL}/detalle-lote`, {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ codigos: sinRegion.map(r => r.codigo) })
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setResults(prev => prev.map(r => {
+        const detalle = data.resultados[r.codigo];
+        if (!detalle) return r;
+        return {
+          ...r,
+          region:      detalle.region      || r.region,
+          organismo:   detalle.organismo   || r.organismo,
+          monto:       detalle.monto       || r.monto,
+          descripcion: detalle.descripcion || r.descripcion,
+        };
+      }));
+    } catch(e) {}
+  };
+
   const TABS = [
-    ["buscar",     "🔎 Buscar"],
     ["resultados", `📋 Resultados (${results.length})`],
     ["detalle",    "📄 Análisis IA"],
     ["historial",  `🕐 Historial (${history.length})`],
