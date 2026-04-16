@@ -41,14 +41,16 @@ const REGIONES = [
 ];
 
 const KW_VIAL_DEFAULT = [
-  "Ingeniería Vial","Diseño Geométrico","Seguridad Vial",
-  "Estudio de Tránsito","Prefactibilidad Vial","Factibilidad Vial",
-  "Diseño de Pavimentos","Caminos","Puentes","Obras Viales","Topografía Vial",
+  "Vial","Diseño Geométrico","Seguridad Vial","Tránsito",
+  "Prefactibilidad","Factibilidad","Paviment","Caminos","Puentes",
 ];
 const KW_HIDRO_DEFAULT = [
-  "Hidráulica","Hidrología","Drenaje","Aguas Lluvias",
-  "Modificación de Cauces","Inundaciones","Estudio Hidrológico",
-  "Cuencas Hidrográficas","APR",
+  "Hidráulic","Hidrológ","Drenaje","Aguas Lluvias",
+  "Cauces","Inundacion","Cuencas","APR","Hidrogeológ","Saneamiento",
+];
+const KW_SERVICIO_DEFAULT = [
+  "Estudio","Consultoría","Asesoría","Diagnóstico",
+  "Diseño","Inspección","Levantamiento","Catastro",
 ];
 
 function lsGet(key, fallback) {
@@ -110,9 +112,11 @@ function App() {
   const [tab, setTab]                   = useState("buscar");
   const [kwVial, setKwVial]             = useState(lsGet("kw_vial", KW_VIAL_DEFAULT));
   const [kwHidro, setKwHidro]           = useState(lsGet("kw_hidro", KW_HIDRO_DEFAULT));
-  const [activeKw, setActiveKw]         = useState(new Set(lsGet("kw_active", [...KW_VIAL_DEFAULT, ...KW_HIDRO_DEFAULT])));
+  const [kwServicio, setKwServicio]     = useState(lsGet("kw_servicio", KW_SERVICIO_DEFAULT));
+  const [activeKw, setActiveKw]         = useState(new Set(lsGet("kw_active", [...KW_VIAL_DEFAULT, ...KW_HIDRO_DEFAULT, ...KW_SERVICIO_DEFAULT])));
   const [newKwVial, setNewKwVial]       = useState("");
   const [newKwHidro, setNewKwHidro]     = useState("");
+  const [newKwServicio, setNewKwServicio] = useState("");
   const [regionDesde, setRegionDesde]   = useState("todas");
   const [regionHasta, setRegionHasta]   = useState("todas");
   const [soloVigentes, setSoloVigentes] = useState(true);
@@ -130,7 +134,7 @@ function App() {
   const abortRef = useRef(null);
   const timerRef = useRef(null);
 
-  const allKws = () => [...kwVial, ...kwHidro];
+  const allKws = () => [...kwVial, ...kwHidro, ...kwServicio];
 
   const toggleKw = kw => {
     setActiveKw(prev => {
@@ -213,20 +217,29 @@ function App() {
   };
 
   const buscar = async () => {
-    const kws = allKws().filter(k => activeKw.has(k));
-    if(!kws.length) { setError("Selecciona al menos una palabra clave."); return; }
+    const tecnicas  = [...kwVial, ...kwHidro].filter(k => activeKw.has(k));
+    const servicios = kwServicio.filter(k => activeKw.has(k));
+    if(!tecnicas.length)  { setError("Selecciona al menos una keyword técnica (Vial o Hidráulica)."); return; }
+    if(!servicios.length) { setError("Selecciona al menos una keyword de tipo de servicio."); return; }
+
     setLoading(true); setError(""); setSteps([]); setResults([]);
     abortRef.current = new AbortController();
     timerRef.current = setInterval(() => setElapsed(e => e+1), 1000);
     const found = [];
+
     try {
-      for(const kw of kws) {
-        addStep(`Buscando «${kw}»...`);
-        const r = await buscarEnBackend(kw, regionDesde, regionHasta, abortRef.current.signal);
+      // Buscar combinando cada técnica con cada servicio: "Hidráulic Estudio", "Hidráulic Diseño", etc.
+      const pares = [];
+      for(const t of tecnicas) for(const s of servicios) pares.push(`${t} ${s}`);
+
+      for(const par of pares) {
+        addStep(`Buscando «${par}»...`);
+        const r = await buscarEnBackend(par, regionDesde, regionHasta, abortRef.current.signal);
         const filtradas = filtrarPorFecha(r, soloVigentes, fechaInicio, fechaFin);
         doneStep(filtradas.length ? "ok" : "empty");
-        if(filtradas.length) { addStep(`✅ ${filtradas.length} resultado(s) con «${kw}»`, "ok"); found.push(...filtradas); }
+        if(filtradas.length) { addStep(`✅ ${filtradas.length} resultado(s) con «${par}»`, "ok"); found.push(...filtradas); }
       }
+
       clearInterval(timerRef.current);
       const uniq = deduplicar(found);
       if(uniq.length) {
@@ -310,6 +323,7 @@ function App() {
             {[
               {label:"Ingeniería Vial", color:"#2563eb", bg:"#eff6ff", border:"#bfdbfe", list:kwVial, setList:setKwVial, lsKey:"kw_vial", input:newKwVial, setInput:setNewKwVial},
               {label:"Hidráulica / Hidrología", color:"#0891b2", bg:"#ecfeff", border:"#a5f3fc", list:kwHidro, setList:setKwHidro, lsKey:"kw_hidro", input:newKwHidro, setInput:setNewKwHidro},
+              {label:"Tipo de servicio", color:"#16a34a", bg:"#f0fdf4", border:"#bbf7d0", list:kwServicio, setList:setKwServicio, lsKey:"kw_servicio", input:newKwServicio, setInput:setNewKwServicio},
             ].map(({label,color,bg,border,list,setList,lsKey,input,setInput}) => (
               <div key={label} style={{marginBottom:18}}>
                 <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
