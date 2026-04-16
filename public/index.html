@@ -58,23 +58,20 @@ function lsGet(key, fallback) {
 function lsSet(key, val) {
   try { localStorage.setItem(key, JSON.stringify(val)); } catch(e) {}
 }
-
 function normalizar(s) { return (s||"").toLowerCase().replace(/\s+/g," ").trim(); }
 function deduplicar(arr) {
   const seen = new Set();
   return arr.filter(r => { const k=normalizar(r.titulo||""); if(seen.has(k)) return false; seen.add(k); return true; });
 }
-
 function parseFecha(str) {
   if(!str||str==="–") return null;
   const p = str.split(/[-\/]/);
   if(p.length===3) {
     const [d,m,y] = p;
-    if(y.length===4) return new Date(`${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`);
+    if(y&&y.length===4) return new Date(`${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`);
   }
   return new Date(str);
 }
-
 function filtrarPorFecha(arr, soloVigentes, fechaInicio, fechaFin) {
   const hoy = new Date(); hoy.setHours(0,0,0,0);
   const DESDE_DEFAULT = new Date("2026-01-01");
@@ -94,15 +91,13 @@ function filtrarPorFecha(arr, soloVigentes, fechaInicio, fechaFin) {
     return true;
   });
 }
-
 async function buscarEnBackend(keyword, regionDesde, regionHasta, signal) {
   const params = new URLSearchParams({q: keyword});
   if(regionDesde !== "todas") params.set("desde", regionDesde);
   if(regionHasta !== "todas") params.set("hasta", regionHasta);
   let res;
-  try {
-    res = await fetch(`${BACKEND_URL}/buscar?${params}`, {signal});
-  } catch(e) {
+  try { res = await fetch(`${BACKEND_URL}/buscar?${params}`, {signal}); }
+  catch(e) {
     if(e.name==="AbortError") throw e;
     throw new Error("No se pudo conectar al backend. Puede estar iniciando — espera 30s y reintenta.");
   }
@@ -132,86 +127,56 @@ function App() {
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [error, setError]               = useState("");
   const [elapsed, setElapsed]           = useState(0);
-  const abortRef  = useRef(null);
-  const timerRef  = useRef(null);
+  const abortRef = useRef(null);
+  const timerRef = useRef(null);
 
   const allKws = () => [...kwVial, ...kwHidro];
 
   const toggleKw = kw => {
     setActiveKw(prev => {
-      const n = new Set(prev);
-      n.has(kw) ? n.delete(kw) : n.add(kw);
-      lsSet("kw_active", [...n]);
-      return n;
+      const n = new Set(prev); n.has(kw) ? n.delete(kw) : n.add(kw);
+      lsSet("kw_active", [...n]); return n;
     });
   };
-
   const toggleGroup = group => {
     const allOn = group.every(k => activeKw.has(k));
     setActiveKw(prev => {
-      const n = new Set(prev);
-      group.forEach(k => allOn ? n.delete(k) : n.add(k));
-      lsSet("kw_active", [...n]);
-      return n;
+      const n = new Set(prev); group.forEach(k => allOn ? n.delete(k) : n.add(k));
+      lsSet("kw_active", [...n]); return n;
     });
   };
-
   const addKw = (kw, lsKey, setList, setInput) => {
     const clean = kw.trim();
     if(!clean || allKws().includes(clean)) return;
-    setList(prev => {
-      const n = [...prev, clean];
-      lsSet(lsKey, n);
-      return n;
-    });
-    setActiveKw(prev => {
-      const n = new Set([...prev, clean]);
-      lsSet("kw_active", [...n]);
-      return n;
-    });
+    setList(prev => { const n=[...prev,clean]; lsSet(lsKey,n); return n; });
+    setActiveKw(prev => { const n=new Set([...prev,clean]); lsSet("kw_active",[...n]); return n; });
     setInput("");
   };
-
   const removeKw = (kw, lsKey, setList) => {
-    setList(prev => {
-      const n = prev.filter(k => k !== kw);
-      lsSet(lsKey, n);
-      return n;
-    });
-    setActiveKw(prev => {
-      const n = new Set(prev);
-      n.delete(kw);
-      lsSet("kw_active", [...n]);
-      return n;
-    });
+    setList(prev => { const n=prev.filter(k=>k!==kw); lsSet(lsKey,n); return n; });
+    setActiveKw(prev => { const n=new Set(prev); n.delete(kw); lsSet("kw_active",[...n]); return n; });
   };
+  const addStep  = (msg, state="wait") => setSteps(p => [...p, {msg, state}]);
+  const doneStep = st => setSteps(p => { const a=[...p]; if(a.length) a[a.length-1].state=st; return a; });
+  const stepIcon = s => s==="wait"?"⏳":s==="ok"?"✅":"⚪";
 
   const enriquecerRegiones = async (items) => {
     const sinRegion = items.filter(r => !r.region && r.codigo);
-    if (!sinRegion.length) return;
+    if(!sinRegion.length) return;
     try {
       const res = await fetch(`${BACKEND_URL}/detalle-lote`, {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
+        method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({ codigos: sinRegion.map(r => r.codigo) })
       });
-      if (!res.ok) return;
+      if(!res.ok) return;
       const data = await res.json();
       setResults(prev => prev.map(r => {
-        const detalle = data.resultados[r.codigo];
-        if (!detalle) return r;
-        return {
-          ...r,
-          region:     detalle.region     || r.region,
-          organismo:  detalle.organismo  || r.organismo,
-          monto:      detalle.monto      || r.monto,
-          descripcion: detalle.descripcion || r.descripcion,
-        };
+        const d = data.resultados[r.codigo];
+        if(!d) return r;
+        return { ...r, region: d.region||r.region, organismo: d.organismo||r.organismo, monto: d.monto||r.monto, descripcion: d.descripcion||r.descripcion };
       }));
     } catch(e) {}
   };
-  const doneStep = st => setSteps(p => { const a=[...p]; if(a.length) a[a.length-1].state=st; return a; });
-  const stepIcon = s => s==="wait"?"⏳":s==="ok"?"✅":"⚪";
 
   const buscar = async () => {
     const kws = allKws().filter(k => activeKw.has(k));
@@ -232,10 +197,9 @@ function App() {
       const uniq = deduplicar(found);
       if(uniq.length) {
         setResults(uniq);
-        setHistory(prev => deduplicar([...uniq, ...prev]).slice(0,100));
+        setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100));
         setTab("resultados");
         addStep(`✅ Total: ${uniq.length} licitaciones únicas`, "ok");
-        // Enriquecer con regiones reales en segundo plano
         enriquecerRegiones(uniq);
       } else {
         setError("Sin resultados. Prueba con otras palabras clave o un rango de fechas más amplio.");
@@ -255,50 +219,18 @@ function App() {
     await new Promise(r => setTimeout(r, 100));
     try {
       const res = await fetch(`${BACKEND_URL}/mp/analizar`, {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
+        method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({item})
       });
-      if(!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        setAnalysis(`Error del backend: ${err.error || res.status}`);
-        setAnalysisLoading(false);
-        return;
-      }
+      if(!res.ok) { const err=await res.json().catch(()=>({})); setAnalysis(`Error: ${err.error||res.status}`); setAnalysisLoading(false); return; }
       const data = await res.json();
       setAnalysis(data.analysis || "No se pudo obtener el análisis.");
-    } catch(e) {
-      setAnalysis(`Error de conexión: ${e.message}`);
-    }
+    } catch(e) { setAnalysis(`Error de conexión: ${e.message}`); }
     setAnalysisLoading(false);
   };
 
-  const enriquecerRegiones = async (items) => {
-    const sinRegion = items.filter(r => !r.region && r.codigo);
-    if (!sinRegion.length) return;
-    try {
-      const res = await fetch(`${BACKEND_URL}/detalle-lote`, {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({ codigos: sinRegion.map(r => r.codigo) })
-      });
-      if (!res.ok) return;
-      const data = await res.json();
-      setResults(prev => prev.map(r => {
-        const detalle = data.resultados[r.codigo];
-        if (!detalle) return r;
-        return {
-          ...r,
-          region:      detalle.region      || r.region,
-          organismo:   detalle.organismo   || r.organismo,
-          monto:       detalle.monto       || r.monto,
-          descripcion: detalle.descripcion || r.descripcion,
-        };
-      }));
-    } catch(e) {}
-  };
-
   const TABS = [
+    ["buscar",     "🔎 Buscar"],
     ["resultados", `📋 Resultados (${results.length})`],
     ["detalle",    "📄 Análisis IA"],
     ["historial",  `🕐 Historial (${history.length})`],
@@ -308,92 +240,67 @@ function App() {
     const on = activeKw.has(kw);
     return (
       <div style={{display:"flex",alignItems:"center",borderRadius:20,border:`2px solid ${on?color:"#e2e8f0"}`,background:on?color+"18":"#f8fafc",overflow:"hidden"}}>
-        <button onClick={() => toggleKw(kw)} style={{padding:"4px 10px",fontSize:12,cursor:"pointer",fontWeight:600,background:"transparent",border:"none",color:on?color:"#94a3b8"}}>
+        <button onClick={()=>toggleKw(kw)} style={{padding:"4px 10px",fontSize:12,cursor:"pointer",fontWeight:600,background:"transparent",border:"none",color:on?color:"#94a3b8"}}>
           {on?"✓ ":""}{kw}
         </button>
-        <button onClick={() => removeKw(kw, lsKey, setList)} style={{padding:"4px 7px 4px 2px",fontSize:11,cursor:"pointer",background:"transparent",border:"none",color:"#94a3b8"}} title="Eliminar">✕</button>
+        <button onClick={()=>removeKw(kw,lsKey,setList)} style={{padding:"4px 7px 4px 2px",fontSize:11,cursor:"pointer",background:"transparent",border:"none",color:"#94a3b8"}} title="Eliminar">✕</button>
       </div>
     );
   };
 
-  const GroupHeader = ({label, color, bg, border, group}) => (
-    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-      <span style={{fontSize:11,fontWeight:700,color,textTransform:"uppercase",letterSpacing:1}}>{label}</span>
-      <button onClick={() => toggleGroup(group)} style={{fontSize:10,padding:"2px 8px",borderRadius:10,border:`1px solid ${border}`,background:bg,color,cursor:"pointer",fontWeight:600}}>
-        {group.every(k => activeKw.has(k)) ? "Desactivar todos" : "Activar todos"}
-      </button>
-    </div>
-  );
-
   return (
     <div style={{fontFamily:"system-ui,sans-serif",maxWidth:900,margin:"0 auto",padding:16,color:"#1e293b",background:"#f8fafc",minHeight:"100vh"}}>
 
-      {/* Header */}
       <div style={{background:"linear-gradient(135deg,#1e3a5f,#2563eb)",borderRadius:12,padding:"20px 24px",marginBottom:20,color:"white"}}>
         <div style={{fontSize:22,fontWeight:800}}>🏛️ Agente Mercado Público</div>
         <div style={{fontSize:12,opacity:.8,marginTop:3}}>Licitaciones · Ingeniería Vial · Chile · API Oficial</div>
       </div>
 
-      {/* Tabs */}
       <div style={{display:"flex",gap:6,marginBottom:20,flexWrap:"wrap"}}>
         {TABS.map(([k,l]) => (
-          <button key={k} onClick={() => setTab(k)} style={{padding:"8px 16px",borderRadius:8,border:"none",cursor:"pointer",fontSize:13,fontWeight:600,background:tab===k?"#2563eb":"white",color:tab===k?"white":"#475569",boxShadow:"0 1px 3px rgba(0,0,0,.08)"}}>
+          <button key={k} onClick={()=>setTab(k)} style={{padding:"8px 16px",borderRadius:8,border:"none",cursor:"pointer",fontSize:13,fontWeight:600,background:tab===k?"#2563eb":"white",color:tab===k?"white":"#475569",boxShadow:"0 1px 3px rgba(0,0,0,.08)"}}>
             {l}
           </button>
         ))}
       </div>
 
-      {/* ── BUSCAR ── */}
       {tab==="buscar" && (
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
 
-          {/* Keywords */}
           <div style={{background:"white",borderRadius:12,padding:20,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
               <div style={{fontWeight:700,fontSize:14}}>🏷️ Palabras clave</div>
-              <div style={{fontSize:12,color:"#64748b"}}>
-                <b style={{color:activeKw.size===allKws().length?"#16a34a":"#ea580c"}}>{activeKw.size}</b> / {allKws().length} activas
-              </div>
+              <div style={{fontSize:12,color:"#64748b"}}><b style={{color:activeKw.size===allKws().length?"#16a34a":"#ea580c"}}>{activeKw.size}</b> / {allKws().length} activas</div>
             </div>
 
-            {/* Ingeniería Vial */}
-            <div style={{marginBottom:18}}>
-              <GroupHeader label="Ingeniería Vial" color="#2563eb" bg="#eff6ff" border="#bfdbfe" group={kwVial}/>
-              <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
-                {kwVial.map(kw => <KwChip key={kw} kw={kw} color="#2563eb" lsKey="kw_vial" setList={setKwVial}/>)}
+            {[
+              {label:"Ingeniería Vial", color:"#2563eb", bg:"#eff6ff", border:"#bfdbfe", list:kwVial, setList:setKwVial, lsKey:"kw_vial", input:newKwVial, setInput:setNewKwVial},
+              {label:"Hidráulica / Hidrología", color:"#0891b2", bg:"#ecfeff", border:"#a5f3fc", list:kwHidro, setList:setKwHidro, lsKey:"kw_hidro", input:newKwHidro, setInput:setNewKwHidro},
+            ].map(({label,color,bg,border,list,setList,lsKey,input,setInput}) => (
+              <div key={label} style={{marginBottom:18}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                  <span style={{fontSize:11,fontWeight:700,color,textTransform:"uppercase",letterSpacing:1}}>{label}</span>
+                  <button onClick={()=>toggleGroup(list)} style={{fontSize:10,padding:"2px 8px",borderRadius:10,border:`1px solid ${border}`,background:bg,color,cursor:"pointer",fontWeight:600}}>
+                    {list.every(k=>activeKw.has(k))?"Desactivar todos":"Activar todos"}
+                  </button>
+                </div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+                  {list.map(kw => <KwChip key={kw} kw={kw} color={color} lsKey={lsKey} setList={setList}/>)}
+                </div>
+                <div style={{display:"flex",gap:6}}>
+                  <input value={input} onChange={e=>setInput(e.target.value)}
+                    onKeyDown={e=>e.key==="Enter"&&addKw(input,lsKey,setList,setInput)}
+                    placeholder={`Agregar keyword de ${label.toLowerCase()}...`}
+                    style={{flex:1,padding:"7px 12px",borderRadius:8,border:"1px dashed #cbd5e1",fontSize:12,outline:"none",background:"#fafafa"}}/>
+                  <button onClick={()=>addKw(input,lsKey,setList,setInput)}
+                    style={{padding:"7px 14px",borderRadius:8,background:bg,color,border:`1px solid ${border}`,fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                    + Agregar
+                  </button>
+                </div>
               </div>
-              <div style={{display:"flex",gap:6}}>
-                <input value={newKwVial} onChange={e=>setNewKwVial(e.target.value)}
-                  onKeyDown={e=>e.key==="Enter"&&addKw(newKwVial,"kw_vial",setKwVial,setNewKwVial)}
-                  placeholder="Agregar keyword de ingeniería vial..."
-                  style={{flex:1,padding:"7px 12px",borderRadius:8,border:"1px dashed #cbd5e1",fontSize:12,outline:"none",background:"#fafafa"}}/>
-                <button onClick={()=>addKw(newKwVial,"kw_vial",setKwVial,setNewKwVial)}
-                  style={{padding:"7px 14px",borderRadius:8,background:"#eff6ff",color:"#2563eb",border:"1px solid #bfdbfe",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-                  + Agregar
-                </button>
-              </div>
-            </div>
-
-            {/* Hidráulica / Hidrología */}
-            <div>
-              <GroupHeader label="Hidráulica / Hidrología" color="#0891b2" bg="#ecfeff" border="#a5f3fc" group={kwHidro}/>
-              <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
-                {kwHidro.map(kw => <KwChip key={kw} kw={kw} color="#0891b2" lsKey="kw_hidro" setList={setKwHidro}/>)}
-              </div>
-              <div style={{display:"flex",gap:6}}>
-                <input value={newKwHidro} onChange={e=>setNewKwHidro(e.target.value)}
-                  onKeyDown={e=>e.key==="Enter"&&addKw(newKwHidro,"kw_hidro",setKwHidro,setNewKwHidro)}
-                  placeholder="Agregar keyword de hidráulica / hidrología..."
-                  style={{flex:1,padding:"7px 12px",borderRadius:8,border:"1px dashed #cbd5e1",fontSize:12,outline:"none",background:"#fafafa"}}/>
-                <button onClick={()=>addKw(newKwHidro,"kw_hidro",setKwHidro,setNewKwHidro)}
-                  style={{padding:"7px 14px",borderRadius:8,background:"#ecfeff",color:"#0891b2",border:"1px solid #a5f3fc",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-                  + Agregar
-                </button>
-              </div>
-            </div>
+            ))}
           </div>
 
-          {/* Regiones */}
           <div style={{background:"white",borderRadius:12,padding:20,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
             <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>📍 Rango de regiones</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:12,alignItems:"end"}}>
@@ -413,10 +320,9 @@ function App() {
                 </select>
               </div>
             </div>
-            <div style={{fontSize:11,color:"#94a3b8",marginTop:8}}>💡 El filtro de región lo aplica el backend directamente en la consulta a Mercado Público.</div>
+            <div style={{fontSize:11,color:"#94a3b8",marginTop:8}}>💡 El filtro de región lo aplica el backend en la consulta a Mercado Público.</div>
           </div>
 
-          {/* Filtro fechas */}
           <div style={{background:"white",borderRadius:12,padding:20,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
             <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>📅 Filtro de fechas</div>
             <div style={{display:"flex",gap:8,marginBottom:16}}>
@@ -457,23 +363,16 @@ function App() {
             )}
           </div>
 
-          {/* Botón buscar */}
           <div style={{background:"white",borderRadius:12,padding:20,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
             <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
               <button onClick={buscar} disabled={loading} style={{background:loading?"#94a3b8":"#2563eb",color:"white",border:"none",padding:"12px 32px",borderRadius:8,fontSize:15,fontWeight:700,cursor:loading?"not-allowed":"pointer",boxShadow:loading?"none":"0 2px 8px rgba(37,99,235,.35)"}}>
                 {loading ? `⏳ Buscando... ${elapsed}s` : "🚀 Buscar Licitaciones"}
               </button>
               {loading && (
-                <button onClick={cancelar} style={{background:"#fee2e2",color:"#dc2626",border:"none",padding:"12px 20px",borderRadius:8,fontSize:14,fontWeight:600,cursor:"pointer"}}>
-                  ✕ Cancelar
-                </button>
+                <button onClick={cancelar} style={{background:"#fee2e2",color:"#dc2626",border:"none",padding:"12px 20px",borderRadius:8,fontSize:14,fontWeight:600,cursor:"pointer"}}>✕ Cancelar</button>
               )}
             </div>
-            {error && (
-              <div style={{marginTop:12,background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",fontSize:13,color:"#dc2626"}}>
-                ⚠️ {error}
-              </div>
-            )}
+            {error && <div style={{marginTop:12,background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",fontSize:13,color:"#dc2626"}}>⚠️ {error}</div>}
             {steps.length > 0 && (
               <div style={{marginTop:16}}>
                 <div style={{fontSize:12,fontWeight:700,color:"#64748b",marginBottom:8}}>Progreso de búsqueda</div>
@@ -488,7 +387,6 @@ function App() {
         </div>
       )}
 
-      {/* ── RESULTADOS ── */}
       {tab==="resultados" && (
         <div>
           {results.length===0
@@ -500,7 +398,7 @@ function App() {
                     <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
                       <span style={{background:"#eff6ff",color:"#2563eb",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>🏛️ Mercado Público</span>
                       {r.estado && <span style={{background:"#f0fdf4",color:"#15803d",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>● {r.estado}</span>}
-                      <span style={{background:"#fefce8",color:"#854d0e",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>📍 {r.region || "Región no disponible"}</span>
+                      <span style={{background:"#fefce8",color:"#854d0e",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>📍 {r.region||"Cargando región..."}</span>
                     </div>
                     <div style={{fontWeight:700,fontSize:14,marginBottom:4,lineHeight:1.4}}>{r.titulo||"Sin título"}</div>
                     <div style={{fontSize:12,color:"#64748b",marginBottom:4}}>{r.organismo}</div>
@@ -512,7 +410,7 @@ function App() {
                     </div>
                     {r.descripcion && <div style={{fontSize:12,color:"#475569",marginTop:8,lineHeight:1.5}}>{r.descripcion}</div>}
                     <div style={{display:"flex",gap:8,marginTop:10,flexWrap:"wrap"}}>
-                      <button onClick={() => verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>
+                      <button onClick={()=>verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>
                         🤖 Analizar con IA
                       </button>
                       {r.url && <a href={r.url} target="_blank" rel="noreferrer" style={{background:"#f8fafc",color:"#475569",border:"1px solid #e2e8f0",padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600}}>
@@ -526,7 +424,6 @@ function App() {
         </div>
       )}
 
-      {/* ── ANÁLISIS IA ── */}
       {tab==="detalle" && (
         <div>
           {!selected
@@ -553,7 +450,6 @@ function App() {
         </div>
       )}
 
-      {/* ── HISTORIAL ── */}
       {tab==="historial" && (
         <div>
           {history.length===0
@@ -561,19 +457,17 @@ function App() {
             : <>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
                   <div style={{fontSize:13,color:"#64748b"}}>{history.length} licitaciones guardadas</div>
-                  <button onClick={() => setHistory([])} style={{background:"#fee2e2",color:"#dc2626",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>
-                    🗑️ Limpiar
-                  </button>
+                  <button onClick={()=>setHistory([])} style={{background:"#fee2e2",color:"#dc2626",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>🗑️ Limpiar</button>
                 </div>
                 {history.map((r,i) => (
                   <div key={i} style={{background:"white",border:"1px solid #e2e8f0",borderRadius:8,padding:12,marginBottom:8}}>
                     <div style={{display:"flex",gap:6,marginBottom:4,flexWrap:"wrap"}}>
                       {r.estado && <span style={{background:"#f0fdf4",color:"#15803d",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>● {r.estado}</span>}
-                      <span style={{background:"#fefce8",color:"#854d0e",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>📍 {r.region || "Región no disponible"}</span>
+                      <span style={{background:"#fefce8",color:"#854d0e",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>📍 {r.region||"Región no disponible"}</span>
                     </div>
                     <div style={{fontWeight:600,fontSize:13}}>{r.titulo}</div>
                     <div style={{fontSize:11,color:"#94a3b8",marginTop:3}}>{r.organismo}{r.fechaCierre?` · Cierre: ${r.fechaCierre}`:""}</div>
-                    <button onClick={() => verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"4px 10px",borderRadius:6,fontSize:11,cursor:"pointer",marginTop:8,fontWeight:600}}>
+                    <button onClick={()=>verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"4px 10px",borderRadius:6,fontSize:11,cursor:"pointer",marginTop:8,fontWeight:600}}>
                       🤖 Analizar
                     </button>
                   </div>
