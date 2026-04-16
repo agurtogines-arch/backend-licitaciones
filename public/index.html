@@ -186,7 +186,30 @@ function App() {
     });
   };
 
-  const addStep = (msg, state="wait") => setSteps(p => [...p, {msg, state}]);
+  const enriquecerRegiones = async (items) => {
+    const sinRegion = items.filter(r => !r.region && r.codigo);
+    if (!sinRegion.length) return;
+    try {
+      const res = await fetch(`${BACKEND_URL}/detalle-lote`, {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ codigos: sinRegion.map(r => r.codigo) })
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setResults(prev => prev.map(r => {
+        const detalle = data.resultados[r.codigo];
+        if (!detalle) return r;
+        return {
+          ...r,
+          region:     detalle.region     || r.region,
+          organismo:  detalle.organismo  || r.organismo,
+          monto:      detalle.monto      || r.monto,
+          descripcion: detalle.descripcion || r.descripcion,
+        };
+      }));
+    } catch(e) {}
+  };
   const doneStep = st => setSteps(p => { const a=[...p]; if(a.length) a[a.length-1].state=st; return a; });
   const stepIcon = s => s==="wait"?"⏳":s==="ok"?"✅":"⚪";
 
@@ -212,6 +235,8 @@ function App() {
         setHistory(prev => deduplicar([...uniq, ...prev]).slice(0,100));
         setTab("resultados");
         addStep(`✅ Total: ${uniq.length} licitaciones únicas`, "ok");
+        // Enriquecer con regiones reales en segundo plano
+        enriquecerRegiones(uniq);
       } else {
         setError("Sin resultados. Prueba con otras palabras clave o un rango de fechas más amplio.");
       }
@@ -451,7 +476,7 @@ function App() {
                     <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
                       <span style={{background:"#eff6ff",color:"#2563eb",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>🏛️ Mercado Público</span>
                       {r.estado && <span style={{background:"#f0fdf4",color:"#15803d",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>● {r.estado}</span>}
-                      {r.region && <span style={{background:"#fefce8",color:"#854d0e",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>📍 {r.region}</span>}
+                      <span style={{background:"#fefce8",color:"#854d0e",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>📍 {r.region || "Región no disponible"}</span>
                     </div>
                     <div style={{fontWeight:700,fontSize:14,marginBottom:4,lineHeight:1.4}}>{r.titulo||"Sin título"}</div>
                     <div style={{fontSize:12,color:"#64748b",marginBottom:4}}>{r.organismo}</div>
@@ -520,7 +545,7 @@ function App() {
                   <div key={i} style={{background:"white",border:"1px solid #e2e8f0",borderRadius:8,padding:12,marginBottom:8}}>
                     <div style={{display:"flex",gap:6,marginBottom:4,flexWrap:"wrap"}}>
                       {r.estado && <span style={{background:"#f0fdf4",color:"#15803d",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>● {r.estado}</span>}
-                      {r.region && <span style={{background:"#fefce8",color:"#854d0e",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>📍 {r.region}</span>}
+                      <span style={{background:"#fefce8",color:"#854d0e",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>📍 {r.region || "Región no disponible"}</span>
                     </div>
                     <div style={{fontWeight:600,fontSize:13}}>{r.titulo}</div>
                     <div style={{fontSize:11,color:"#94a3b8",marginTop:3}}>{r.organismo}{r.fechaCierre?` · Cierre: ${r.fechaCierre}`:""}</div>
