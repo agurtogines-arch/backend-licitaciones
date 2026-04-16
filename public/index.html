@@ -198,8 +198,14 @@ function App() {
         if(!codigosValidos) return actualizados;
         return actualizados.filter(r => {
           if(!r.region || r.region === "Región no disponible") return true;
-          const reg = REGIONES.find(reg => r.region && r.region.toLowerCase().includes(reg.label.toLowerCase()));
-          if(!reg || reg.value === "todas") return true;
+          // Normalizar: quitar tildes, apóstrofes y caracteres especiales para comparar
+          const norm = s => s.toLowerCase()
+            .replace(/[áàä]/g,"a").replace(/[éèë]/g,"e").replace(/[íìï]/g,"i")
+            .replace(/[óòö]/g,"o").replace(/[úùü]/g,"u").replace(/ñ/g,"n")
+            .replace(/['''`´]/g,"").replace(/\s+/g," ").trim();
+          const regionNorm = norm(r.region);
+          const reg = REGIONES.find(re => re.value !== "todas" && regionNorm.includes(norm(re.label)));
+          if(!reg) return true; // no se pudo identificar → incluir
           return codigosValidos.has(reg.value);
         });
       });
