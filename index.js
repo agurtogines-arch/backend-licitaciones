@@ -158,7 +158,39 @@ app.get("/buscar", async (req, res) => {
   }
 });
 
-// ── Detalle individual ────────────────────────────────────────────────────────
+// ── Detalle en lote ───────────────────────────────────────────────────────────
+app.post("/detalle-lote", async (req, res) => {
+  const { codigos } = req.body;
+  if (!codigos || !Array.isArray(codigos)) return res.status(400).json({ error: "codigos requerido" });
+
+  const resultados = {};
+  const BATCH = 5;
+
+  for (let i = 0; i < codigos.length; i += BATCH) {
+    const lote = codigos.slice(i, i + BATCH);
+    await Promise.all(lote.map(async codigo => {
+      try {
+        const url = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?codigo=${codigo}&ticket=${TICKET}`;
+        const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
+        if (!r.ok) return;
+        const data = await r.json();
+        const l = data.Listado?.[0];
+        if (!l) return;
+        const regionTexto = l.Comprador?.RegionUnidad || "";
+        const regionExtraida = extraerRegionDeTexto(regionTexto) ||
+                               extraerRegionDeTexto(`${l.Nombre||""} ${l.Descripcion||""}`);
+        resultados[codigo] = {
+          organismo:  l.Comprador?.NombreOrganismo || null,
+          region:     regionTexto || regionExtraida?.nombre || null,
+          monto:      l.MontoEstimado ? `${Number(l.MontoEstimado).toLocaleString("es-CL")} CLP` : null,
+          descripcion: l.Descripcion || null
+        };
+      } catch(e) {}
+    }));
+  }
+
+  res.json({ resultados });
+});
 app.get("/detalle/:codigo", async (req, res) => {
   const codigo = req.params.codigo;
   try {
