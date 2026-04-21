@@ -61,11 +61,22 @@ app.get("/regiones", (req, res) => res.json(REGIONES));
 
 // ── Búsqueda Mercado Público ──────────────────────────────────────────────────
 app.get("/buscar", async (req, res) => {
-  const keyword    = (req.query.q || "").trim();
-  const desdeParam = req.query.desde || "todas";
-  const hastaParam = req.query.hasta || "todas";
+  const keywordsParam  = (req.query.keywords || "").trim();
+  const serviciosParam = (req.query.servicios || "").trim();
+  const legacyQ        = (req.query.q || "").trim(); // compatibilidad n8n
+  const desdeParam     = req.query.desde || "todas";
+  const hastaParam     = req.query.hasta || "todas";
 
-  if (!keyword) return res.status(400).json({ error: "Parámetro q requerido" });
+  if (!keywordsParam && !legacyQ) {
+    return res.status(400).json({ error: "Parámetro keywords requerido" });
+  }
+
+  const keywords  = keywordsParam
+    ? keywordsParam.split(",").map(k => k.trim()).filter(Boolean)
+    : [legacyQ];
+  const servicios = serviciosParam
+    ? serviciosParam.split(",").map(k => k.trim()).filter(Boolean)
+    : [];
 
   let codigosValidos = null;
   if (desdeParam !== "todas" || hastaParam !== "todas") {
@@ -77,19 +88,18 @@ app.get("/buscar", async (req, res) => {
   }
 
   try {
-    const primerTerm = keyword.split(/\s+/).filter(Boolean)[0] || keyword;
     const controller = new AbortController();
     const timeoutId  = setTimeout(() => controller.abort(), 90000);
 
-    const fetchMP = async (extraParams) => {
+    // UNA SOLA llamada al API — todas las licitaciones activas
+    const fetchAll = async (extraParams) => {
       const usaEstado = !extraParams.includes("tipo=SC");
       const mpUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json` +
-                    `?${usaEstado ? "estado=activas&" : ""}nombre=${encodeURIComponent(primerTerm)}&ticket=${TICKET}${extraParams}`;
+                    `?${usaEstado ? "estado=activas&" : ""}ticket=${TICKET}${extraParams}`;
       try {
         const mpRes = await fetch(mpUrl, { signal: controller.signal });
-        const rawText = await mpRes.text();
         if (!mpRes.ok) return [];
-        const data = JSON.parse(rawText);
+        const data = await mpRes.json();
         return data.Listado || [];
       } catch (e) {
         if (e.name === "AbortError") throw e;
@@ -97,31 +107,49 @@ app.get("/buscar", async (req, res) => {
       }
     };
 
-    const [sinTipo, conSC, porDescripcion] = await Promise.all([
-      fetchMP(""),
-      fetchMP("&tipo=SC"),
-      fetchMP(`&descripcion=${encodeURIComponent(primerTerm)}`).catch(() => [])
+    const [sinTipo, conSC] = await Promise.all([
+      fetchAll(""),
+      fetchAll("&tipo=SC")
     ]);
     clearTimeout(timeoutId);
 
     // Fusionar y deduplicar
     const vistos = new Set();
     const licitaciones = [];
-    for (const l of [...sinTipo, ...conSC, ...porDescripcion]) {
+    for (const l of [...sinTipo, ...conSC]) {
       const cod = l.CodigoExterno || JSON.stringify(l);
       if (!vistos.has(cod)) { vistos.add(cod); licitaciones.push(l); }
     }
 
-    // Filtrar: truncar términos largos para manejar variaciones de género/número en español
-    const terms = keyword.toLowerCase().split(/\s+/).filter(Boolean);
+    // ── Normalización ──────────────────────────────────────────────────────
+    const norm = s => (s || "").toLowerCase()
+      .replace(/[áàä]/g, "a").replace(/[éèë]/g, "e").replace(/[íìï]/g, "i")
+      .replace(/[óòö]/g, "o").replace(/[úùü]/g, "u").replace(/ñ/g, "n")
+      .replace(/['''`´]/g, "").trim();
+
+    // Stemming: cortar últimas 2 letras para palabras de 6+ chars
+    // hidráulica → hidraul | cauces → cauc | modificación → modificaci
+    const stem = t => t.length >= 6 ? t.slice(0, -2) : t;
+
+    // ¿El título contiene TODOS los términos de una keyword?
+    const matchesKeyword = (titulo, keyword) => {
+      const tNorm = norm(titulo);
+      const terms = norm(keyword)
+        .split(/\s+/)
+        .filter(t => t.length >= 3); // ignorar "de", "y", "el", etc.
+      if (!terms.length) return false;
+      return terms.every(t => tNorm.includes(stem(t)));
+    };
+
+    // ── Filtro principal sobre título completo ─────────────────────────────
+    // Condición: AL MENOS UNA keyword técnica
+    //            Y AL MENOS UN tipo de servicio (si hay activos)
     const filtradas = licitaciones.filter(l => {
-      const texto = `${l.Nombre || ""} ${l.Descripcion || ""}`.toLowerCase();
-      return terms.every(t => {
-        // Para términos de 6+ letras, truncar las últimas 2 para cubrir variaciones
-        // hidráulico → hidráuli, hidráulica ✓, hidráulicos ✓
-        const stem = t.length >= 6 ? t.slice(0, -2) : t;
-        return texto.includes(stem);
-      });
+      const titulo = `${l.Nombre || ""} ${l.Descripcion || ""}`;
+      const matchesTecnica = keywords.some(kw => matchesKeyword(titulo, kw));
+      if (!matchesTecnica) return false;
+      if (servicios.length === 0) return true;
+      return servicios.some(s => matchesKeyword(titulo, s));
     });
 
     // Mapear resultados
@@ -144,7 +172,7 @@ app.get("/buscar", async (req, res) => {
       };
     });
 
-    // Filtrar por rango de regiones — incluir también las que no tienen región identificada
+    // Filtrar por rango de regiones sobre lo identificado en el título
     if (codigosValidos) {
       resultado = resultado.filter(r => !r.codigoRegion || codigosValidos.has(r.codigoRegion));
     }
@@ -191,6 +219,7 @@ app.post("/detalle-lote", async (req, res) => {
 
   res.json({ resultados });
 });
+
 app.get("/detalle/:codigo", async (req, res) => {
   const codigo = req.params.codigo;
   try {
@@ -356,64 +385,3 @@ Entrega el análisis en este formato:
 });
 
 app.listen(PORT, () => console.log(`Backend licitaciones en puerto ${PORT} | Ticket: ${TICKET.substring(0,8)}...`));
-app.post("/mp/analizar", async (req, res) => {
-  const OPENAI_KEY = process.env.OPENAI_API_KEY || "";
-  if (!OPENAI_KEY) return res.status(500).json({ error: "OPENAI_API_KEY no configurada en Render" });
-
-  const { item } = req.body;
-  if (!item) return res.status(400).json({ error: "item requerido" });
-
-  try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${OPENAI_KEY}`
-      },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        max_tokens: 1000,
-        messages: [
-          {
-            role: "system",
-            content: `Eres un analista experto en licitaciones públicas chilenas para una consultora de ingeniería civil vial.
-La empresa se especializa en: estudios viales, diseño geométrico, seguridad vial, hidráulica, hidrología, puentes, APR y prefactibilidad de rutas. NO es constructora.
-Analiza la licitación y responde en español con:
-1. Relevancia: Alta / Media / Baja (y por qué en 1 línea)
-2. Tipo de servicio requerido
-3. Coincidencia con el perfil de la empresa
-4. Recomendación: Participar / Evaluar / Descartar
-Sé conciso. Máximo 200 palabras.`
-          },
-          {
-            role: "user",
-            content: `Analiza esta licitación de Mercado Público Chile:
-
-Título: ${item.titulo}
-Código: ${item.codigo || "N/A"}
-Organismo: ${item.organismo || "N/A"}
-Región: ${item.region || "No especificada"}
-Estado: ${item.estado || "N/A"}
-Publicación: ${item.fechaPublicacion || "N/A"}
-Cierre: ${item.fechaCierre || "N/A"}
-URL: ${item.url || ""}
-
-Accede a la URL si está disponible para obtener más detalles.`
-          }
-        ]
-      })
-    });
-
-    if (!response.ok) {
-      const err = await response.text();
-      return res.status(502).json({ error: `OpenAI respondió ${response.status}: ${err.substring(0, 200)}` });
-    }
-
-    const data = await response.json();
-    const text = data.choices?.[0]?.message?.content || "No se pudo obtener el análisis.";
-    res.json({ analysis: text });
-
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
