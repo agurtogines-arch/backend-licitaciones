@@ -241,6 +241,7 @@ function App() {
   const [selected, setSelected]         = useState(null);
   const [analysis, setAnalysis]         = useState("");
   const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [gestorEstado, setGestorEstado]       = useState(null); // "guardado" | "duplicado" | "error" | null
   const [error, setError]               = useState("");
   const [elapsed, setElapsed]           = useState(0);
   const abortRef = useRef(null);
@@ -371,6 +372,7 @@ function App() {
 
   const verDetalle = async item => {
     setSelected(item); setAnalysis("⏳ Analizando con IA..."); setAnalysisLoading(true); setTab("detalle");
+    setGestorEstado(null);
     await new Promise(r => setTimeout(r, 100));
     try {
       const res = await fetch(`${BACKEND_URL}/mp/analizar`, {
@@ -379,7 +381,25 @@ function App() {
       });
       if(!res.ok) { const err=await res.json().catch(()=>({})); setAnalysis(`Error: ${err.error||res.status}`); setAnalysisLoading(false); return; }
       const data = await res.json();
-      setAnalysis(data.analysis || "No se pudo obtener el análisis.");
+      const texto = data.analysis || "No se pudo obtener el análisis.";
+      setAnalysis(texto);
+
+      // ── Envío automático al gestor si veredicto es 🟢 o 🟡 ──────────────
+      const esParticpar = texto.includes("🟢");
+      const esEvaluar   = texto.includes("🟡");
+      if (esParticpar || esEvaluar) {
+        try {
+          const gRes = await fetch(`${BACKEND_URL}/mp/guardar-gestor`, {
+            method: "POST", headers: {"Content-Type":"application/json"},
+            body: JSON.stringify({item})
+          });
+          const gData = await gRes.json();
+          if (gData.ok) setGestorEstado("guardado");
+          else if (gData.mensaje?.includes("ya existe")) setGestorEstado("duplicado");
+          else setGestorEstado("error");
+        } catch(e) { setGestorEstado("error"); }
+      }
+
     } catch(e) { setAnalysis(`Error de conexión: ${e.message}`); }
     setAnalysisLoading(false);
   };
@@ -586,7 +606,10 @@ function App() {
             ? <div style={{textAlign:"center",color:"#94a3b8",padding:48,background:"white",borderRadius:12}}>Selecciona una licitación desde Resultados para analizarla.</div>
             : <div style={{background:"white",borderRadius:12,padding:24,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
                 <div style={{fontWeight:800,fontSize:15,marginBottom:4}}>{selected.titulo}</div>
-                <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>{selected.organismo} · Código: {selected.codigo||"N/A"}</div>
+                <div style={{fontSize:12,color:"#64748b",marginBottom:8}}>{selected.organismo} · Código: {selected.codigo||"N/A"}</div>
+                {gestorEstado === "guardado"   && <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"8px 14px",fontSize:12,color:"#15803d",marginBottom:12}}>✅ Licitación enviada al Gestor automáticamente</div>}
+                {gestorEstado === "duplicado"  && <div style={{background:"#fefce8",border:"1px solid #fef08a",borderRadius:8,padding:"8px 14px",fontSize:12,color:"#854d0e",marginBottom:12}}>⚠️ Esta licitación ya estaba en el Gestor</div>}
+                {gestorEstado === "error"      && <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"8px 14px",fontSize:12,color:"#dc2626",marginBottom:12}}>❌ No se pudo guardar en el Gestor — agrégala manualmente</div>}
                 <div style={{borderTop:"1px solid #e2e8f0",paddingTop:16}}>
                   <div style={{fontWeight:700,fontSize:13,marginBottom:14,color:"#2563eb"}}>🤖 Análisis de Factibilidad</div>
                   {analysisLoading
