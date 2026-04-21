@@ -317,6 +317,26 @@ app.post("/diario-oficial/analizar", async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── Helpers para extraer texto limpio del HTML de MP ─────────────────────────
+function extraerTextoMP(html) {
+  // Eliminar scripts, styles y comentarios
+  let texto = html
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<[^>]+>/g, " ")         // quitar tags HTML
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/\s{2,}/g, " ")          // colapsar espacios múltiples
+    .trim();
+
+  // Recortar a 6000 caracteres para no exceder contexto de GPT-4o
+  return texto.length > 6000 ? texto.substring(0, 6000) + "..." : texto;
+}
+
 // ── Mercado Público — Análisis IA (OpenAI) ───────────────────────────────────
 app.post("/mp/analizar", async (req, res) => {
   const OPENAI_KEY = process.env.OPENAI_API_KEY || "";
@@ -325,6 +345,28 @@ app.post("/mp/analizar", async (req, res) => {
   const { item } = req.body;
   if (!item) return res.status(400).json({ error: "item requerido" });
 
+  // ── Paso 1: Fetch de la página de MP para obtener contenido completo ────────
+  let contenidoMP = "";
+  if (item.url) {
+    try {
+      const mpPage = await fetch(item.url, {
+        signal: AbortSignal.timeout(15000),
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; LENBot/1.0)" }
+      });
+      if (mpPage.ok) {
+        const html = await mpPage.text();
+        contenidoMP = extraerTextoMP(html);
+      }
+    } catch (e) {
+      console.warn("[mp/analizar] No se pudo obtener página MP:", e.message);
+    }
+  }
+
+  const contenidoExtra = contenidoMP
+    ? `\n\nCONTENIDO COMPLETO DE LA PÁGINA DE MERCADO PÚBLICO:\n${contenidoMP}`
+    : "\n\n(No se pudo obtener el contenido de la página de Mercado Público. Analiza solo con los metadatos disponibles.)";
+
+  // ── Paso 2: Análisis con GPT-4o ─────────────────────────────────────────────
   try {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -334,7 +376,7 @@ app.post("/mp/analizar", async (req, res) => {
       },
       body: JSON.stringify({
         model: "gpt-4o",
-        max_tokens: 1800,
+        max_tokens: 2000,
         messages: [
           {
             role: "system",
@@ -378,7 +420,9 @@ CRITERIOS DE EVALUACIÓN — aplica esta puntuación internamente antes de emiti
 VEREDICTO FINAL según puntaje total:
    8-10 pts → 🟢 PARTICIPAR
    5-7  pts → 🟡 EVALUAR
-   0-4  pts → 🔴 DESCARTAR`
+   0-4  pts → 🔴 DESCARTAR
+
+INSTRUCCIÓN IMPORTANTE: Si tienes el contenido completo de la página de MP, úsalo para extraer requisitos reales, experiencia exigida, criterios de evaluación y plazos de ejecución. Prioriza esa información sobre los metadatos básicos.`
           },
           {
             role: "user",
@@ -392,7 +436,7 @@ Estado: ${item.estado || "N/A"}
 Publicación: ${item.fechaPublicacion || "N/A"}
 Cierre: ${item.fechaCierre || "N/A"}
 Monto: ${item.monto || "No especificado"}
-URL: ${item.url || ""}
+URL: ${item.url || ""}${contenidoExtra}
 
 Entrega el análisis con este formato exacto:
 
