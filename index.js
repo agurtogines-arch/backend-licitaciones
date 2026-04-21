@@ -528,7 +528,11 @@ app.post("/mp/guardar-gestor", async (req, res) => {
     stepsInit[i] = { done: false, notes: "", days: [1,2,2,2,1,1,1,2,2,1,2,5,2,1][i] };
   }
 
+  // Generar id único igual que el gestor frontend
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+
   const payload = {
+    id:          uid(),
     nombre:      item.titulo || "Sin título",
     codigo:      item.codigo || "No Indica",
     mandante:    item.organismo || "–",
