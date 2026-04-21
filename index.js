@@ -505,4 +505,73 @@ Si no hay alertas relevantes, indica "Sin alertas críticas".`
   }
 });
 
+// ── Guardar licitación en Gestor (Supabase) ───────────────────────────────────
+app.post("/mp/guardar-gestor", async (req, res) => {
+  const SUPABASE_URL  = "https://veuzudobuiwtrigdxqjt.supabase.co";
+  const SUPABASE_KEY  = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZldXp1ZG9idWl3dHJpZ2R4cWp0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxODM2NTIsImV4cCI6MjA5MTc1OTY1Mn0.mb6Vo3-PmXKezJmSrLYbpCloEu8DPJglrBgkho63wYM";
+
+  const { item } = req.body;
+  if (!item) return res.status(400).json({ error: "item requerido" });
+
+  // Parsear fecha de cierre al formato YYYY-MM-DD que espera Supabase
+  const parsearFecha = (str) => {
+    if (!str || str === "–") return null;
+    const p = str.split(/[-\/]/);
+    if (p.length === 3 && p[2].length === 4) return `${p[2]}-${p[1].padStart(2,"0")}-${p[0].padStart(2,"0")}`;
+    if (p.length === 3 && p[0].length === 4) return str.substring(0, 10);
+    return null;
+  };
+
+  // Steps inicializados en cero (14 pasos)
+  const stepsInit = {};
+  for (let i = 0; i < 14; i++) {
+    stepsInit[i] = { done: false, notes: "", days: [1,2,2,2,1,1,1,2,2,1,2,5,2,1][i] };
+  }
+
+  const payload = {
+    nombre:      item.titulo || "Sin título",
+    codigo:      item.codigo || "No Indica",
+    mandante:    item.organismo || "–",
+    fecha_cierre: parsearFecha(item.fechaCierre),
+    responsable: "Ginés Agurto / Karina Montecinos",
+    steps_json:  stepsInit
+  };
+
+  try {
+    // Verificar si ya existe la licitación por código para no duplicar
+    if (item.codigo) {
+      const checkRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/licitaciones?codigo=eq.${encodeURIComponent(item.codigo)}&select=id`,
+        { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } }
+      );
+      const existing = await checkRes.json();
+      if (existing.length > 0) {
+        return res.json({ ok: false, mensaje: "La licitación ya existe en el gestor", id: existing[0].id });
+      }
+    }
+
+    const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/licitaciones`, {
+      method: "POST",
+      headers: {
+        "apikey":        SUPABASE_KEY,
+        "Authorization": `Bearer ${SUPABASE_KEY}`,
+        "Content-Type":  "application/json",
+        "Prefer":        "return=representation"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!insertRes.ok) {
+      const err = await insertRes.text();
+      return res.status(502).json({ error: `Supabase respondió ${insertRes.status}: ${err.substring(0, 200)}` });
+    }
+
+    const data = await insertRes.json();
+    res.json({ ok: true, mensaje: "Licitación guardada en el gestor", id: data[0]?.id });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(PORT, () => console.log(`Backend licitaciones en puerto ${PORT} | Ticket: ${TICKET.substring(0,8)}...`));
