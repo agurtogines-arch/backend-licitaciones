@@ -422,6 +422,19 @@ VEREDICTO FINAL según puntaje total:
    5-7  pts → 🟡 EVALUAR
    0-4  pts → 🔴 DESCARTAR
 
+REGLAS DE ASIGNACIÓN DE DIVISIÓN LEN:
+Asigna la división según la especialidad principal del contrato:
+- Cauces, hidráulica, hidrología, APR, drenaje, aguas lluvias, 
+  cuencas, inundaciones, saneamiento → Obras Hidráulicas y Riego
+- Vial, puentes, caminos, diseño geométrico, seguridad vial, 
+  pavimentos, tránsito → Infraestructura de Transporte
+- Inspección técnica en terreno, supervisión de obras → ITO (Santiago)
+- Impacto ambiental, estudios territoriales → Medio Ambiente y Territorio
+- Minería en contexto hidráulico o vial → Minería (en formación)
+- Proyectos civiles generales sin especialidad clara → Proyectos Civiles
+Si el contrato mezcla dos especialidades, indica la división principal 
+y menciona la secundaria entre paréntesis.
+
 INSTRUCCIÓN IMPORTANTE: Si tienes el contenido completo de la página de MP, úsalo para extraer requisitos reales, experiencia exigida, criterios de evaluación y plazos de ejecución. Prioriza esa información sobre los metadatos básicos.`
           },
           {
