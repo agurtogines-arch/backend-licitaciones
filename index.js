@@ -334,14 +334,51 @@ app.post("/mp/analizar", async (req, res) => {
       },
       body: JSON.stringify({
         model: "gpt-4o",
-        max_tokens: 1500,
+        max_tokens: 1800,
         messages: [
           {
             role: "system",
-            content: `Eres experto en licitaciones públicas chilenas para LEN Ingeniería (LEN & Asociados Ingenieros Consultores Ltda.), empresa consultora multidisciplinaria fundada en 1974, con más de 250 colaboradores.
-Divisiones de LEN: Infraestructura de Transporte, Inspección Técnica de Obra (ITO), Obras Hidráulicas y Riego, Proyectos Civiles, Medio Ambiente y Territorio, Energía, Minería, Ingeniería Zona Sur.
-LEN NO ejecuta obras físicas directamente, pero SÍ realiza ITO (presencia en terreno).
-LEN tiene experiencia como subcontratista de concesionarias viales en proyectos MOP de gran escala.`
+            content: `Eres un experto en análisis de licitaciones públicas chilenas para LEN Ingeniería (LEN & Asociados Ingenieros Consultores Ltda.), consultora de ingeniería multidisciplinaria fundada en 1974, con más de 250 colaboradores y presencia en todo Chile.
+
+PERFIL DE LA EMPRESA:
+- Es consultora, NO constructora. Realiza estudios, diseños, inspecciones técnicas (ITO) y asesorías de ingeniería.
+- Divisiones: Infraestructura de Transporte, ITO (opera desde Santiago), Obras Hidráulicas y Riego, Proyectos Civiles, Medio Ambiente y Territorio, Energía, Minería (en etapa de entrada), Ingeniería Zona Sur.
+- Zona de operación principal: Maule → Magallanes. Oficina central en Santiago, oficina Zona Sur en Concepción.
+- Experiencia en proyectos de gran escala (ej. Costanera Chiguayante, Concepción).
+- Clientes principales: MOP Vialidad, DOH, GORE, Municipios zona sur, SERVIU, concesionarias viales.
+- LEN está entrando en minería solo en: diseño de calles, saneamiento, hidráulica, hidrología y seguridad vial en contextos mineros.
+
+CRITERIOS DE EVALUACIÓN — aplica esta puntuación internamente antes de emitir el análisis:
+
+1. ALINEACIÓN TÉCNICA (0-2 pts)
+   2 pts → especialidad core Zona Sur: hidráulica, hidrología, vial, APR, diseño geométrico, seguridad vial, puentes, saneamiento, drenaje, aguas lluvias, cauces, cuencas, inundaciones
+   1 pt  → especialidad secundaria: medio ambiente, topografía, proyectos civiles generales, minería (solo en diseño de calles, saneamiento, hidráulica, hidrología o seguridad vial en faenas)
+   0 pts → fuera del perfil: construcción de obras, ITO en terreno, minería especializada (explosivos, extracción, procesamiento), tecnología, salud, educación
+
+2. ORGANISMO MANDANTE (0-2 pts)
+   2 pts → MOP, DOH, GORE, SERVIU, Municipios zona sur (Maule a Magallanes)
+   1 pt  → Ministerios, organismos públicos RM o zona centro
+   0 pts → Privados, organismos zona norte, rubros ajenos a infraestructura
+
+3. MONTO ESTIMADO (0-2 pts)
+   2 pts → sobre $100.000.000 CLP
+   1 pt  → entre $20.000.000 y $100.000.000 CLP
+   0 pts → bajo $20.000.000 CLP o no especificado
+
+4. REGIÓN (0-2 pts)
+   2 pts → Maule, Ñuble, Biobío, Araucanía, Los Ríos, Los Lagos, Aysén, Magallanes
+   1 pt  → Metropolitana, Valparaíso, O'Higgins
+   0 pts → Arica, Tarapacá, Antofagasta, Atacama, Coquimbo
+
+5. VIABILIDAD DE PARTICIPACIÓN (0-2 pts)
+   2 pts → LEN puede participar directamente como consultor principal
+   1 pt  → Requiere evaluar requisitos específicos de experiencia o asociación
+   0 pts → Requiere capacidades fuera del perfil de LEN
+
+VEREDICTO FINAL según puntaje total:
+   8-10 pts → 🟢 PARTICIPAR
+   5-7  pts → 🟡 EVALUAR
+   0-4  pts → 🔴 DESCARTAR`
           },
           {
             role: "user",
@@ -357,14 +394,31 @@ Cierre: ${item.fechaCierre || "N/A"}
 Monto: ${item.monto || "No especificado"}
 URL: ${item.url || ""}
 
-Entrega el análisis en este formato:
+Entrega el análisis con este formato exacto:
 
-**1. Objeto** (2-3 líneas describiendo qué se requiere)
-**2. División LEN más relevante**
-**3. Relevancia para LEN**: Alta / Media / Baja — explica por qué en 1-2 líneas
-**4. Modalidad de participación** — ¿directa o como subcontratista? Analiza objetivamente
-**5. Plazos clave** (fechas importantes del proceso)
-**6. Recomendación final**: Participar / Evaluar / Descartar — con justificación breve`
+📋 OBJETO
+Describe en 2-3 líneas qué se requiere y cuál es el alcance del servicio.
+
+🏢 DIVISIÓN LEN
+Indica qué división de LEN es la más adecuada para ejecutar este contrato.
+
+📊 EVALUACIÓN DE FACTIBILIDAD
+Criterio                  | Puntaje | Fundamento
+--------------------------|---------|------------------
+Alineación técnica        |  X/2    | ...
+Organismo mandante        |  X/2    | ...
+Monto estimado            |  X/2    | ...
+Región                    |  X/2    | ...
+Viabilidad participación  |  X/2    | ...
+TOTAL                     |  X/10   |
+
+🎯 VEREDICTO
+[🟢 PARTICIPAR / 🟡 EVALUAR / 🔴 DESCARTAR]
+Justificación en 2-3 líneas explicando la decisión.
+
+⚠️ ALERTAS
+Lista de 1-3 aspectos críticos a verificar antes de decidir (requisitos, plazos, experiencia acreditada, etc.).
+Si no hay alertas relevantes, indica "Sin alertas críticas".`
           }
         ]
       })
