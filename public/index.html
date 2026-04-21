@@ -93,8 +93,13 @@ function filtrarPorFecha(arr, soloVigentes, fechaInicio, fechaFin) {
     return true;
   });
 }
-async function buscarEnBackend(keyword, regionDesde, regionHasta, signal) {
-  const params = new URLSearchParams({q: keyword});
+
+// ── Una sola llamada al backend con TODAS las keywords ────────────────────────
+async function buscarEnBackend(tecnicas, servicios, regionDesde, regionHasta, signal) {
+  const params = new URLSearchParams({
+    keywords: tecnicas.join(","),
+    servicios: servicios.join(",")
+  });
   if(regionDesde !== "todas") params.set("desde", regionDesde);
   if(regionHasta !== "todas") params.set("hasta", regionHasta);
   let res;
@@ -175,7 +180,6 @@ function App() {
       if(!res.ok) return;
       const data = await res.json();
 
-      // Calcular códigos válidos para filtrar después del enriquecimiento
       let codigosValidos = null;
       if(regDesde !== "todas" || regHasta !== "todas") {
         const idxD = regDesde === "todas" ? 1 : REGIONES.findIndex(r => r.value === regDesde);
@@ -197,59 +201,56 @@ function App() {
             descripcion: d ? (d.descripcion|| r.descripcion) : r.descripcion,
           };
         });
-        // Filtrar por región real si hay rango seleccionado
-        // Las licitaciones sin región se incluyen siempre para no perder oportunidades
         if(!codigosValidos) return actualizados;
         return actualizados.filter(r => {
           if(!r.region || r.region === "Región no disponible") return true;
-          // Normalizar: quitar tildes, apóstrofes y caracteres especiales para comparar
           const norm = s => s.toLowerCase()
             .replace(/[áàä]/g,"a").replace(/[éèë]/g,"e").replace(/[íìï]/g,"i")
             .replace(/[óòö]/g,"o").replace(/[úùü]/g,"u").replace(/ñ/g,"n")
             .replace(/['''`´]/g,"").replace(/\s+/g," ").trim();
           const regionNorm = norm(r.region);
           const reg = REGIONES.find(re => re.value !== "todas" && regionNorm.includes(norm(re.label)));
-          if(!reg) return true; // no se pudo identificar → incluir
+          if(!reg) return true;
           return codigosValidos.has(reg.value);
         });
       });
     } catch(e) {}
   };
 
+  // ── Búsqueda: una sola llamada con todas las keywords ──────────────────────
   const buscar = async () => {
     const tecnicas  = [...kwVial, ...kwHidro].filter(k => activeKw.has(k));
     const servicios = kwServicio.filter(k => activeKw.has(k));
-    if(!tecnicas.length)  { setError("Selecciona al menos una keyword técnica (Vial o Hidráulica)."); return; }
-    if(!servicios.length) { setError("Selecciona al menos una keyword de tipo de servicio."); return; }
+    if(!tecnicas.length) { setError("Selecciona al menos una keyword técnica (Vial o Hidráulica)."); return; }
 
     setLoading(true); setError(""); setSteps([]); setResults([]);
     abortRef.current = new AbortController();
     timerRef.current = setInterval(() => setElapsed(e => e+1), 1000);
-    const found = [];
 
     try {
-      // Buscar combinando cada técnica con cada servicio: "Hidráulic Estudio", "Hidráulic Diseño", etc.
-      const pares = [];
-      for(const t of tecnicas) for(const s of servicios) pares.push(`${t} ${s}`);
+      addStep(`Descargando licitaciones activas de Mercado Público...`);
 
-      for(const par of pares) {
-        addStep(`Buscando «${par}»...`);
-        const r = await buscarEnBackend(par, regionDesde, regionHasta, abortRef.current.signal);
-        const filtradas = filtrarPorFecha(r, soloVigentes, fechaInicio, fechaFin);
-        doneStep(filtradas.length ? "ok" : "empty");
-        if(filtradas.length) { addStep(`✅ ${filtradas.length} resultado(s) con «${par}»`, "ok"); found.push(...filtradas); }
-      }
+      const found = await buscarEnBackend(
+        tecnicas, servicios, regionDesde, regionHasta, abortRef.current.signal
+      );
+      doneStep(found.length ? "ok" : "empty");
 
+      if(found.length) addStep(`Filtrando por fecha y deduplicando...`);
+
+      const filtradas = filtrarPorFecha(found, soloVigentes, fechaInicio, fechaFin);
       clearInterval(timerRef.current);
-      const uniq = deduplicar(found);
+      const uniq = deduplicar(filtradas);
+
       if(uniq.length) {
+        doneStep("ok");
+        addStep(`✅ ${uniq.length} licitaciones relevantes encontradas`, "ok");
         setResults(uniq);
-        setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100));
+        setHistory(prev => deduplicar([...uniq, ...prev]).slice(0, 100));
         setTab("resultados");
-        addStep(`✅ Total: ${uniq.length} licitaciones únicas`, "ok");
         enriquecerRegiones(uniq, regionDesde, regionHasta);
       } else {
-        setError("Sin resultados. Prueba con otras palabras clave o un rango de fechas más amplio.");
+        doneStep("empty");
+        setError("Sin resultados. Prueba activando más keywords o ampliando el rango de regiones.");
       }
     } catch(e) {
       clearInterval(timerRef.current);
@@ -368,7 +369,7 @@ function App() {
                 </select>
               </div>
             </div>
-            <div style={{fontSize:11,color:"#94a3b8",marginTop:8}}>💡 El filtro de región lo aplica el backend en la consulta a Mercado Público.</div>
+            <div style={{fontSize:11,color:"#94a3b8",marginTop:8}}>💡 El filtro de región se aplica sobre el texto del título de cada licitación.</div>
           </div>
 
           <div style={{background:"white",borderRadius:12,padding:20,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
