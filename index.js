@@ -446,6 +446,16 @@ Describe en 2-3 líneas qué se requiere y cuál es el alcance del servicio.
 🏢 DIVISIÓN LEN
 Indica qué división de LEN es la más adecuada para ejecutar este contrato.
 
+📅 FECHAS CLAVE
+Fecha publicación:         DD-MM-AAAA
+Cierre recepción ofertas:  DD-MM-AAAA
+Fecha final de preguntas:  DD-MM-AAAA
+Apertura técnica:          DD-MM-AAAA
+Apertura económica:        DD-MM-AAAA
+Adjudicación estimada:     DD-MM-AAAA
+Duración del contrato:     X meses (si está disponible)
+Si alguna fecha no está disponible en la información, omitirla.
+
 📊 EVALUACIÓN DE FACTIBILIDAD
 Criterio                  | Puntaje | Fundamento
 --------------------------|---------|------------------
