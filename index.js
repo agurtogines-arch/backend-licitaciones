@@ -592,7 +592,7 @@ async function extraerTextoPDF(buffer) {
     const data = await pdfParse(buffer);
     const avgChars = data.numpages > 0 ? data.text.length / data.numpages : 0;
     return {
-      texto:     data.text.substring(0, 25000), // aumentado a 25K por PDF
+      texto:     data.text.substring(0, 15000), // aumentado a 25K por PDF
       paginas:   data.numpages,
       escaneado: avgChars < 50,
       ok:        true
@@ -650,211 +650,71 @@ app.post("/mp/analizar-bases", (req, res) => {
         return res.status(422).json({ error: "No se pudo extraer texto de ningún PDF.", escaneados: escaneadosCount, auditoria: archivosAuditoria });
       }
 
-      const textoTotal = textosExtraidos.join("\n\n").substring(0, 120000);
+      const textoTotal = textosExtraidos.join("\n\n").substring(0, 80000);
 
-      // ── Análisis GPT-4o ────────────────────────────────────────────────────
-      const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type":"application/json", "Authorization":`Bearer ${OPENAI_KEY}` },
-        body: JSON.stringify({
-          model: "gpt-4o",
-          max_tokens: 8000,
-          messages: [
-            { role:"system", content:`Eres un experto senior en licitaciones públicas y privadas chilenas trabajando para LEN Ingeniería. Tu tarea es leer documentos de bases de licitación y extraer información con el máximo nivel de detalle y precisión posible, como lo haría un ingeniero senior leyendo manualmente los documentos.
-
-NIVEL DE DETALLE REQUERIDO — usa este ejemplo real como referencia de calidad:
-
-=== EJEMPLO COMPLETO DE CALIDAD ESPERADA ===
-
-IDENTIFICACIÓN:
-Nombre: Servicio de Ingeniería de Detalle Obras de Recolección, Regulación e Impulsión de Aguas Servidas de Panguipulli
-Mandante: SURALIS S.A.
-Tipo: Licitación Pública a nivel nacional
-Modalidad: Suma Alzada — cotizado en pesos chilenos
-
-REQUISITOS PROPONENTES:
-Tipo empresa: Personas jurídicas con experiencia demostrable en ingeniería de detalle de proyectos sanitarios
-Áreas de experiencia requerida: PEAS (plantas elevadoras AS), estanques laminación aguas mixtas, conducción recolección e impulsión AS, grupos generadores, sistemas de olores, anti-golpes de ariete, diseño eléctrico para obras sanitarias
-Requisito adicional: Haber adquirido las bases en SURALIS antes de postular
-
-DESCRIPCIÓN DEL PROYECTO:
-Objetivo principal: Desarrollar ingeniería de detalle para ampliación del sistema de recolección e impulsión de AS de Panguipulli, incluyendo planos, memorias de cálculo, EE.TT. y demás documentos para licitación de obras
-Capacidad de elevación: Aumento de 60 l/s a 137 l/s
-Regulación adicional: 4.000 m³ adicionales (2.000 m³ en Roble Huacho + 2.000 m³ en PTAS)
-Regulación total proyectada: 5.000 m³ (considera 1.000 m³ existentes en PTAS)
-Naturaleza obras: Obras de seguridad ambiental (ingreso aguas ajenas a red AS)
-
-OBRAS PRINCIPALES:
-1. Nueva PEAS Roble Huacho (NPRH) — rejas gruesas, finas, sentina, estanque laminación 2.000 m³, anti-ariete, tratamiento olores, instalaciones eléctricas
-2. Reelevadora Booster Carmela Carvajal (PEAS NCC) — anti-ariete, olores, instalaciones eléctricas
-3. Redes AS hacia nueva PEAS Roble Huacho y TK — colector Carmela Carvajal → Roble Huacho
-4. Impulsión PRH → Booster Carmela Carvajal + Manifold + Interconexiones
-5. Nueva Impulsión Booster CC → PTAS — Manifold de impulsión + interconexiones
-
-PUNTOS CRÍTICOS:
-🔴 Garantía de Seriedad — MONTO: $5.000.000 (cinco millones de pesos)
-🔴 Garantía de Seriedad — FORMA: Boleta Bancaria irrevocable pagadera a 30 días o Vale Vista. Emitida por banco comercial CON OFICINAS EN PUERTO MONTT.
-🔴 Garantía de Seriedad — ENTREGA: Presencial en Oficina de Partes SURALIS, Covadonga N°52, Puerto Montt — del 13 al 15 de mayo de 2026. NO se acepta entrega fuera de ese período. Además enviar escaneada a lvasquezb@suralis.cl.
-🟡 Vigencia de la garantía: 120 días corridos desde apertura económica (20 mayo 2026) → vence aprox. 17 de septiembre de 2026.
-🟡 Garantía de Fiel Cumplimiento: 10% del precio neto del contrato. Boleta bancaria. Plazo entrega: máx. 10 días corridos desde adjudicación. Vigencia: duración contrato + 7 meses.
-🟡 Comisión Senegocia (si adjudica): 1% del monto adjudicado con tope UF 52 + IVA. Costo adicional sobre el precio del contrato.
-ℹ Multa máxima antes de rescisión: 10% del valor del contrato acumulado en multas por atraso ($50.000/día por etapa) → mandante puede terminar el contrato de inmediato.
-
-EXPERIENCIA MÍNIMA EMPRESA:
-Años de experiencia mínima | 10 años en proyectos de ingeniería de características similares | TR sección 3.4 | Certificados de mandantes, copias de contratos
-Ingeniería de detalle sanitaria | Experiencia en proyectos de recolección AS, PEAS, sistemas de impulsión | Bases sección 4 | Proyectos de referencia con datos de mandante, año, alcance y monto
-Diseño eléctrico obras sanitarias | Experiencia en diseño eléctrico para PEAS, grupos generadores, tableros | Bases sección 4; TR sección 3.4 | CV de profesional eléctrico en nómina
-
-CALENDARIO:
-Publicación aviso | 30 de marzo de 2026 | Inicio del proceso | ✔ Pasado
-Venta/entrega antecedentes | 30 mar – 6 abr 2026 | Pago $50.000 IVA incl. Cuenta Cte. Santander Nº82-67010227 | ✔ Pasado
-Recepción consultas | Hasta el 20 de abril de 2026 | Vía plataforma SENEGOCIA | Próximo
-Recepción Boleta Garantía Seriedad | 13 al 15 de mayo de 2026 | Presencial Oficina de Partes SURALIS, Covadonga N°52, Puerto Montt + escaneo a lvasquezb@suralis.cl | Próximo
-Recepción ofertas técnicas y económicas | 19 de mayo de 2026 | A través de SENEGOCIA | Próximo
-Apertura económica | 20 de mayo de 2026 — 15:00 hrs | Vía videollamada TEAMS. Máx. 1 representante por proponente. | Próximo
-Duración del contrato | 120 días corridos | Desde fecha de inicio del servicio | —
-
-GARANTÍAS:
-Seriedad de la Oferta | $5.000.000 | 120 días corridos desde apertura económica | Boleta bancaria irrevocable pagadera a 30 días o Vale Vista. Banco comercial c/oficinas en Puerto Montt.
-Fiel Cumplimiento | 10% precio neto contrato | Duración contrato + 7 meses mínimo | Boleta bancaria nominativa pagadera a 30 días. Entregar máx. 10 días desde adjudicación.
-
-ESQUEMA DE PAGOS:
-EP1 | Aprobación Etapa I — Revisión de antecedentes | 15% | Análisis antecedentes, detección inconsistencias, reunión inicio, Carta Gantt. ~2 semanas.
-EP2 | Aprobación Etapa II — Criterios de diseño | 20% | Criterios de diseño por especialidad aprobados. ~2 semanas.
-EP3 | Aprobación Etapa III — Desarrollo ingeniería de detalle | 35% | Hidráulica, estructural, eléctrica, instrumentación, topografía, mecánica de suelos.
-EP4 | Aprobación Etapa IV — Entrega final de productos | 30% | Planos IFC, cubicaciones, presupuesto, EE.TT., manuales operación, protocolos.
-
-MULTAS:
-Multa por atraso en etapas | $50.000 por cada día corrido | Aplica a todas las etapas I, II, III y IV | Tope 10% del precio total del contrato
-
-ALCANCE TÉCNICO — ETAPAS:
-Etapa I Revisión antecedentes | ~2 semanas | Análisis antecedentes, identificación errores/omisiones, evaluación ubicación unidades, detección interferencias (Vialidad, DGA, FFCC) | • Informe observaciones • Carta Gantt propuesta • Presentación equipo • Reunión inicio
-Etapa II Criterios de diseño | ~2 semanas | Criterios de diseño por especialidad: normas, fórmulas, estándares. Énfasis en actualización NCh sísmica y eléctrica | • Documento Criterios de Diseño por especialidad • Aprobación SURALIS requerida para avanzar
-Etapa III Ingeniería de detalle | ~resto del plazo | Desarrollo completo: hidráulica, estructural, eléctrica, instrumentación, topografía, mecánica de suelos | • Planos y esquemas 3D • Memorias de cálculo • EE.TT. Generales y Especiales • Topografía y mecánica de suelos
-Etapa IV Entrega final | Cierre contrato | Consolidación documentos versión IFC, apoyo licitación obras | • Planos IFC definitivos • Cubicaciones y presupuesto • Carta Gantt construcción • Manuales operación • Protocolos Puesta en Marcha
-
-ESPECIALIDADES:
-Topografía | Levantamiento topográfico de todas las obras. Base para diseño geométrico y volúmenes.
-Hidráulica | Diseño hidráulico de colectores, impulsiones, estanques, PEAS. Verificación capacidades, presiones, anti-ariete.
-Estructural | Diseño estructural de obras civiles. Actualización norma sísmica NCh 2369.
-Eléctrica | Diseño para PEAS, grupos generadores, tableros, telemetría, instalaciones baja/media tensión.
-Instrumentación y Control | P&ID, diagramas unilineales, filosofía de control, SCADA/telemetría, protocolos de prueba.
-
-PREGUNTAS SUGERIDAS PARA EL FORO:
-1. ¿Se aceptan pólizas de seguros en lugar de boletas de garantía?
-2. ¿Cómo demostrar la experiencia de la empresa durante los 10 años?
-3. ¿Qué prevalece en cuanto a la experiencia: los TR o las BA?
-4. En caso de detectar interferencias para el trazado de impulsión, ¿el consultor debe realizar los proyectos de modificación de cauce y obtención de permisos?
-
-=== FIN EJEMPLO ===
-
-INSTRUCCIONES:
-- Extrae valores TEXTUALES EXACTOS (montos exactos, fechas con hora, direcciones completas, porcentajes)
-- Para puntos críticos: detalla TODAS las condiciones excluyentes o riesgosas con 🔴, importantes con 🟡, favorables con 🟢, informativos con ℹ
-- Para calendario: incluye TODAS las fechas con observaciones detalladas
-- Para garantías: forma exacta, lugar de entrega, glosa requerida si existe
-- Para requisitos: fuente exacta (sección del documento), cómo acreditar
-- Genera preguntas inteligentes que un ingeniero haría en el foro de consultas
-- NUNCA inventes — si no existe usa "[NO ENCONTRADO]"
-- Responde ÚNICAMENTE con JSON válido sin markdown` },
-            { role:"user", content:`Analiza estos documentos y extrae toda la información con el mismo nivel de detalle del ejemplo.
-
-METADATA DEL PORTAL MP:
-Título: ${metadata.titulo||""}
-Código MP: ${metadata.codigo||""}
-Mandante: ${metadata.organismo||""}
-Región: ${metadata.region||""}
-Monto estimado: ${metadata.monto||""}
-Fecha cierre: ${metadata.fechaCierre||""}
-URL: ${metadata.url||""}
-
-DOCUMENTOS:
-${textoTotal}
-
-Responde SOLO con este JSON sin markdown:
-{
-  "identificacion": {
-    "nombre": "",
-    "codigo_mp": "",
-    "mandante": "",
-    "region": "",
-    "tipo_licitacion": "",
-    "monto_estimado": "",
-    "fecha_cierre": "",
-    "tipo_proceso": "",
-    "modalidad_contrato": "",
-    "moneda": "",
-    "vigencia_contrato": "",
-    "inicio_estimado": "",
-    "contacto": "",
-    "plataforma_envio": "",
-    "url_mp": "",
-    "documentos_licitacion": ""
-  },
-  "proposito": {
-    "objetivo_general": "",
-    "alcance_detallado": "",
-    "naturaleza_encargo": "",
-    "obras_principales": "",
-    "grupos_trabajo": "",
-    "especialidades_requeridas": ""
-  },
-  "requisitos_empresa": [
-    { "requisito": "", "descripcion": "", "fuente": "", "como_acreditar": "" }
-  ],
-  "requisitos_profesionales": [
-    { "cargo": "", "titulo_requerido": "", "experiencia": "", "dedicacion": "", "como_acreditar": "" }
-  ],
-  "puntos_criticos": [
-    { "indicador": "🔴 o 🟡 o 🟢 o ℹ", "punto": "", "descripcion_detallada": "" }
-  ],
-  "calendario": [
-    { "hito": "", "fecha_plazo": "", "observaciones": "", "estado": "✔ Pasado o Próximo o —" }
-  ],
-  "garantias": [
-    { "tipo": "", "monto": "", "vigencia": "", "forma": "", "lugar_entrega": "", "observaciones": "" }
-  ],
-  "esquema_pagos": [
-    { "estado_pago": "", "hito_etapa": "", "porcentaje": "", "descripcion": "" }
-  ],
-  "condiciones_pago": [
-    { "condicion": "", "descripcion": "" }
-  ],
-  "multas": [
-    { "causal": "", "monto": "", "alcance": "", "tope": "" }
-  ],
-  "alcance_tecnico": {
-    "etapas": [
-      { "etapa": "", "duracion": "", "contenido": "", "entregables": "" }
-    ],
-    "especialidades": [
-      { "especialidad": "", "alcance_principal": "" }
-    ],
-    "condiciones_operativas": "",
-    "formatos_entrega": "",
-    "normativa_aplicable": ""
-  },
-  "preguntas_sugeridas": [""]
-}` }
-          ]
-        })
-      });
-
-      if (!aiRes.ok) {
-        const errText = await aiRes.text();
-        return res.status(502).json({ error: `OpenAI respondió ${aiRes.status}: ${errText.substring(0,200)}` });
-      }
-
-      const aiData  = await aiRes.json();
-      const rawText = aiData.choices?.[0]?.message?.content || "";
-      let analisis;
-      try {
-        const clean = rawText.replace(/```json|```/g,"").trim();
+      // ── Helper para llamar GPT-4o ──────────────────────────────────────────
+      const gpt = async (systemPrompt, userPrompt) => {
+        const r = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type":"application/json", "Authorization":`Bearer ${OPENAI_KEY}` },
+          body: JSON.stringify({
+            model: "gpt-4o", max_tokens: 3000,
+            messages: [
+              { role:"system", content: systemPrompt },
+              { role:"user",   content: userPrompt }
+            ]
+          })
+        });
+        if (!r.ok) throw new Error(`OpenAI ${r.status}: ${await r.text().then(t=>t.substring(0,100))}`);
+        const d = await r.json();
+        const txt = d.choices?.[0]?.message?.content || "";
+        const clean = txt.replace(/```json|```/g,"").trim();
         const match = clean.match(/\{[\s\S]*\}/);
-        analisis = JSON.parse(match ? match[0] : clean);
-      } catch(e) {
-        return res.status(500).json({ error:"Error al parsear respuesta IA", raw: rawText.substring(0,300) });
-      }
+        return JSON.parse(match ? match[0] : clean);
+      };
+
+      const BASE_SYSTEM = `Eres un experto senior en licitaciones públicas chilenas para LEN Ingeniería.
+Extrae información TEXTUAL EXACTA de los documentos (montos exactos, fechas con hora, direcciones completas, porcentajes, secciones de referencia).
+NUNCA inventes — usa "[NO ENCONTRADO]" solo si genuinamente no existe.
+Responde ÚNICAMENTE con JSON válido sin markdown.`;
+
+      const META = `METADATA MP: Título: ${metadata.titulo||""} | Código: ${metadata.codigo||""} | Mandante: ${metadata.organismo||""} | Región: ${metadata.region||""} | Monto: ${metadata.monto||""} | Cierre: ${metadata.fechaCierre||""} | URL: ${metadata.url||""}`;
+
+      // ── 5 Agentes especializados en paralelo ──────────────────────────────
+      const [r1, r2, r3, r4, r5] = await Promise.all([
+
+        // Agente 1: Identificación y descripción del proyecto
+        gpt(BASE_SYSTEM, `${META}\n\nDOCUMENTOS:\n${textoTotal}\n\nExtrae SOLO identificación y descripción del proyecto. JSON:\n{"identificacion":{"nombre":"","codigo_mp":"","mandante":"","region":"","tipo_licitacion":"","monto_estimado":"","fecha_cierre":"","tipo_proceso":"","modalidad_contrato":"","moneda":"","vigencia_contrato":"","inicio_estimado":"","contacto":"","plataforma_envio":"","url_mp":"","documentos_licitacion":""},"proposito":{"objetivo_general":"","alcance_detallado":"","naturaleza_encargo":"","obras_principales":"","grupos_trabajo":"","especialidades_requeridas":""}}`),
+
+        // Agente 2: Calendario completo con todas las fechas
+        gpt(BASE_SYSTEM, `${META}\n\nDOCUMENTOS:\n${textoTotal}\n\nExtrae TODAS las fechas y hitos del proceso. Para cada fecha incluye hora si existe, lugar si aplica, y observaciones importantes. JSON:\n{"calendario":[{"hito":"","fecha_plazo":"","observaciones":"","estado":"✔ Pasado o Próximo o —"}],"preguntas_sugeridas":[""]}`),
+
+        // Agente 3: Garantías, pagos y multas
+        gpt(BASE_SYSTEM, `${META}\n\nDOCUMENTOS:\n${textoTotal}\n\nExtrae garantías (monto exacto, forma, vigencia, lugar entrega, glosa), esquema de pagos por hitos (porcentaje exacto, descripción hito), condiciones de pago y multas. JSON:\n{"garantias":[{"tipo":"","monto":"","vigencia":"","forma":"","lugar_entrega":"","glosa":"","observaciones":""}],"esquema_pagos":[{"estado_pago":"","hito_etapa":"","porcentaje":"","descripcion":""}],"condiciones_pago":[{"condicion":"","descripcion":""}],"multas":[{"causal":"","monto":"","alcance":"","tope":""}]}`),
+
+        // Agente 4: Requisitos empresa y profesionales + puntos críticos
+        gpt(BASE_SYSTEM, `${META}\n\nDOCUMENTOS:\n${textoTotal}\n\nExtrae requisitos de empresa (con fuente y cómo acreditar), requisitos de profesionales (cargo, título, experiencia, dedicación) y puntos críticos (🔴 excluyentes/riesgosos, 🟡 importantes, 🟢 favorables, ℹ informativos). JSON:\n{"requisitos_empresa":[{"requisito":"","descripcion":"","fuente":"","como_acreditar":""}],"requisitos_profesionales":[{"cargo":"","titulo_requerido":"","experiencia":"","dedicacion":"","como_acreditar":""}],"puntos_criticos":[{"indicador":"🔴 o 🟡 o 🟢 o ℹ","punto":"","descripcion_detallada":""}]}`),
+
+        // Agente 5: Alcance técnico, etapas y entregables
+        gpt(BASE_SYSTEM, `${META}\n\nDOCUMENTOS:\n${textoTotal}\n\nExtrae alcance técnico completo: etapas con duración y entregables específicos, especialidades requeridas, condiciones operativas, formatos de entrega y normativa aplicable. JSON:\n{"alcance_tecnico":{"etapas":[{"etapa":"","duracion":"","contenido":"","entregables":""}],"especialidades":[{"especialidad":"","alcance_principal":""}],"condiciones_operativas":"","formatos_entrega":"","normativa_aplicable":""}}`)
+
+      ]);
+
+      // ── Consolidar resultados de los 5 agentes ─────────────────────────────
+      const analisis = {
+        identificacion:        r1.identificacion        || {},
+        proposito:             r1.proposito             || {},
+        calendario:            r2.calendario            || [],
+        preguntas_sugeridas:   r2.preguntas_sugeridas   || [],
+        garantias:             r3.garantias             || [],
+        esquema_pagos:         r3.esquema_pagos         || [],
+        condiciones_pago:      r3.condiciones_pago      || [],
+        multas:                r3.multas                || [],
+        requisitos_empresa:    r4.requisitos_empresa    || [],
+        requisitos_profesionales: r4.requisitos_profesionales || [],
+        puntos_criticos:       r4.puntos_criticos       || [],
+        alcance_tecnico:       r5.alcance_tecnico       || {}
+      };
 
       // ── Generar Excel ──────────────────────────────────────────────────────
       const ExcelJS = require("exceljs");
