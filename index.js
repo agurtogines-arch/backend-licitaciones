@@ -2,6 +2,8 @@ const express = require("express");
 const cors    = require("cors");
 const fetch   = require("node-fetch");
 const path    = require("path");
+const multer  = require("multer");
+const AdmZip  = require("adm-zip");
 
 const app  = express();
 const PORT = process.env.PORT || 8080;
@@ -576,6 +578,300 @@ app.post("/mp/guardar-gestor", async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ── Analizar Bases de Licitación (ZIP → Excel) ────────────────────────────────
+const uploadMiddleware = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 60 * 1024 * 1024 } // 60MB
+}).single("archivo");
+
+async function extraerTextoPDF(buffer) {
+  try {
+    const pdfParse = require("pdf-parse");
+    const data = await pdfParse(buffer);
+    const avgChars = data.numpages > 0 ? data.text.length / data.numpages : 0;
+    return {
+      texto:     data.text.substring(0, 12000),
+      paginas:   data.numpages,
+      escaneado: avgChars < 50,
+      ok:        true
+    };
+  } catch(e) {
+    return { texto: "", paginas: 0, escaneado: true, ok: false, error: e.message };
+  }
+}
+
+app.post("/mp/analizar-bases", (req, res) => {
+  uploadMiddleware(req, res, async (err) => {
+    if (err) return res.status(400).json({ error: "Error al subir archivo: " + err.message });
+
+    const OPENAI_KEY = process.env.OPENAI_API_KEY || "";
+    if (!OPENAI_KEY) return res.status(500).json({ error: "OPENAI_API_KEY no configurada" });
+    if (!req.file)   return res.status(400).json({ error: "Archivo ZIP requerido" });
+
+    let metadata = {};
+    try { metadata = JSON.parse(req.body.metadata || "{}"); } catch(e) {}
+
+    const archivosAuditoria = [];
+    const textosExtraidos   = [];
+    let escaneadosCount     = 0;
+
+    try {
+      const zip     = new AdmZip(req.file.buffer);
+      const entradas = zip.getEntries();
+
+      for (const entrada of entradas) {
+        if (entrada.isDirectory) continue;
+        const nombre = entrada.name;
+        const ext    = nombre.split(".").pop().toLowerCase();
+
+        if (ext === "pdf") {
+          const buf       = entrada.getData();
+          const resultado = await extraerTextoPDF(buf);
+          archivosAuditoria.push({
+            nombre,
+            tipo:        resultado.escaneado ? "Escaneado" : "Texto",
+            paginas:     resultado.paginas,
+            estado:      resultado.ok ? (resultado.escaneado ? "⚠️ Escaneado" : "✅ Procesado") : "❌ Error",
+            observacion: resultado.escaneado ? "Revisar manualmente" : (resultado.error || "")
+          });
+          if (resultado.escaneado) escaneadosCount++;
+          if (resultado.texto.trim()) textosExtraidos.push(`=== ${nombre} ===\n${resultado.texto}`);
+
+        } else if (["docx","doc"].includes(ext)) {
+          archivosAuditoria.push({ nombre, tipo:"Word", paginas:"–", estado:"⚠️ No procesado", observacion:"Revisar manualmente" });
+        } else {
+          archivosAuditoria.push({ nombre, tipo:ext.toUpperCase(), paginas:"–", estado:"⚪ Omitido", observacion:"Formato no soportado" });
+        }
+      }
+
+      if (!textosExtraidos.length) {
+        return res.status(422).json({ error: "No se pudo extraer texto de ningún PDF.", escaneados: escaneadosCount, auditoria: archivosAuditoria });
+      }
+
+      const textoTotal = textosExtraidos.join("\n\n").substring(0, 80000);
+
+      // ── Análisis GPT-4o ────────────────────────────────────────────────────
+      const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type":"application/json", "Authorization":`Bearer ${OPENAI_KEY}` },
+        body: JSON.stringify({
+          model: "gpt-4o", max_tokens: 4000,
+          messages: [
+            { role:"system", content:"Eres experto en análisis de licitaciones públicas chilenas para LEN Ingeniería. Extraes información estructurada de documentos técnicos y administrativos. Respondes ÚNICAMENTE con JSON válido, sin texto adicional ni markdown." },
+            { role:"user", content:`Analiza estos documentos de licitación pública chilena y extrae la información en la estructura JSON indicada.
+
+METADATA:
+Título: ${metadata.titulo||""} | Código MP: ${metadata.codigo||""} | Mandante: ${metadata.organismo||""} | Región: ${metadata.region||""} | Monto: ${metadata.monto||""} | Cierre: ${metadata.fechaCierre||""} | URL: ${metadata.url||""}
+
+DOCUMENTOS:
+${textoTotal}
+
+Responde SOLO con este JSON (sin markdown, sin texto extra). Usa [NO ENCONTRADO] para campos sin información:
+{
+  "identificacion":{"nombre":"","codigo_mp":"","mandante":"","region":"","tipo_licitacion":"","monto_estimado":"","tipo_proceso":"","modalidad_contrato":"","moneda":"","vigencia":"","inicio_estimado":"","contacto":"","plataforma":""},
+  "proposito":{"objetivo_general":"","alcance":"","naturaleza":"","grupos_trabajo":""},
+  "requisitos":[{"requisito":"","descripcion":"","fuente":"","como_acreditar":""}],
+  "puntos_criticos":[{"indicador":"🟢/🟡/🔴/ℹ","punto":"","descripcion":""}],
+  "calendario":[{"hito":"","fecha":"","observaciones":"","estado":""}],
+  "garantias":[{"tipo":"","monto":"","vigencia":"","observaciones":""}],
+  "condiciones_pago":[{"condicion":"","descripcion":""}],
+  "multas":[{"causal":"","monto":"","observaciones":""}],
+  "alcance_tecnico":{"grupos":[{"grupo":"","nombre":"","contenido":"","cotizacion":"","referencia":""}],"especialidades":"","condiciones_operativas":[{"condicion":"","descripcion":""}]}
+}` }
+          ]
+        })
+      });
+
+      if (!aiRes.ok) {
+        const errText = await aiRes.text();
+        return res.status(502).json({ error: `OpenAI respondió ${aiRes.status}: ${errText.substring(0,200)}` });
+      }
+
+      const aiData  = await aiRes.json();
+      const rawText = aiData.choices?.[0]?.message?.content || "";
+      let analisis;
+      try {
+        analisis = JSON.parse(rawText.replace(/```json|```/g,"").trim());
+      } catch(e) {
+        return res.status(500).json({ error:"Error al parsear respuesta IA", raw: rawText.substring(0,300) });
+      }
+
+      // ── Generar Excel ──────────────────────────────────────────────────────
+      const ExcelJS = require("exceljs");
+      const wb = new ExcelJS.Workbook();
+      wb.creator = "LEN Ingeniería";
+      wb.created = new Date();
+
+      const C = { azulOscuro:"1E3A5F", azulMedio:"2563EB", azulClaro:"EFF6FF",
+                  verdeClaro:"F0FDF4", amClaro:"FFFBEB", rojoClaro:"FEF2F2",
+                  gris:"F8FAFC", blanco:"FFFFFF" };
+
+      const hdrStyle = (bg) => ({
+        font: { bold:true, color:{argb:"FFFFFFFF"}, name:"Arial", size:10 },
+        fill: { type:"pattern", pattern:"solid", fgColor:{argb:`FF${bg}`} },
+        alignment: { horizontal:"left", vertical:"middle", wrapText:true }
+      });
+      const secStyle = () => ({
+        font: { bold:true, color:{argb:`FF${C.azulMedio}`}, name:"Arial", size:10 },
+        fill: { type:"pattern", pattern:"solid", fgColor:{argb:`FF${C.azulClaro}`} },
+        alignment: { horizontal:"left", vertical:"middle" }
+      });
+      const lblStyle = () => ({
+        font: { bold:true, name:"Arial", size:9 },
+        fill: { type:"pattern", pattern:"solid", fgColor:{argb:"FFFAFAFA"} },
+        alignment: { horizontal:"left", vertical:"middle", wrapText:true }
+      });
+      const valStyle = (bg) => ({
+        font: { name:"Arial", size:9 },
+        fill: { type:"pattern", pattern:"solid", fgColor:{argb: bg ? `FF${bg}` : "FFFFFFFF"} },
+        alignment: { horizontal:"left", vertical:"middle", wrapText:true }
+      });
+      const tblHdr = () => ({
+        font: { bold:true, color:{argb:"FFFFFFFF"}, name:"Arial", size:9 },
+        fill: { type:"pattern", pattern:"solid", fgColor:{argb:`FF${C.azulOscuro}`} },
+        alignment: { horizontal:"center", vertical:"middle", wrapText:true }
+      });
+      const rowS = (i) => ({
+        font: { name:"Arial", size:9 },
+        fill: { type:"pattern", pattern:"solid", fgColor:{argb: i%2===0 ? "FFFFFFFF" : `FF${C.gris}`} },
+        alignment: { horizontal:"left", vertical:"middle", wrapText:true }
+      });
+
+      const addTitle = (ws, txt, cols) => {
+        const r = ws.addRow([txt]);
+        ws.mergeCells(r.number,1,r.number,cols);
+        r.getCell(1).style = { font:{bold:true,size:13,color:{argb:"FFFFFFFF"},name:"Arial"}, fill:{type:"pattern",pattern:"solid",fgColor:{argb:`FF${C.azulOscuro}`}}, alignment:{horizontal:"center",vertical:"middle"} };
+        r.height = 30;
+      };
+      const addSec = (ws, txt, cols) => {
+        const r = ws.addRow([txt]);
+        ws.mergeCells(r.number,1,r.number,cols);
+        r.getCell(1).style = secStyle();
+        r.height = 20;
+      };
+      const addKV = (ws, lbl, val, bg) => {
+        const r = ws.addRow([lbl, val||"[NO ENCONTRADO]"]);
+        r.getCell(1).style = lblStyle();
+        r.getCell(2).style = valStyle(bg);
+        r.height = 18;
+        return r;
+      };
+
+      const id   = analisis.identificacion || {};
+      const prop = analisis.proposito || {};
+
+      // ── Hoja 1: Resumen General ────────────────────────────────────────────
+      const ws1 = wb.addWorksheet("Resumen General");
+      ws1.columns = [{ width:32 },{ width:72 }];
+      addTitle(ws1, `RESUMEN LICITACIÓN — ${(id.nombre||metadata.titulo||"").toUpperCase()}`, 2);
+
+      const confLabel = escaneadosCount===0 ? "🟢 Extracción completa — revisión recomendada antes de usar" :
+                        escaneadosCount < archivosAuditoria.filter(a=>a.tipo!=="Word"&&a.tipo!=="Omitido").length ? "🟡 Extracción parcial — algunos PDFs escaneados, completar manualmente" :
+                        "🔴 Extracción fallida — revisar manualmente";
+      const confBg  = escaneadosCount===0 ? C.verdeClaro.replace("FF","") : escaneadosCount < archivosAuditoria.length/2 ? C.amClaro.replace("FF","") : C.rojoClaro.replace("FF","");
+      addKV(ws1, "📊 Indicador de confianza", confLabel, confBg);
+      if (escaneadosCount>0) {
+        const al = addKV(ws1,"⚠️ Alerta",`${escaneadosCount} archivo(s) escaneado(s) detectados. Revisar manualmente esas secciones.`, C.amClaro.replace("FF",""));
+        al.height = 24;
+      }
+      ws1.addRow([]);
+
+      addSec(ws1,"A. IDENTIFICACIÓN",2);
+      [["Nombre licitación",id.nombre||metadata.titulo],["Código MP",id.codigo_mp||metadata.codigo],["Mandante",id.mandante||metadata.organismo],["Región",id.region||metadata.region],["Tipo de licitación",id.tipo_licitacion],["Monto estimado",id.monto_estimado||metadata.monto],["Fecha cierre",metadata.fechaCierre],["Tipo de proceso",id.tipo_proceso],["Modalidad de contrato",id.modalidad_contrato],["Moneda",id.moneda],["Vigencia",id.vigencia],["Inicio estimado",id.inicio_estimado],["Contacto",id.contacto],["Plataforma / Envío",id.plataforma],["URL Mercado Público",metadata.url]]
+        .filter(([,v])=>v).forEach(([l,v])=>addKV(ws1,l,v));
+      ws1.addRow([]);
+
+      addSec(ws1,"B. PROPÓSITO Y DESCRIPCIÓN DEL SERVICIO",2);
+      [["Objetivo general",prop.objetivo_general],["Alcance del contrato",prop.alcance],["Naturaleza del encargo",prop.naturaleza],["Grupos de trabajo",prop.grupos_trabajo]]
+        .forEach(([l,v])=>{ const r=addKV(ws1,l,v); r.height=36; });
+      ws1.addRow([]);
+
+      if (analisis.requisitos?.length) {
+        addSec(ws1,"C. REQUISITOS Y EXPERIENCIA",2);
+        const hr = ws1.addRow(["Requisito","Descripción / Cómo acreditar"]);
+        hr.eachCell(c=>{c.style=hdrStyle(C.azulMedio);}); hr.height=18;
+        analisis.requisitos.forEach((r,i)=>{ const row=ws1.addRow([r.requisito,`${r.descripcion||""}\n${r.como_acreditar?"Acreditación: "+r.como_acreditar:""}`]); row.eachCell(c=>{c.style=rowS(i);c.alignment={wrapText:true,vertical:"middle"};}); row.height=40; });
+        ws1.addRow([]);
+      }
+
+      if (analisis.puntos_criticos?.length) {
+        addSec(ws1,"D. PUNTOS CRÍTICOS ANTES DE DECIDIR PARTICIPAR",2);
+        analisis.puntos_criticos.forEach((p,i)=>{
+          const bg = p.indicador?.includes("🟢") ? C.verdeClaro.replace("FF","") : p.indicador?.includes("🟡") ? C.amClaro.replace("FF","") : p.indicador?.includes("🔴") ? C.rojoClaro.replace("FF","") : null;
+          const r = addKV(ws1,`${p.indicador||""} ${p.punto||""}`,p.descripcion||"",bg);
+          r.height=30;
+        });
+      }
+
+      // ── Hoja 2: Calendario ────────────────────────────────────────────────
+      const ws2 = wb.addWorksheet("Calendario");
+      ws2.columns=[{width:35},{width:20},{width:50},{width:15}];
+      addTitle(ws2,"CALENDARIO DE LICITACIÓN",4);
+      const hc=ws2.addRow(["Hito","Fecha / Plazo","Observaciones","Estado"]);
+      hc.eachCell(c=>{c.style=tblHdr();}); hc.height=18;
+      (analisis.calendario||[]).forEach((c,i)=>{ const r=ws2.addRow([c.hito,c.fecha,c.observaciones,c.estado]); r.eachCell(ce=>{ce.style=rowS(i);ce.alignment={wrapText:true,vertical:"middle"};}); r.height=24; });
+
+      // ── Hoja 3: Garantías y Pagos ─────────────────────────────────────────
+      const ws3 = wb.addWorksheet("Garantías y Pagos");
+      ws3.columns=[{width:35},{width:25},{width:20},{width:50}];
+      addTitle(ws3,"GARANTÍAS Y CONDICIONES DE PAGO",4);
+      addSec(ws3,"GARANTÍAS",4);
+      const hg=ws3.addRow(["Tipo de Garantía","Monto / Requisito","Vigencia","Observaciones"]);
+      hg.eachCell(c=>{c.style=tblHdr();}); hg.height=18;
+      (analisis.garantias||[]).forEach((g,i)=>{ const r=ws3.addRow([g.tipo,g.monto,g.vigencia,g.observaciones]); r.eachCell(c=>{c.style=rowS(i);c.alignment={wrapText:true,vertical:"middle"};}); r.height=24; });
+      ws3.addRow([]);
+      addSec(ws3,"CONDICIONES DE PAGO",4);
+      (analisis.condiciones_pago||[]).forEach((cp,i)=>{ const r=ws3.addRow([cp.condicion,cp.descripcion]); ws3.mergeCells(r.number,2,r.number,4); r.eachCell(c=>{c.style=rowS(i);c.alignment={wrapText:true,vertical:"middle"};}); r.height=24; });
+      ws3.addRow([]);
+      addSec(ws3,"MULTAS Y SANCIONES",4);
+      const hm=ws3.addRow(["Causal","Monto","","Observaciones"]);
+      hm.eachCell(c=>{c.style=tblHdr();}); hm.height=18;
+      (analisis.multas||[]).forEach((m,i)=>{ const r=ws3.addRow([m.causal,m.monto,"",m.observaciones]); r.eachCell(c=>{c.style=rowS(i);c.alignment={wrapText:true,vertical:"middle"};}); r.height=24; });
+
+      // ── Hoja 4: Alcance Técnico ───────────────────────────────────────────
+      const ws4 = wb.addWorksheet("Alcance Técnico");
+      ws4.columns=[{width:12},{width:28},{width:55},{width:20},{width:15}];
+      addTitle(ws4,"ALCANCE TÉCNICO",5);
+      addSec(ws4,"GRUPOS DE TRABAJO",5);
+      const hgrp=ws4.addRow(["Grupo","Nombre","Contenido principal","Cotización","Referencia TR"]);
+      hgrp.eachCell(c=>{c.style=tblHdr();}); hgrp.height=18;
+      (analisis.alcance_tecnico?.grupos||[]).forEach((g,i)=>{ const r=ws4.addRow([g.grupo,g.nombre,g.contenido,g.cotizacion,g.referencia]); r.eachCell(c=>{c.style=rowS(i);c.alignment={wrapText:true,vertical:"middle"};}); r.height=42; });
+      ws4.addRow([]);
+      addSec(ws4,"ESPECIALIDADES REQUERIDAS",5);
+      const re=ws4.addRow([analisis.alcance_tecnico?.especialidades||"[NO ENCONTRADO]"]);
+      ws4.mergeCells(re.number,1,re.number,5); re.getCell(1).style={font:{name:"Arial",size:9},alignment:{wrapText:true,vertical:"middle"}}; re.height=36;
+      if (analisis.alcance_tecnico?.condiciones_operativas?.length) {
+        ws4.addRow([]);
+        addSec(ws4,"CONDICIONES OPERATIVAS",5);
+        analisis.alcance_tecnico.condiciones_operativas.forEach((co,i)=>{ const r=ws4.addRow([co.condicion,co.descripcion]); ws4.mergeCells(r.number,2,r.number,5); r.eachCell(c=>{c.style=rowS(i);c.alignment={wrapText:true,vertical:"middle"};}); r.height=24; });
+      }
+
+      // ── Hoja 5: Auditoría ─────────────────────────────────────────────────
+      const ws5 = wb.addWorksheet("Auditoría");
+      ws5.columns=[{width:40},{width:15},{width:10},{width:18},{width:42}];
+      addTitle(ws5,"AUDITORÍA DE ARCHIVOS PROCESADOS",5);
+      const rfecha=ws5.addRow([`Fecha análisis: ${new Date().toLocaleString("es-CL")} | Archivos procesados: ${archivosAuditoria.length} | PDFs escaneados: ${escaneadosCount}`]);
+      ws5.mergeCells(rfecha.number,1,rfecha.number,5); rfecha.getCell(1).style={font:{italic:true,size:9,name:"Arial"},alignment:{horizontal:"left"}}; rfecha.height=16;
+      ws5.addRow([]);
+      const ha=ws5.addRow(["Archivo","Tipo","Páginas","Estado","Observación"]);
+      ha.eachCell(c=>{c.style=tblHdr();}); ha.height=18;
+      archivosAuditoria.forEach((a,i)=>{ const r=ws5.addRow([a.nombre,a.tipo,a.paginas,a.estado,a.observacion]); r.eachCell(c=>{c.style=rowS(i);c.alignment={wrapText:true,vertical:"middle"};}); r.height=18; });
+
+      // ── Respuesta ──────────────────────────────────────────────────────────
+      const buf     = await wb.xlsx.writeBuffer();
+      const b64     = Buffer.from(buf).toString("base64");
+      const archivo = `Resumen_${(metadata.codigo||"LIC").replace(/[^a-zA-Z0-9]/g,"_")}_${new Date().toISOString().split("T")[0]}.xlsx`;
+      const confianza = escaneadosCount===0 ? "completa" : escaneadosCount < archivosAuditoria.filter(a=>a.tipo==="Escaneado"||a.tipo==="Texto").length ? "parcial" : "fallida";
+
+      res.json({ ok:true, excelBase64:b64, nombreArchivo:archivo, confianza, escaneados:escaneadosCount, totalArchivos:archivosAuditoria.length, auditoria:archivosAuditoria });
+
+    } catch(err) {
+      console.error("[analizar-bases]", err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
 });
 
 app.listen(PORT, () => console.log(`Backend licitaciones en puerto ${PORT} | Ticket: ${TICKET.substring(0,8)}...`));
