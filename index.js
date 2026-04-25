@@ -592,7 +592,7 @@ async function extraerTextoPDF(buffer) {
     const data = await pdfParse(buffer);
     const avgChars = data.numpages > 0 ? data.text.length / data.numpages : 0;
     return {
-      texto:     data.text.substring(0, 12000),
+      texto:     data.text.substring(0, 25000), // aumentado a 25K por PDF
       paginas:   data.numpages,
       escaneado: avgChars < 50,
       ok:        true
@@ -650,35 +650,158 @@ app.post("/mp/analizar-bases", (req, res) => {
         return res.status(422).json({ error: "No se pudo extraer texto de ningún PDF.", escaneados: escaneadosCount, auditoria: archivosAuditoria });
       }
 
-      const textoTotal = textosExtraidos.join("\n\n").substring(0, 80000);
+      const textoTotal = textosExtraidos.join("\n\n").substring(0, 120000);
 
       // ── Análisis GPT-4o ────────────────────────────────────────────────────
       const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: { "Content-Type":"application/json", "Authorization":`Bearer ${OPENAI_KEY}` },
         body: JSON.stringify({
-          model: "gpt-4o", max_tokens: 4000,
+          model: "gpt-4o", max_tokens: 6000,
           messages: [
-            { role:"system", content:"Eres experto en análisis de licitaciones públicas chilenas para LEN Ingeniería. Extraes información estructurada de documentos técnicos y administrativos. Respondes ÚNICAMENTE con JSON válido, sin texto adicional ni markdown." },
-            { role:"user", content:`Analiza estos documentos de licitación pública chilena y extrae la información en la estructura JSON indicada.
+            { role:"system", content:`Eres un experto senior en licitaciones públicas chilenas que trabaja para LEN Ingeniería, consultora de ingeniería especializada en hidráulica, hidrología, vialidad, APR y saneamiento.
 
-METADATA:
-Título: ${metadata.titulo||""} | Código MP: ${metadata.codigo||""} | Mandante: ${metadata.organismo||""} | Región: ${metadata.region||""} | Monto: ${metadata.monto||""} | Cierre: ${metadata.fechaCierre||""} | URL: ${metadata.url||""}
+Tu tarea es leer documentos de bases de licitación (bases administrativas, términos de referencia, anexos) y extraer información DETALLADA Y PRECISA en formato JSON.
 
-DOCUMENTOS:
+INSTRUCCIONES CRÍTICAS:
+- Extrae información TEXTUAL EXACTA de los documentos cuando sea posible
+- Para montos, fechas, plazos: copia los valores exactos que aparecen en el texto
+- Para garantías: indica monto exacto, forma, lugar de entrega y glosa requerida
+- Para requisitos: detalla exactamente qué acreditar y cómo
+- Para el calendario: incluye TODAS las fechas con sus horas si las hay
+- Para pagos: incluye porcentajes, hitos y condiciones exactas
+- Si un campo no existe en los documentos: usa "[NO ENCONTRADO]"
+- Si hay información parcial: incluye lo que existe con nota "(verificar)"
+- NUNCA inventes información que no esté en los documentos
+- Responde ÚNICAMENTE con JSON válido, sin markdown ni texto adicional` },
+            { role:"user", content:`Analiza estos documentos de licitación pública chilena y extrae información detallada.
+
+METADATA DEL PORTAL MP:
+Título: ${metadata.titulo||""}
+Código MP: ${metadata.codigo||""}
+Mandante: ${metadata.organismo||""}
+Región: ${metadata.region||""}
+Monto estimado: ${metadata.monto||""}
+Fecha cierre: ${metadata.fechaCierre||""}
+URL: ${metadata.url||""}
+
+DOCUMENTOS EXTRAÍDOS:
 ${textoTotal}
 
-Responde SOLO con este JSON (sin markdown, sin texto extra). Usa [NO ENCONTRADO] para campos sin información:
+Responde SOLO con este JSON (sin markdown). Extrae la máxima información posible de los documentos:
 {
-  "identificacion":{"nombre":"","codigo_mp":"","mandante":"","region":"","tipo_licitacion":"","monto_estimado":"","tipo_proceso":"","modalidad_contrato":"","moneda":"","vigencia":"","inicio_estimado":"","contacto":"","plataforma":""},
-  "proposito":{"objetivo_general":"","alcance":"","naturaleza":"","grupos_trabajo":""},
-  "requisitos":[{"requisito":"","descripcion":"","fuente":"","como_acreditar":""}],
-  "puntos_criticos":[{"indicador":"🟢/🟡/🔴/ℹ","punto":"","descripcion":""}],
-  "calendario":[{"hito":"","fecha":"","observaciones":"","estado":""}],
-  "garantias":[{"tipo":"","monto":"","vigencia":"","observaciones":""}],
-  "condiciones_pago":[{"condicion":"","descripcion":""}],
-  "multas":[{"causal":"","monto":"","observaciones":""}],
-  "alcance_tecnico":{"grupos":[{"grupo":"","nombre":"","contenido":"","cotizacion":"","referencia":""}],"especialidades":"","condiciones_operativas":[{"condicion":"","descripcion":""}]}
+  "identificacion": {
+    "nombre": "",
+    "codigo_mp": "",
+    "mandante": "",
+    "region": "",
+    "tipo_licitacion": "",
+    "monto_estimado": "",
+    "fecha_cierre": "",
+    "tipo_proceso": "",
+    "modalidad_contrato": "",
+    "moneda": "",
+    "vigencia_contrato": "",
+    "inicio_estimado": "",
+    "contacto": "",
+    "plataforma_envio": "",
+    "url_mp": "",
+    "confidencialidad": ""
+  },
+  "proposito": {
+    "objetivo_general": "",
+    "alcance_detallado": "",
+    "naturaleza_encargo": "",
+    "obras_principales": "",
+    "grupos_trabajo": "",
+    "especialidades_requeridas": ""
+  },
+  "requisitos_empresa": [
+    {
+      "requisito": "",
+      "descripcion": "",
+      "fuente": "",
+      "como_acreditar": ""
+    }
+  ],
+  "requisitos_profesionales": [
+    {
+      "cargo": "",
+      "titulo_requerido": "",
+      "experiencia": "",
+      "dedicacion": "",
+      "como_acreditar": ""
+    }
+  ],
+  "puntos_criticos": [
+    {
+      "indicador": "🟢 o 🟡 o 🔴 o ℹ",
+      "punto": "",
+      "descripcion_detallada": ""
+    }
+  ],
+  "calendario": [
+    {
+      "hito": "",
+      "fecha_plazo": "",
+      "observaciones": "",
+      "estado": "✔ Pasado o Próximo o — "
+    }
+  ],
+  "garantias": [
+    {
+      "tipo": "",
+      "monto": "",
+      "vigencia": "",
+      "forma": "",
+      "lugar_entrega": "",
+      "observaciones": ""
+    }
+  ],
+  "esquema_pagos": [
+    {
+      "estado_pago": "",
+      "hito_etapa": "",
+      "porcentaje": "",
+      "descripcion": ""
+    }
+  ],
+  "condiciones_pago": [
+    {
+      "condicion": "",
+      "descripcion": ""
+    }
+  ],
+  "multas": [
+    {
+      "causal": "",
+      "monto": "",
+      "alcance": "",
+      "tope": ""
+    }
+  ],
+  "alcance_tecnico": {
+    "etapas": [
+      {
+        "etapa": "",
+        "duracion": "",
+        "contenido": "",
+        "entregables": ""
+      }
+    ],
+    "especialidades": [
+      {
+        "especialidad": "",
+        "alcance_principal": ""
+      }
+    ],
+    "condiciones_operativas": "",
+    "formatos_entrega": "",
+    "normativa_aplicable": ""
+  },
+  "preguntas_sugeridas": [
+    ""
+  ]
 }` }
           ]
         })
@@ -733,9 +856,9 @@ Responde SOLO con este JSON (sin markdown, sin texto extra). Usa [NO ENCONTRADO]
         fill: { type:"pattern", pattern:"solid", fgColor:{argb:`FF${C.azulOscuro}`} },
         alignment: { horizontal:"center", vertical:"middle", wrapText:true }
       });
-      const rowS = (i) => ({
+      const rowS = (i, bg) => ({
         font: { name:"Arial", size:9 },
-        fill: { type:"pattern", pattern:"solid", fgColor:{argb: i%2===0 ? "FFFFFFFF" : `FF${C.gris}`} },
+        fill: { type:"pattern", pattern:"solid", fgColor:{argb: bg ? `FF${bg}` : (i%2===0 ? "FFFFFFFF" : `FF${C.gris}`)} },
         alignment: { horizontal:"left", vertical:"middle", wrapText:true }
       });
 
@@ -743,13 +866,13 @@ Responde SOLO con este JSON (sin markdown, sin texto extra). Usa [NO ENCONTRADO]
         const r = ws.addRow([txt]);
         ws.mergeCells(r.number,1,r.number,cols);
         r.getCell(1).style = { font:{bold:true,size:13,color:{argb:"FFFFFFFF"},name:"Arial"}, fill:{type:"pattern",pattern:"solid",fgColor:{argb:`FF${C.azulOscuro}`}}, alignment:{horizontal:"center",vertical:"middle"} };
-        r.height = 30;
+        r.height = 32;
       };
       const addSec = (ws, txt, cols) => {
         const r = ws.addRow([txt]);
         ws.mergeCells(r.number,1,r.number,cols);
         r.getCell(1).style = secStyle();
-        r.height = 20;
+        r.height = 22;
       };
       const addKV = (ws, lbl, val, bg) => {
         const r = ws.addRow([lbl, val||"[NO ENCONTRADO]"]);
@@ -758,106 +881,228 @@ Responde SOLO con este JSON (sin markdown, sin texto extra). Usa [NO ENCONTRADO]
         r.height = 18;
         return r;
       };
+      const addTableRow = (ws, cells, idx, bg) => {
+        const r = ws.addRow(cells);
+        r.eachCell(c => { c.style = rowS(idx, bg); c.alignment = {wrapText:true, vertical:"middle"}; });
+        r.height = 32;
+        return r;
+      };
 
       const id   = analisis.identificacion || {};
       const prop = analisis.proposito || {};
+      const alc  = analisis.alcance_tecnico || {};
 
       // ── Hoja 1: Resumen General ────────────────────────────────────────────
       const ws1 = wb.addWorksheet("Resumen General");
-      ws1.columns = [{ width:32 },{ width:72 }];
-      addTitle(ws1, `RESUMEN LICITACIÓN — ${(id.nombre||metadata.titulo||"").toUpperCase()}`, 2);
+      ws1.columns = [{ width:35 },{ width:75 }];
+      const tituloExcel = (id.nombre || metadata.titulo || "LICITACIÓN").toUpperCase();
+      addTitle(ws1, tituloExcel, 2);
+      addTitle(ws1, (id.mandante || metadata.organismo || "").toUpperCase(), 2);
 
+      // Indicador de confianza
+      ws1.addRow([]);
       const confLabel = escaneadosCount===0 ? "🟢 Extracción completa — revisión recomendada antes de usar" :
-                        escaneadosCount < archivosAuditoria.filter(a=>a.tipo!=="Word"&&a.tipo!=="Omitido").length ? "🟡 Extracción parcial — algunos PDFs escaneados, completar manualmente" :
+                        escaneadosCount < archivosAuditoria.filter(a=>a.tipo==="Texto").length ? "🟡 Extracción parcial — algunos PDFs escaneados, completar manualmente" :
                         "🔴 Extracción fallida — revisar manualmente";
-      const confBg  = escaneadosCount===0 ? C.verdeClaro.replace("FF","") : escaneadosCount < archivosAuditoria.length/2 ? C.amClaro.replace("FF","") : C.rojoClaro.replace("FF","");
-      addKV(ws1, "📊 Indicador de confianza", confLabel, confBg);
-      if (escaneadosCount>0) {
-        const al = addKV(ws1,"⚠️ Alerta",`${escaneadosCount} archivo(s) escaneado(s) detectados. Revisar manualmente esas secciones.`, C.amClaro.replace("FF",""));
-        al.height = 24;
+      const confBg = escaneadosCount===0 ? "F0FDF4" : escaneadosCount < archivosAuditoria.length/2 ? "FFFBEB" : "FEF2F2";
+      const rConf = addKV(ws1, "📊 Indicador de confianza", confLabel, confBg);
+      rConf.height = 22;
+      if (escaneadosCount > 0) {
+        const rAlert = addKV(ws1, "⚠️ Alerta", `${escaneadosCount} archivo(s) escaneado(s). Revisar manualmente esas secciones.`, "FFFBEB");
+        rAlert.height = 22;
       }
       ws1.addRow([]);
 
-      addSec(ws1,"A. IDENTIFICACIÓN",2);
-      [["Nombre licitación",id.nombre||metadata.titulo],["Código MP",id.codigo_mp||metadata.codigo],["Mandante",id.mandante||metadata.organismo],["Región",id.region||metadata.region],["Tipo de licitación",id.tipo_licitacion],["Monto estimado",id.monto_estimado||metadata.monto],["Fecha cierre",metadata.fechaCierre],["Tipo de proceso",id.tipo_proceso],["Modalidad de contrato",id.modalidad_contrato],["Moneda",id.moneda],["Vigencia",id.vigencia],["Inicio estimado",id.inicio_estimado],["Contacto",id.contacto],["Plataforma / Envío",id.plataforma],["URL Mercado Público",metadata.url]]
-        .filter(([,v])=>v).forEach(([l,v])=>addKV(ws1,l,v));
+      // Identificación
+      addSec(ws1, "IDENTIFICACIÓN", 2);
+      const camposId = [
+        ["Nombre licitación", id.nombre || metadata.titulo],
+        ["Mandante", id.mandante || metadata.organismo],
+        ["Tipo de licitación", id.tipo_licitacion],
+        ["Modalidad contrato", id.modalidad_contrato],
+        ["Monto estimado", id.monto_estimado || metadata.monto],
+        ["Fecha cierre", id.fecha_cierre || metadata.fechaCierre],
+        ["Región", id.region || metadata.region],
+        ["Tipo de proceso", id.tipo_proceso],
+        ["Moneda", id.moneda],
+        ["Vigencia del contrato", id.vigencia_contrato],
+        ["Inicio estimado", id.inicio_estimado],
+        ["Contacto", id.contacto],
+        ["Plataforma / Envío", id.plataforma_envio],
+        ["URL Mercado Público", id.url_mp || metadata.url],
+        ["Confidencialidad", id.confidencialidad]
+      ];
+      camposId.filter(([,v]) => v && v !== "[NO ENCONTRADO]").forEach(([l,v]) => addKV(ws1, l, v));
       ws1.addRow([]);
 
-      addSec(ws1,"B. PROPÓSITO Y DESCRIPCIÓN DEL SERVICIO",2);
-      [["Objetivo general",prop.objetivo_general],["Alcance del contrato",prop.alcance],["Naturaleza del encargo",prop.naturaleza],["Grupos de trabajo",prop.grupos_trabajo]]
-        .forEach(([l,v])=>{ const r=addKV(ws1,l,v); r.height=36; });
+      // Descripción del proyecto
+      addSec(ws1, "DESCRIPCIÓN DEL PROYECTO", 2);
+      const camposProp = [
+        ["Objetivo principal", prop.objetivo_general],
+        ["Alcance detallado", prop.alcance_detallado],
+        ["Naturaleza del encargo", prop.naturaleza_encargo],
+        ["Obras principales", prop.obras_principales],
+        ["Grupos de trabajo", prop.grupos_trabajo],
+        ["Especialidades requeridas", prop.especialidades_requeridas]
+      ];
+      camposProp.filter(([,v]) => v && v !== "[NO ENCONTRADO]").forEach(([l,v]) => {
+        const r = addKV(ws1, l, v);
+        r.height = 48;
+      });
       ws1.addRow([]);
 
-      if (analisis.requisitos?.length) {
-        addSec(ws1,"C. REQUISITOS Y EXPERIENCIA",2);
-        const hr = ws1.addRow(["Requisito","Descripción / Cómo acreditar"]);
-        hr.eachCell(c=>{c.style=hdrStyle(C.azulMedio);}); hr.height=18;
-        analisis.requisitos.forEach((r,i)=>{ const row=ws1.addRow([r.requisito,`${r.descripcion||""}\n${r.como_acreditar?"Acreditación: "+r.como_acreditar:""}`]); row.eachCell(c=>{c.style=rowS(i);c.alignment={wrapText:true,vertical:"middle"};}); row.height=40; });
+      // Requisitos empresa
+      if (analisis.requisitos_empresa?.length) {
+        addSec(ws1, "REQUISITOS PROPONENTES", 2);
+        const hrEmp = ws1.addRow(["Requisito", "Descripción / Cómo acreditar"]);
+        hrEmp.eachCell(c => { c.style = hdrStyle(C.azulMedio); }); hrEmp.height = 18;
+        analisis.requisitos_empresa.forEach((r, i) => {
+          const texto = [r.descripcion, r.fuente ? `Fuente: ${r.fuente}` : "", r.como_acreditar ? `Acreditación: ${r.como_acreditar}` : ""].filter(Boolean).join("\n");
+          addTableRow(ws1, [r.requisito, texto], i);
+        });
         ws1.addRow([]);
       }
 
+      // Requisitos profesionales
+      if (analisis.requisitos_profesionales?.length) {
+        addSec(ws1, "REQUISITOS PROFESIONALES", 2);
+        const hrProf = ws1.addRow(["Cargo", "Título / Experiencia / Dedicación"]);
+        hrProf.eachCell(c => { c.style = hdrStyle(C.azulMedio); }); hrProf.height = 18;
+        analisis.requisitos_profesionales.forEach((r, i) => {
+          const texto = [r.titulo_requerido, r.experiencia, r.dedicacion ? `Dedicación: ${r.dedicacion}` : "", r.como_acreditar ? `Acreditar: ${r.como_acreditar}` : ""].filter(Boolean).join("\n");
+          addTableRow(ws1, [r.cargo, texto], i);
+        });
+        ws1.addRow([]);
+      }
+
+      // Puntos críticos
       if (analisis.puntos_criticos?.length) {
-        addSec(ws1,"D. PUNTOS CRÍTICOS ANTES DE DECIDIR PARTICIPAR",2);
-        analisis.puntos_criticos.forEach((p,i)=>{
-          const bg = p.indicador?.includes("🟢") ? C.verdeClaro.replace("FF","") : p.indicador?.includes("🟡") ? C.amClaro.replace("FF","") : p.indicador?.includes("🔴") ? C.rojoClaro.replace("FF","") : null;
-          const r = addKV(ws1,`${p.indicador||""} ${p.punto||""}`,p.descripcion||"",bg);
-          r.height=30;
+        addSec(ws1, "⚠ PUNTOS CRÍTICOS ANTES DE DECIDIR PARTICIPAR", 2);
+        analisis.puntos_criticos.forEach((p, i) => {
+          const bg = p.indicador?.includes("🟢") ? "F0FDF4" : p.indicador?.includes("🟡") ? "FFFBEB" : p.indicador?.includes("🔴") ? "FEF2F2" : null;
+          const r = addKV(ws1, `${p.indicador||""} ${p.punto||""}`, p.descripcion_detallada || p.descripcion || "", bg);
+          r.height = 36;
+        });
+        ws1.addRow([]);
+      }
+
+      // Preguntas sugeridas
+      if (analisis.preguntas_sugeridas?.length && analisis.preguntas_sugeridas[0]) {
+        addSec(ws1, "PREGUNTAS SUGERIDAS PARA EL FORO", 2);
+        analisis.preguntas_sugeridas.forEach((q, i) => {
+          const r = ws1.addRow([`${i+1}.`, q]);
+          r.getCell(1).style = lblStyle();
+          r.getCell(2).style = valStyle();
+          r.height = 22;
         });
       }
 
       // ── Hoja 2: Calendario ────────────────────────────────────────────────
       const ws2 = wb.addWorksheet("Calendario");
-      ws2.columns=[{width:35},{width:20},{width:50},{width:15}];
-      addTitle(ws2,"CALENDARIO DE LICITACIÓN",4);
-      const hc=ws2.addRow(["Hito","Fecha / Plazo","Observaciones","Estado"]);
-      hc.eachCell(c=>{c.style=tblHdr();}); hc.height=18;
-      (analisis.calendario||[]).forEach((c,i)=>{ const r=ws2.addRow([c.hito,c.fecha,c.observaciones,c.estado]); r.eachCell(ce=>{ce.style=rowS(i);ce.alignment={wrapText:true,vertical:"middle"};}); r.height=24; });
+      ws2.columns = [{ width:38 },{ width:22 },{ width:55 },{ width:14 }];
+      addTitle(ws2, `CALENDARIO DE LICITACIÓN — ${id.codigo_mp || metadata.codigo || ""}`, 4);
+      const hc = ws2.addRow(["Hito", "Fecha / Plazo", "Observaciones", "Estado"]);
+      hc.eachCell(c => { c.style = tblHdr(); }); hc.height = 18;
+      (analisis.calendario || []).forEach((c, i) => {
+        const bg = c.estado?.includes("✔") ? "F0FDF4" : c.estado?.includes("⚠") ? "FEF2F2" : null;
+        addTableRow(ws2, [c.hito, c.fecha_plazo || c.fecha, c.observaciones, c.estado], i, bg);
+      });
 
       // ── Hoja 3: Garantías y Pagos ─────────────────────────────────────────
       const ws3 = wb.addWorksheet("Garantías y Pagos");
-      ws3.columns=[{width:35},{width:25},{width:20},{width:50}];
-      addTitle(ws3,"GARANTÍAS Y CONDICIONES DE PAGO",4);
-      addSec(ws3,"GARANTÍAS",4);
-      const hg=ws3.addRow(["Tipo de Garantía","Monto / Requisito","Vigencia","Observaciones"]);
-      hg.eachCell(c=>{c.style=tblHdr();}); hg.height=18;
-      (analisis.garantias||[]).forEach((g,i)=>{ const r=ws3.addRow([g.tipo,g.monto,g.vigencia,g.observaciones]); r.eachCell(c=>{c.style=rowS(i);c.alignment={wrapText:true,vertical:"middle"};}); r.height=24; });
+      ws3.columns = [{ width:35 },{ width:25 },{ width:22 },{ width:22 },{ width:42 }];
+      addTitle(ws3, `GARANTÍAS Y ESQUEMA DE PAGOS — ${id.mandante || metadata.organismo || ""}`, 5);
+
+      addSec(ws3, "GARANTÍAS", 5);
+      const hg = ws3.addRow(["Tipo de Garantía", "Monto / Porcentaje", "Vigencia", "Forma", "Observaciones"]);
+      hg.eachCell(c => { c.style = tblHdr(); }); hg.height = 18;
+      (analisis.garantias || []).forEach((g, i) => {
+        const obs = [g.lugar_entrega ? `Lugar: ${g.lugar_entrega}` : "", g.observaciones].filter(Boolean).join(" | ");
+        addTableRow(ws3, [g.tipo, g.monto, g.vigencia, g.forma, obs], i);
+      });
       ws3.addRow([]);
-      addSec(ws3,"CONDICIONES DE PAGO",4);
-      (analisis.condiciones_pago||[]).forEach((cp,i)=>{ const r=ws3.addRow([cp.condicion,cp.descripcion]); ws3.mergeCells(r.number,2,r.number,4); r.eachCell(c=>{c.style=rowS(i);c.alignment={wrapText:true,vertical:"middle"};}); r.height=24; });
+
+      if (analisis.esquema_pagos?.length) {
+        addSec(ws3, "ESQUEMA DE PAGOS POR HITOS", 5);
+        const hep = ws3.addRow(["Estado de Pago", "Hito / Etapa", "Porcentaje", "", "Descripción del hito"]);
+        hep.eachCell(c => { c.style = tblHdr(); }); hep.height = 18;
+        analisis.esquema_pagos.forEach((ep, i) => {
+          addTableRow(ws3, [ep.estado_pago, ep.hito_etapa, ep.porcentaje, "", ep.descripcion], i);
+        });
+        ws3.addRow([]);
+      }
+
+      addSec(ws3, "CONDICIONES DE PAGO", 5);
+      (analisis.condiciones_pago || []).forEach((cp, i) => {
+        const r = ws3.addRow([cp.condicion, cp.descripcion]);
+        ws3.mergeCells(r.number, 2, r.number, 5);
+        r.eachCell(c => { c.style = rowS(i); c.alignment = {wrapText:true, vertical:"middle"}; });
+        r.height = 24;
+      });
       ws3.addRow([]);
-      addSec(ws3,"MULTAS Y SANCIONES",4);
-      const hm=ws3.addRow(["Causal","Monto","","Observaciones"]);
-      hm.eachCell(c=>{c.style=tblHdr();}); hm.height=18;
-      (analisis.multas||[]).forEach((m,i)=>{ const r=ws3.addRow([m.causal,m.monto,"",m.observaciones]); r.eachCell(c=>{c.style=rowS(i);c.alignment={wrapText:true,vertical:"middle"};}); r.height=24; });
+
+      if (analisis.multas?.length) {
+        addSec(ws3, "MULTAS Y SANCIONES", 5);
+        const hm = ws3.addRow(["Causal", "Monto", "Alcance", "Tope", "Observaciones"]);
+        hm.eachCell(c => { c.style = tblHdr(); }); hm.height = 18;
+        analisis.multas.forEach((m, i) => {
+          addTableRow(ws3, [m.causal, m.monto, m.alcance, m.tope, ""], i);
+        });
+      }
 
       // ── Hoja 4: Alcance Técnico ───────────────────────────────────────────
       const ws4 = wb.addWorksheet("Alcance Técnico");
-      ws4.columns=[{width:12},{width:28},{width:55},{width:20},{width:15}];
-      addTitle(ws4,"ALCANCE TÉCNICO",5);
-      addSec(ws4,"GRUPOS DE TRABAJO",5);
-      const hgrp=ws4.addRow(["Grupo","Nombre","Contenido principal","Cotización","Referencia TR"]);
-      hgrp.eachCell(c=>{c.style=tblHdr();}); hgrp.height=18;
-      (analisis.alcance_tecnico?.grupos||[]).forEach((g,i)=>{ const r=ws4.addRow([g.grupo,g.nombre,g.contenido,g.cotizacion,g.referencia]); r.eachCell(c=>{c.style=rowS(i);c.alignment={wrapText:true,vertical:"middle"};}); r.height=42; });
-      ws4.addRow([]);
-      addSec(ws4,"ESPECIALIDADES REQUERIDAS",5);
-      const re=ws4.addRow([analisis.alcance_tecnico?.especialidades||"[NO ENCONTRADO]"]);
-      ws4.mergeCells(re.number,1,re.number,5); re.getCell(1).style={font:{name:"Arial",size:9},alignment:{wrapText:true,vertical:"middle"}}; re.height=36;
-      if (analisis.alcance_tecnico?.condiciones_operativas?.length) {
+      ws4.columns = [{ width:20 },{ width:15 },{ width:45 },{ width:45 }];
+      addTitle(ws4, "ALCANCE TÉCNICO Y ENTREGABLES", 4);
+
+      if (alc.etapas?.length) {
+        addSec(ws4, "ETAPAS Y ENTREGABLES POR ETAPA", 4);
+        const he = ws4.addRow(["Etapa", "Duración", "Contenido Principal", "Entregables Clave"]);
+        he.eachCell(c => { c.style = tblHdr(); }); he.height = 18;
+        alc.etapas.forEach((e, i) => addTableRow(ws4, [e.etapa, e.duracion, e.contenido, e.entregables], i));
         ws4.addRow([]);
-        addSec(ws4,"CONDICIONES OPERATIVAS",5);
-        analisis.alcance_tecnico.condiciones_operativas.forEach((co,i)=>{ const r=ws4.addRow([co.condicion,co.descripcion]); ws4.mergeCells(r.number,2,r.number,5); r.eachCell(c=>{c.style=rowS(i);c.alignment={wrapText:true,vertical:"middle"};}); r.height=24; });
+      }
+
+      if (alc.especialidades?.length) {
+        addSec(ws4, "ESPECIALIDADES CONSULTADAS", 4);
+        const hes = ws4.addRow(["Especialidad", "", "Alcance Principal", ""]);
+        hes.eachCell(c => { c.style = tblHdr(); }); hes.height = 18;
+        alc.especialidades.forEach((e, i) => {
+          const r = ws4.addRow([e.especialidad, "", e.alcance_principal, ""]);
+          ws4.mergeCells(r.number, 3, r.number, 4);
+          r.eachCell(c => { c.style = rowS(i); c.alignment = {wrapText:true, vertical:"middle"}; });
+          r.height = 28;
+        });
+        ws4.addRow([]);
+      }
+
+      if (alc.condiciones_operativas) {
+        addSec(ws4, "CONDICIONES OPERATIVAS RELEVANTES", 4);
+        const rCO = ws4.addRow([alc.condiciones_operativas]);
+        ws4.mergeCells(rCO.number, 1, rCO.number, 4);
+        rCO.getCell(1).style = { font:{name:"Arial",size:9}, alignment:{wrapText:true,vertical:"middle"} };
+        rCO.height = 48;
+        ws4.addRow([]);
+      }
+
+      if (alc.formatos_entrega || alc.normativa_aplicable) {
+        addSec(ws4, "FORMATOS Y NORMATIVA", 4);
+        if (alc.formatos_entrega) addKV(ws4, "Formatos de entrega", alc.formatos_entrega);
+        if (alc.normativa_aplicable) addKV(ws4, "Normativa aplicable", alc.normativa_aplicable);
       }
 
       // ── Hoja 5: Auditoría ─────────────────────────────────────────────────
       const ws5 = wb.addWorksheet("Auditoría");
-      ws5.columns=[{width:40},{width:15},{width:10},{width:18},{width:42}];
-      addTitle(ws5,"AUDITORÍA DE ARCHIVOS PROCESADOS",5);
-      const rfecha=ws5.addRow([`Fecha análisis: ${new Date().toLocaleString("es-CL")} | Archivos procesados: ${archivosAuditoria.length} | PDFs escaneados: ${escaneadosCount}`]);
-      ws5.mergeCells(rfecha.number,1,rfecha.number,5); rfecha.getCell(1).style={font:{italic:true,size:9,name:"Arial"},alignment:{horizontal:"left"}}; rfecha.height=16;
+      ws5.columns = [{ width:42 },{ width:15 },{ width:10 },{ width:18 },{ width:42 }];
+      addTitle(ws5, "AUDITORÍA DE ARCHIVOS PROCESADOS", 5);
+      const rfecha = ws5.addRow([`Fecha análisis: ${new Date().toLocaleString("es-CL")} | Archivos: ${archivosAuditoria.length} | PDFs escaneados: ${escaneadosCount}`]);
+      ws5.mergeCells(rfecha.number, 1, rfecha.number, 5);
+      rfecha.getCell(1).style = { font:{italic:true,size:9,name:"Arial"}, alignment:{horizontal:"left"} };
+      rfecha.height = 16;
       ws5.addRow([]);
-      const ha=ws5.addRow(["Archivo","Tipo","Páginas","Estado","Observación"]);
-      ha.eachCell(c=>{c.style=tblHdr();}); ha.height=18;
-      archivosAuditoria.forEach((a,i)=>{ const r=ws5.addRow([a.nombre,a.tipo,a.paginas,a.estado,a.observacion]); r.eachCell(c=>{c.style=rowS(i);c.alignment={wrapText:true,vertical:"middle"};}); r.height=18; });
+      const ha = ws5.addRow(["Archivo", "Tipo", "Páginas", "Estado", "Observación"]);
+      ha.eachCell(c => { c.style = tblHdr(); }); ha.height = 18;
+      archivosAuditoria.forEach((a, i) => addTableRow(ws5, [a.nombre, a.tipo, a.paginas, a.estado, a.observacion], i));
 
       // ── Respuesta ──────────────────────────────────────────────────────────
       const buf     = await wb.xlsx.writeBuffer();
