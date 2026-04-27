@@ -340,9 +340,9 @@ function App() {
   const abortRefs = useRef({});
   const timerRefs = useRef({});
 
-  const activDiv = DIVISIONS.find(d => d.id === activDivId) || DIVISIONS[0];
-  const activeDivId2 = activDivId; // alias
-  const ds = divStates[activeDivId2];
+  const activDiv = DIVISIONS.find(d => d.id === activeDivId) || DIVISIONS[0];
+  const activeDivId2 = activeDivId;
+  const ds = divStates[activeDivId];
 
   // ── Actualizar estado de división ──────────────────────────────────────
   const updateDs = useCallback((divId, updater) => {
