@@ -115,6 +115,8 @@ app.get("/buscar", async (req, res) => {
     ]);
     clearTimeout(timeoutId);
 
+    console.log(`[buscar] sinTipo=${sinTipo.length} conSC=${conSC.length}`);
+
     // Fusionar y deduplicar
     const vistos = new Set();
     const licitaciones = [];
@@ -154,7 +156,7 @@ app.get("/buscar", async (req, res) => {
       return servicios.some(s => matchesKeyword(titulo, s));
     });
 
-    // Mapear resultados
+    console.log(`[buscar] licitaciones=${licitaciones.length} filtradas=${filtradas.length} keywords=${keywords} servicios=${servicios}`);
     let resultado = filtradas.map(l => {
       const textoCompleto  = `${l.Nombre || ""} ${l.Descripcion || ""}`;
       const regionExtraida = extraerRegionDeTexto(textoCompleto);
@@ -592,7 +594,7 @@ async function extraerTextoPDF(buffer) {
     const data = await pdfParse(buffer);
     const avgChars = data.numpages > 0 ? data.text.length / data.numpages : 0;
     return {
-      texto:     data.text.substring(0, 15000), // aumentado a 25K por PDF
+      texto:     data.text.substring(0, 60000), // 60K por PDF para capturar secciones profundas
       paginas:   data.numpages,
       escaneado: avgChars < 50,
       ok:        true
@@ -602,7 +604,19 @@ async function extraerTextoPDF(buffer) {
   }
 }
 
+// Detectar si un archivo es genérico/no relevante para priorización
+function esDocumentoGenerico(nombre) {
+  const lower = nombre.toLowerCase();
+  return lower.includes('sso') || lower.includes('seguridad') ||
+         lower.includes('salud') || lower.includes('reglamento') ||
+         lower.includes('eeg') || lower.includes('estandar') ||
+         lower.includes('standard');
+}
+
 app.post("/mp/analizar-bases", (req, res) => {
+  // Timeout de 3 minutos para el análisis secuencial de 5 agentes
+  req.setTimeout(180000);
+  res.setTimeout(180000);
   uploadMiddleware(req, res, async (err) => {
     if (err) return res.status(400).json({ error: "Error al subir archivo: " + err.message });
 
@@ -614,7 +628,8 @@ app.post("/mp/analizar-bases", (req, res) => {
     try { metadata = JSON.parse(req.body.metadata || "{}"); } catch(e) {}
 
     const archivosAuditoria = [];
-    const textosExtraidos   = [];
+    const textosRelevantes  = []; // BA, TR, bases técnicas
+    const textosGenericos   = []; // SSO, reglamentos, estándares genéricos
     let escaneadosCount     = 0;
 
     try {
@@ -637,7 +652,15 @@ app.post("/mp/analizar-bases", (req, res) => {
             observacion: resultado.escaneado ? "Revisar manualmente" : (resultado.error || "")
           });
           if (resultado.escaneado) escaneadosCount++;
-          if (resultado.texto.trim()) textosExtraidos.push(`=== ${nombre} ===\n${resultado.texto}`);
+          if (resultado.texto.trim()) {
+            const bloque = `=== ${nombre} ===\n${resultado.texto}`;
+            // Separar documentos relevantes de genéricos
+            if (esDocumentoGenerico(nombre)) {
+              textosGenericos.push(bloque);
+            } else {
+              textosRelevantes.push(bloque);
+            }
+          }
 
         } else if (["docx","doc"].includes(ext)) {
           archivosAuditoria.push({ nombre, tipo:"Word", paginas:"–", estado:"⚠️ No procesado", observacion:"Revisar manualmente" });
@@ -646,11 +669,18 @@ app.post("/mp/analizar-bases", (req, res) => {
         }
       }
 
-      if (!textosExtraidos.length) {
+      if (!textosRelevantes.length && !textosGenericos.length) {
         return res.status(422).json({ error: "No se pudo extraer texto de ningún PDF.", escaneados: escaneadosCount, auditoria: archivosAuditoria });
       }
 
-      const textoTotal = textosExtraidos.join("\n\n").substring(0, 80000);
+      // Priorizar documentos relevantes, completar con genéricos si hay espacio
+      const LIMITE_TOTAL = 150000;
+      let textoTotal = textosRelevantes.join("\n\n");
+      if (textoTotal.length < LIMITE_TOTAL && textosGenericos.length) {
+        const espacio = LIMITE_TOTAL - textoTotal.length;
+        textoTotal += "\n\n" + textosGenericos.join("\n\n").substring(0, espacio);
+      }
+      textoTotal = textoTotal.substring(0, LIMITE_TOTAL);
 
       // ── Helper para llamar GPT-4o ──────────────────────────────────────────
       const gpt = async (systemPrompt, userPrompt) => {
@@ -673,6 +703,8 @@ app.post("/mp/analizar-bases", (req, res) => {
         return JSON.parse(match ? match[0] : clean);
       };
 
+      const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
       const BASE_SYSTEM = `Eres un experto senior en licitaciones públicas chilenas para LEN Ingeniería.
 Extrae información TEXTUAL EXACTA de los documentos (montos exactos, fechas con hora, direcciones completas, porcentajes, secciones de referencia).
 NUNCA inventes — usa "[NO ENCONTRADO]" solo si genuinamente no existe.
@@ -680,25 +712,27 @@ Responde ÚNICAMENTE con JSON válido sin markdown.`;
 
       const META = `METADATA MP: Título: ${metadata.titulo||""} | Código: ${metadata.codigo||""} | Mandante: ${metadata.organismo||""} | Región: ${metadata.region||""} | Monto: ${metadata.monto||""} | Cierre: ${metadata.fechaCierre||""} | URL: ${metadata.url||""}`;
 
-      // ── 5 Agentes especializados en paralelo ──────────────────────────────
-      const [r1, r2, r3, r4, r5] = await Promise.all([
+      // ── 5 Agentes especializados secuenciales ─────────────────────────────
+      console.log("[analizar-bases] Iniciando agente 1: Identificación");
+      const r1 = await gpt(BASE_SYSTEM, `${META}\n\nDOCUMENTOS:\n${textoTotal}\n\nExtrae SOLO identificación y descripción del proyecto. JSON:\n{"identificacion":{"nombre":"","codigo_mp":"","mandante":"","region":"","tipo_licitacion":"","monto_estimado":"","fecha_cierre":"","tipo_proceso":"","modalidad_contrato":"","moneda":"","vigencia_contrato":"","inicio_estimado":"","contacto":"","plataforma_envio":"","url_mp":"","documentos_licitacion":""},"proposito":{"objetivo_general":"","alcance_detallado":"","naturaleza_encargo":"","obras_principales":"","grupos_trabajo":"","especialidades_requeridas":""}}`);
+      await sleep(15000);
 
-        // Agente 1: Identificación y descripción del proyecto
-        gpt(BASE_SYSTEM, `${META}\n\nDOCUMENTOS:\n${textoTotal}\n\nExtrae SOLO identificación y descripción del proyecto. JSON:\n{"identificacion":{"nombre":"","codigo_mp":"","mandante":"","region":"","tipo_licitacion":"","monto_estimado":"","fecha_cierre":"","tipo_proceso":"","modalidad_contrato":"","moneda":"","vigencia_contrato":"","inicio_estimado":"","contacto":"","plataforma_envio":"","url_mp":"","documentos_licitacion":""},"proposito":{"objetivo_general":"","alcance_detallado":"","naturaleza_encargo":"","obras_principales":"","grupos_trabajo":"","especialidades_requeridas":""}}`),
+      console.log("[analizar-bases] Iniciando agente 2: Calendario");
+      const r2 = await gpt(BASE_SYSTEM, `${META}\n\nDOCUMENTOS:\n${textoTotal}\n\nExtrae TODAS las fechas y hitos del proceso. Para cada fecha incluye hora si existe, lugar si aplica, y observaciones importantes. JSON:\n{"calendario":[{"hito":"","fecha_plazo":"","observaciones":"","estado":"✔ Pasado o Próximo o —"}],"preguntas_sugeridas":[""]}`);
+      await sleep(15000);
 
-        // Agente 2: Calendario completo con todas las fechas
-        gpt(BASE_SYSTEM, `${META}\n\nDOCUMENTOS:\n${textoTotal}\n\nExtrae TODAS las fechas y hitos del proceso. Para cada fecha incluye hora si existe, lugar si aplica, y observaciones importantes. JSON:\n{"calendario":[{"hito":"","fecha_plazo":"","observaciones":"","estado":"✔ Pasado o Próximo o —"}],"preguntas_sugeridas":[""]}`),
+      console.log("[analizar-bases] Iniciando agente 3: Garantías y Pagos");
+      const r3 = await gpt(BASE_SYSTEM, `${META}\n\nDOCUMENTOS:\n${textoTotal}\n\nExtrae garantías (monto exacto, forma, vigencia, lugar entrega, glosa), esquema de pagos por hitos (porcentaje exacto, descripción hito), condiciones de pago y multas. JSON:\n{"garantias":[{"tipo":"","monto":"","vigencia":"","forma":"","lugar_entrega":"","glosa":"","observaciones":""}],"esquema_pagos":[{"estado_pago":"","hito_etapa":"","porcentaje":"","descripcion":""}],"condiciones_pago":[{"condicion":"","descripcion":""}],"multas":[{"causal":"","monto":"","alcance":"","tope":""}]}`);
+      await sleep(15000);
 
-        // Agente 3: Garantías, pagos y multas
-        gpt(BASE_SYSTEM, `${META}\n\nDOCUMENTOS:\n${textoTotal}\n\nExtrae garantías (monto exacto, forma, vigencia, lugar entrega, glosa), esquema de pagos por hitos (porcentaje exacto, descripción hito), condiciones de pago y multas. JSON:\n{"garantias":[{"tipo":"","monto":"","vigencia":"","forma":"","lugar_entrega":"","glosa":"","observaciones":""}],"esquema_pagos":[{"estado_pago":"","hito_etapa":"","porcentaje":"","descripcion":""}],"condiciones_pago":[{"condicion":"","descripcion":""}],"multas":[{"causal":"","monto":"","alcance":"","tope":""}]}`),
+      console.log("[analizar-bases] Iniciando agente 4: Requisitos y Puntos Críticos");
+      const r4 = await gpt(BASE_SYSTEM, `${META}\n\nDOCUMENTOS:\n${textoTotal}\n\nExtrae requisitos de empresa (con fuente y cómo acreditar), requisitos de profesionales (cargo, título, experiencia, dedicación) y puntos críticos (🔴 excluyentes/riesgosos, 🟡 importantes, 🟢 favorables, ℹ informativos). JSON:\n{"requisitos_empresa":[{"requisito":"","descripcion":"","fuente":"","como_acreditar":""}],"requisitos_profesionales":[{"cargo":"","titulo_requerido":"","experiencia":"","dedicacion":"","como_acreditar":""}],"puntos_criticos":[{"indicador":"🔴 o 🟡 o 🟢 o ℹ","punto":"","descripcion_detallada":""}]}`);
+      await sleep(15000);
 
-        // Agente 4: Requisitos empresa y profesionales + puntos críticos
-        gpt(BASE_SYSTEM, `${META}\n\nDOCUMENTOS:\n${textoTotal}\n\nExtrae requisitos de empresa (con fuente y cómo acreditar), requisitos de profesionales (cargo, título, experiencia, dedicación) y puntos críticos (🔴 excluyentes/riesgosos, 🟡 importantes, 🟢 favorables, ℹ informativos). JSON:\n{"requisitos_empresa":[{"requisito":"","descripcion":"","fuente":"","como_acreditar":""}],"requisitos_profesionales":[{"cargo":"","titulo_requerido":"","experiencia":"","dedicacion":"","como_acreditar":""}],"puntos_criticos":[{"indicador":"🔴 o 🟡 o 🟢 o ℹ","punto":"","descripcion_detallada":""}]}`),
+      console.log("[analizar-bases] Iniciando agente 5: Alcance Técnico");
+      const r5 = await gpt(BASE_SYSTEM, `${META}\n\nDOCUMENTOS:\n${textoTotal}\n\nExtrae alcance técnico completo: etapas con duración y entregables específicos, especialidades requeridas, condiciones operativas, formatos de entrega y normativa aplicable. JSON:\n{"alcance_tecnico":{"etapas":[{"etapa":"","duracion":"","contenido":"","entregables":""}],"especialidades":[{"especialidad":"","alcance_principal":""}],"condiciones_operativas":"","formatos_entrega":"","normativa_aplicable":""}}`);
 
-        // Agente 5: Alcance técnico, etapas y entregables
-        gpt(BASE_SYSTEM, `${META}\n\nDOCUMENTOS:\n${textoTotal}\n\nExtrae alcance técnico completo: etapas con duración y entregables específicos, especialidades requeridas, condiciones operativas, formatos de entrega y normativa aplicable. JSON:\n{"alcance_tecnico":{"etapas":[{"etapa":"","duracion":"","contenido":"","entregables":""}],"especialidades":[{"especialidad":"","alcance_principal":""}],"condiciones_operativas":"","formatos_entrega":"","normativa_aplicable":""}}`)
-
-      ]);
+      console.log("[analizar-bases] Todos los agentes completados, consolidando resultados");
 
       // ── Consolidar resultados de los 5 agentes ─────────────────────────────
       const analisis = {
