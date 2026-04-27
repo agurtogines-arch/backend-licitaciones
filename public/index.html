@@ -3,20 +3,20 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Agente Licitaciones – Mercado Público</title>
+<title>Agente MP — LEN Ingeniería</title>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:system-ui,sans-serif;background:#f8fafc;color:#1e293b;min-height:100vh}
+body{font-family:system-ui,sans-serif;background:#f0f4f8;color:#1e293b;min-height:100vh}
 a{text-decoration:none}
 </style>
 </head>
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const { useState, useRef } = React;
+const { useState, useRef, useCallback } = React;
 
 const BACKEND_URL = "https://backend-licitaciones.onrender.com";
 
@@ -40,19 +40,181 @@ const REGIONES = [
   { value:"12", label:"Magallanes" },
 ];
 
-const KW_VIAL_DEFAULT = [
-  "Vial","Diseño Geométrico","Seguridad Vial","Tránsito",
-  "Prefactibilidad","Factibilidad","Paviment","Caminos","Puentes",
-];
-const KW_HIDRO_DEFAULT = [
-  "Hidráulic","Hidrológ","Drenaje","Aguas Lluvias",
-  "Cauces","Inundacion","Cuencas","APR","Hidrogeológ","Saneamiento",
-];
-const KW_SERVICIO_DEFAULT = [
-  "Estudio","Consultoría","Asesoría","Diagnóstico",
-  "Diseño","Inspección","Levantamiento","Catastro",
+// ── Configuración de divisiones ────────────────────────────────────────────
+const DIVISIONS = [
+  {
+    id: "zonasur",
+    label: "Zona Sur",
+    icon: "🌊",
+    color: "#0891b2",
+    bg: "#ecfeff",
+    border: "#06b6d4",
+    defaultRegionDesde: "7",
+    defaultRegionHasta: "12",
+    grupos: [
+      {
+        label: "Ingeniería Vial",
+        lsKey: "kw_vial_zonasur",
+        color: "#2563eb",
+        bg: "#eff6ff",
+        border: "#bfdbfe",
+        defaults: ["Vial","Diseño Geométrico","Seguridad Vial","Tránsito","Prefactibilidad","Factibilidad","Paviment","Caminos","Puentes"]
+      },
+      {
+        label: "Hidráulica / Hidrología",
+        lsKey: "kw_hidro_zonasur",
+        color: "#0891b2",
+        bg: "#ecfeff",
+        border: "#a5f3fc",
+        defaults: ["Hidráulic","Hidrológ","Drenaje","Aguas Lluvias","Cauces","Inundacion","Cuencas","APR","Hidrogeológ","Saneamiento"]
+      }
+    ],
+    servicios: {
+      lsKey: "kw_servicio_zonasur",
+      color: "#16a34a",
+      bg: "#f0fdf4",
+      border: "#bbf7d0",
+      defaults: ["Estudio","Consultoría","Asesoría","Diagnóstico","Diseño","Inspección","Levantamiento","Catastro"]
+    }
+  },
+  {
+    id: "infra",
+    label: "Infraestructura",
+    icon: "🛣️",
+    color: "#7c3aed",
+    bg: "#f5f3ff",
+    border: "#7c3aed",
+    defaultRegionDesde: "todas",
+    defaultRegionHasta: "todas",
+    grupos: [
+      {
+        label: "Infraestructura Vial",
+        lsKey: "kw_tec_infra",
+        color: "#7c3aed",
+        bg: "#f5f3ff",
+        border: "#ddd6fe",
+        defaults: ["Vial","Puentes","Caminos","Pavimento","Conservación Vial","Mejoramiento Vial","Señalización","Túnel","Bypass","Acceso Vial"]
+      }
+    ],
+    servicios: {
+      lsKey: "kw_serv_infra",
+      color: "#16a34a",
+      bg: "#f0fdf4",
+      border: "#bbf7d0",
+      defaults: ["Estudio","Consultoría","Diseño","Prefactibilidad","Factibilidad","Diagnóstico","Inspección","Asesoría"]
+    }
+  },
+  {
+    id: "medioambiente",
+    label: "Medio Ambiente",
+    icon: "🌿",
+    color: "#15803d",
+    bg: "#f0fdf4",
+    border: "#15803d",
+    defaultRegionDesde: "todas",
+    defaultRegionHasta: "todas",
+    grupos: [
+      {
+        label: "Medio Ambiente y Territorio",
+        lsKey: "kw_tec_ma",
+        color: "#15803d",
+        bg: "#f0fdf4",
+        border: "#86efac",
+        defaults: ["Ambiental","Flora","Fauna","SEIA","Línea Base","Glaciar","Humedal","Biodiversidad","Ecosistema","DGA","CONAF","Impacto Ambiental"]
+      }
+    ],
+    servicios: {
+      lsKey: "kw_serv_ma",
+      color: "#16a34a",
+      bg: "#f0fdf4",
+      border: "#bbf7d0",
+      defaults: ["Estudio","Consultoría","Diagnóstico","Levantamiento","Catastro","Monitoreo","Asesoría"]
+    }
+  },
+  {
+    id: "energia",
+    label: "Energía",
+    icon: "⚡",
+    color: "#b45309",
+    bg: "#fffbeb",
+    border: "#b45309",
+    defaultRegionDesde: "todas",
+    defaultRegionHasta: "todas",
+    grupos: [
+      {
+        label: "Energía y Electricidad",
+        lsKey: "kw_tec_energia",
+        color: "#b45309",
+        bg: "#fffbeb",
+        border: "#fde68a",
+        defaults: ["Energía","Eléctric","Transmisión","ERNC","Solar","Eólic","Subestación","Fotovoltaic","Generación","Eficiencia Energética","Red Eléctrica"]
+      }
+    ],
+    servicios: {
+      lsKey: "kw_serv_energia",
+      color: "#16a34a",
+      bg: "#f0fdf4",
+      border: "#bbf7d0",
+      defaults: ["Estudio","Consultoría","Diseño","Inspección","Evaluación","Asesoría","Diagnóstico"]
+    }
+  },
+  {
+    id: "ito",
+    label: "Inspección Técnica",
+    icon: "🔍",
+    color: "#dc2626",
+    bg: "#fef2f2",
+    border: "#dc2626",
+    defaultRegionDesde: "todas",
+    defaultRegionHasta: "todas",
+    grupos: [
+      {
+        label: "Inspección Técnica de Obras",
+        lsKey: "kw_tec_ito",
+        color: "#dc2626",
+        bg: "#fef2f2",
+        border: "#fecaca",
+        defaults: ["ITO","Inspección Técnica","Supervisión","Fiscalización","Control de Obras","Inspección de Obras","Administración de Contratos"]
+      }
+    ],
+    servicios: {
+      lsKey: "kw_serv_ito",
+      color: "#16a34a",
+      bg: "#f0fdf4",
+      border: "#bbf7d0",
+      defaults: ["ITO","Inspección","Supervisión","Fiscalización","Control","Administración"]
+    }
+  },
+  {
+    id: "civil",
+    label: "Proyectos Civiles",
+    icon: "🏗️",
+    color: "#475569",
+    bg: "#f8fafc",
+    border: "#475569",
+    defaultRegionDesde: "todas",
+    defaultRegionHasta: "todas",
+    grupos: [
+      {
+        label: "Ingeniería Civil",
+        lsKey: "kw_tec_civil",
+        color: "#475569",
+        bg: "#f8fafc",
+        border: "#cbd5e1",
+        defaults: ["Edificación","Estructural","Civil","Geotecnia","Fundación","Arquitectura","Sondaje","Mecánica de Suelos","Topografía","Cubicación"]
+      }
+    ],
+    servicios: {
+      lsKey: "kw_serv_civil",
+      color: "#16a34a",
+      bg: "#f0fdf4",
+      border: "#bbf7d0",
+      defaults: ["Estudio","Diseño","Consultoría","Inspección","Cálculo","Diagnóstico","Asesoría"]
+    }
+  }
 ];
 
+// ── Helpers localStorage ──────────────────────────────────────────────────
 function lsGet(key, fallback) {
   try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
   catch(e) { return fallback; }
@@ -60,6 +222,55 @@ function lsGet(key, fallback) {
 function lsSet(key, val) {
   try { localStorage.setItem(key, JSON.stringify(val)); } catch(e) {}
 }
+
+// Migración de claves antiguas de Zona Sur
+function migrarZonaSur() {
+  const oldVial = localStorage.getItem("kw_vial");
+  const oldHidro = localStorage.getItem("kw_hidro");
+  const oldServ = localStorage.getItem("kw_servicio");
+  const oldActive = localStorage.getItem("kw_active");
+  if (oldVial && !localStorage.getItem("kw_vial_zonasur")) {
+    localStorage.setItem("kw_vial_zonasur", oldVial);
+  }
+  if (oldHidro && !localStorage.getItem("kw_hidro_zonasur")) {
+    localStorage.setItem("kw_hidro_zonasur", oldHidro);
+  }
+  if (oldServ && !localStorage.getItem("kw_servicio_zonasur")) {
+    localStorage.setItem("kw_servicio_zonasur", oldServ);
+  }
+  if (oldActive && !localStorage.getItem("kw_active_zonasur_0") && !localStorage.getItem("kw_active_zonasur_1")) {
+    // Migrar activos al nuevo formato
+  }
+}
+migrarZonaSur();
+
+// ── Inicializar estado de cada división ───────────────────────────────────
+function initDivState(div) {
+  return {
+    grupos: div.grupos.map((g, i) => ({
+      keywords: lsGet(g.lsKey, g.defaults),
+      active: new Set(lsGet(g.lsKey + "_active", g.defaults)),
+      newInput: ""
+    })),
+    servicios: {
+      keywords: lsGet(div.servicios.lsKey, div.servicios.defaults),
+      active: new Set(lsGet(div.servicios.lsKey + "_active", div.servicios.defaults)),
+      newInput: ""
+    },
+    regionDesde: lsGet("region_desde_" + div.id, div.defaultRegionDesde),
+    regionHasta: lsGet("region_hasta_" + div.id, div.defaultRegionHasta),
+    soloVigentes: true,
+    fechaInicio: new Date().toISOString().split("T")[0],
+    fechaFin: "",
+    results: [],
+    loading: false,
+    steps: [],
+    error: "",
+    elapsed: 0
+  };
+}
+
+// ── Helpers búsqueda ──────────────────────────────────────────────────────
 function normalizar(s) { return (s||"").toLowerCase().replace(/\s+/g," ").trim(); }
 function deduplicar(arr) {
   const seen = new Set();
@@ -84,200 +295,165 @@ function filtrarPorFecha(arr, soloVigentes, fechaInicio, fechaFin) {
       if(cierre && cierre < hoy) return false;
     } else {
       if(fechaInicio || fechaFin) {
-        if(fechaInicio) { const fi=new Date(fechaInicio); if(pub && pub < fi) return false; }
-        if(fechaFin)    { const ff=new Date(fechaFin); ff.setHours(23,59,59,999); if(cierre && cierre > ff) return false; }
+        const fi = fechaInicio ? new Date(fechaInicio) : null;
+        const ff = fechaFin    ? new Date(fechaFin)    : null;
+        if(ff) ff.setHours(23,59,59,999);
+        if(fi) { const refInicio = pub || cierre; if(refInicio && refInicio < fi) return false; }
+        if(ff && cierre && cierre > ff) return false;
       } else {
-        if(pub && pub < DESDE_DEFAULT) return false;
+        const ref = pub || cierre;
+        if(ref && ref < DESDE_DEFAULT) return false;
       }
     }
     return true;
   });
 }
-
-// ── Una sola llamada al backend con TODAS las keywords ────────────────────────
 async function buscarEnBackend(tecnicas, servicios, regionDesde, regionHasta, signal) {
-  const params = new URLSearchParams({
-    keywords: tecnicas.join(","),
-    servicios: servicios.join(",")
-  });
+  const params = new URLSearchParams({ keywords: tecnicas.join(","), servicios: servicios.join(",") });
   if(regionDesde !== "todas") params.set("desde", regionDesde);
   if(regionHasta !== "todas") params.set("hasta", regionHasta);
   let res;
   try { res = await fetch(`${BACKEND_URL}/buscar?${params}`, {signal}); }
   catch(e) {
     if(e.name==="AbortError") throw e;
-    throw new Error("No se pudo conectar al backend. Puede estar iniciando — espera 30s y reintenta.");
+    throw new Error("No se pudo conectar al backend. Espera 30s y reintenta.");
   }
   if(!res.ok) throw new Error(`El backend respondió ${res.status}`);
   const data = await res.json();
   return (data.resultados||[]).map(r => ({...r, fuente:"Mercado Público"}));
 }
 
-// ── Renderizador visual del análisis IA ───────────────────────────────────────
-function AnalysisRenderer({ text }) {
-  if (!text) return null;
-
-  // Detectar veredicto para color de fondo
-  const esParticipar = text.includes("🟢");
-  const esEvaluar    = text.includes("🟡");
-  const esDescartar  = text.includes("🔴");
-  const veredictoColor = esParticipar ? "#f0fdf4" : esEvaluar ? "#fefce8" : esDescartar ? "#fef2f2" : "#f8fafc";
-  const veredictoB    = esParticipar ? "#bbf7d0" : esEvaluar ? "#fef08a" : esDescartar ? "#fecaca" : "#e2e8f0";
-  const veredictoText = esParticipar ? "#15803d" : esEvaluar ? "#854d0e" : esDescartar ? "#dc2626" : "#475569";
-
-  // Parsear líneas de tabla: "Criterio | X/2 | Fundamento"
-  const parseTabla = (bloque) => {
-    const lineas = bloque.split("\n").filter(l => l.includes("|"));
-    const filas  = lineas
-      .map(l => l.split("|").map(c => c.trim()).filter(Boolean))
-      // Filtrar filas que son solo guiones o separadores
-      .filter(f => f.length >= 2 && !f.every(c => c.match(/^[-\s]+$/)));
-
-    if (!filas.length) return null;
-
-    // Separar encabezado de datos — saltar filas separadoras
-    const encabezado = filas[0];
-    const datos = filas.slice(1).filter(f =>
-      !f.every(c => c.match(/^[-\s]+$/)) &&
-      !f.join("").match(/^[-|\s]+$/)
-    );
-
-    return (
-      <div style={{overflowX:"auto",marginTop:8}}>
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-          <thead>
-            <tr style={{background:"#f1f5f9"}}>
-              {encabezado.map((h,i) => (
-                <th key={i} style={{padding:"8px 12px",textAlign:"left",fontWeight:700,color:"#475569",borderBottom:"2px solid #e2e8f0",whiteSpace:"nowrap"}}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {datos.map((fila, i) => {
-              const esTotalRow = fila[0].toUpperCase().includes("TOTAL");
-              return (
-                <tr key={i} style={{background: esTotalRow ? "#f8fafc" : i%2===0 ? "white" : "#f8fafc", borderBottom:"1px solid #e2e8f0"}}>
-                  {fila.map((celda, j) => (
-                    <td key={j} style={{padding:"8px 12px",color: esTotalRow ? "#1e293b" : "#334155", fontWeight: esTotalRow ? 700 : 400, verticalAlign:"top"}}>
-                      {celda}
-                    </td>
-                  ))}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    );
-  };
-
-  // Dividir texto en secciones por emoji de encabezado
-  const secciones = [];
-  const regex = /(📋|🏢|📅|📊|🎯|⚠️)/g;
-  let match;
-  const indices = [];
-  while ((match = regex.exec(text)) !== null) indices.push(match.index);
-
-  indices.forEach((idx, i) => {
-    const fin = indices[i+1] ?? text.length;
-    const bloque = text.slice(idx, fin).trim();
-    const primeraLinea = bloque.split("\n")[0].trim();
-    const contenido    = bloque.slice(primeraLinea.length).trim();
-    secciones.push({ titulo: primeraLinea, contenido });
-  });
-
-  if (!secciones.length) {
-    return <div style={{fontSize:13,lineHeight:1.9,whiteSpace:"pre-wrap",color:"#334155"}}>{text}</div>;
-  }
-
-  const seccionConfig = {
-    "📋": { bg:"#f0f9ff", border:"#bae6fd", titleColor:"#0369a1" },
-    "🏢": { bg:"#f5f3ff", border:"#ddd6fe", titleColor:"#6d28d9" },
-    "📅": { bg:"#f0fdf4", border:"#bbf7d0", titleColor:"#15803d" },
-    "📊": { bg:"#f8fafc", border:"#e2e8f0", titleColor:"#1e293b" },
-    "🎯": { bg: veredictoColor, border: veredictoB, titleColor: veredictoText },
-    "⚠️": { bg:"#fffbeb", border:"#fde68a", titleColor:"#92400e" },
-  };
-
-  return (
-    <div style={{display:"flex",flexDirection:"column",gap:12}}>
-      {secciones.map((s, i) => {
-        const emoji = ["📋","🏢","📅","📊","🎯","⚠️"].find(e => s.titulo.startsWith(e)) || "📋";
-        const cfg   = seccionConfig[emoji] || { bg:"#f8fafc", border:"#e2e8f0", titleColor:"#1e293b" };
-        const esTabla = s.contenido.includes("|") && s.contenido.split("\n").filter(l => l.includes("|")).length > 2;
-
-        return (
-          <div key={i} style={{background:cfg.bg,border:`1px solid ${cfg.border}`,borderRadius:10,padding:"14px 16px"}}>
-            <div style={{fontWeight:700,fontSize:13,color:cfg.titleColor,marginBottom:8}}>{s.titulo}</div>
-            {esTabla
-              ? parseTabla(s.contenido)
-              : <div style={{fontSize:13,lineHeight:1.7,color:"#334155",whiteSpace:"pre-wrap"}}>{s.contenido}</div>
-            }
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
+// ── Componente principal ──────────────────────────────────────────────────
 function App() {
-  const [tab, setTab]                   = useState("buscar");
-  const [kwVial, setKwVial]             = useState(lsGet("kw_vial", KW_VIAL_DEFAULT));
-  const [kwHidro, setKwHidro]           = useState(lsGet("kw_hidro", KW_HIDRO_DEFAULT));
-  const [kwServicio, setKwServicio]     = useState(lsGet("kw_servicio", KW_SERVICIO_DEFAULT));
-  const [activeKw, setActiveKw]         = useState(new Set(lsGet("kw_active", [...KW_VIAL_DEFAULT, ...KW_HIDRO_DEFAULT, ...KW_SERVICIO_DEFAULT])));
-  const [newKwVial, setNewKwVial]       = useState("");
-  const [newKwHidro, setNewKwHidro]     = useState("");
-  const [newKwServicio, setNewKwServicio] = useState("");
-  const [regionDesde, setRegionDesde]   = useState("todas");
-  const [regionHasta, setRegionHasta]   = useState("todas");
-  const [soloVigentes, setSoloVigentes] = useState(true);
-  const [fechaInicio, setFechaInicio]   = useState(new Date().toISOString().split("T")[0]);
-  const [fechaFin, setFechaFin]         = useState("");
-  const [loading, setLoading]           = useState(false);
-  const [steps, setSteps]               = useState([]);
-  const [results, setResults]           = useState([]);
-  const [history, setHistory]           = useState([]);
-  const [selected, setSelected]         = useState(null);
-  const [analysis, setAnalysis]         = useState("");
+  const [activeDivId, setActiveDivId]       = useState("zonasur");
+  const [divStates, setDivStates]           = useState(() => {
+    const s = {};
+    DIVISIONS.forEach(d => { s[d.id] = initDivState(d); });
+    return s;
+  });
+  const [tab, setTab]                       = useState("buscar");
+  const [history, setHistory]               = useState([]);
+  const [selected, setSelected]             = useState(null);
+  const [analysis, setAnalysis]             = useState("");
   const [analysisLoading, setAnalysisLoading] = useState(false);
-  const [gestorEstado, setGestorEstado]       = useState(null); // "guardado" | "duplicado" | "error" | null
-  const [error, setError]               = useState("");
-  const [elapsed, setElapsed]           = useState(0);
-  const abortRef = useRef(null);
-  const timerRef = useRef(null);
+  const [gestorEstado, setGestorEstado]     = useState(null);
+  const abortRefs = useRef({});
+  const timerRefs = useRef({});
 
-  const allKws = () => [...kwVial, ...kwHidro, ...kwServicio];
+  const activDiv = DIVISIONS.find(d => d.id === activDivId) || DIVISIONS[0];
+  const activeDivId2 = activDivId; // alias
+  const ds = divStates[activeDivId2];
 
-  const toggleKw = kw => {
-    setActiveKw(prev => {
-      const n = new Set(prev); n.has(kw) ? n.delete(kw) : n.add(kw);
-      lsSet("kw_active", [...n]); return n;
+  // ── Actualizar estado de división ──────────────────────────────────────
+  const updateDs = useCallback((divId, updater) => {
+    setDivStates(prev => ({ ...prev, [divId]: updater(prev[divId]) }));
+  }, []);
+
+  // ── Keywords helpers ──────────────────────────────────────────────────
+  const toggleKw = (divId, tipo, idx, kw) => {
+    updateDs(divId, ds => {
+      const clone = { ...ds };
+      if(tipo === "servicio") {
+        const newActive = new Set(ds.servicios.active);
+        newActive.has(kw) ? newActive.delete(kw) : newActive.add(kw);
+        lsSet(DIVISIONS.find(d=>d.id===divId).servicios.lsKey + "_active", [...newActive]);
+        clone.servicios = { ...ds.servicios, active: newActive };
+      } else {
+        const newGroups = ds.grupos.map((g, i) => {
+          if(i !== idx) return g;
+          const newActive = new Set(g.active);
+          newActive.has(kw) ? newActive.delete(kw) : newActive.add(kw);
+          lsSet(DIVISIONS.find(d=>d.id===divId).grupos[i].lsKey + "_active", [...newActive]);
+          return { ...g, active: newActive };
+        });
+        clone.grupos = newGroups;
+      }
+      return clone;
     });
   };
-  const toggleGroup = group => {
-    const allOn = group.every(k => activeKw.has(k));
-    setActiveKw(prev => {
-      const n = new Set(prev); group.forEach(k => allOn ? n.delete(k) : n.add(k));
-      lsSet("kw_active", [...n]); return n;
+
+  const toggleGroup = (divId, tipo, idx) => {
+    updateDs(divId, ds => {
+      const clone = { ...ds };
+      if(tipo === "servicio") {
+        const allOn = ds.servicios.keywords.every(k => ds.servicios.active.has(k));
+        const newActive = allOn ? new Set() : new Set(ds.servicios.keywords);
+        lsSet(DIVISIONS.find(d=>d.id===divId).servicios.lsKey + "_active", [...newActive]);
+        clone.servicios = { ...ds.servicios, active: newActive };
+      } else {
+        const g = ds.grupos[idx];
+        const allOn = g.keywords.every(k => g.active.has(k));
+        const newActive = allOn ? new Set() : new Set(g.keywords);
+        lsSet(DIVISIONS.find(d=>d.id===divId).grupos[idx].lsKey + "_active", [...newActive]);
+        const newGroups = ds.grupos.map((gr, i) => i !== idx ? gr : { ...gr, active: newActive });
+        clone.grupos = newGroups;
+      }
+      return clone;
     });
   };
-  const addKw = (kw, lsKey, setList, setInput) => {
+
+  const addKw = (divId, tipo, idx, kw) => {
     const clean = kw.trim();
-    if(!clean || allKws().includes(clean)) return;
-    setList(prev => { const n=[...prev,clean]; lsSet(lsKey,n); return n; });
-    setActiveKw(prev => { const n=new Set([...prev,clean]); lsSet("kw_active",[...n]); return n; });
-    setInput("");
+    if(!clean) return;
+    updateDs(divId, ds => {
+      const clone = { ...ds };
+      if(tipo === "servicio") {
+        if(ds.servicios.keywords.includes(clean)) return ds;
+        const newKws = [...ds.servicios.keywords, clean];
+        const newActive = new Set([...ds.servicios.active, clean]);
+        const divConf = DIVISIONS.find(d=>d.id===divId);
+        lsSet(divConf.servicios.lsKey, newKws);
+        lsSet(divConf.servicios.lsKey + "_active", [...newActive]);
+        clone.servicios = { ...ds.servicios, keywords: newKws, active: newActive, newInput: "" };
+      } else {
+        if(ds.grupos[idx].keywords.includes(clean)) return ds;
+        const newKws = [...ds.grupos[idx].keywords, clean];
+        const newActive = new Set([...ds.grupos[idx].active, clean]);
+        const divConf = DIVISIONS.find(d=>d.id===divId);
+        lsSet(divConf.grupos[idx].lsKey, newKws);
+        lsSet(divConf.grupos[idx].lsKey + "_active", [...newActive]);
+        const newGroups = ds.grupos.map((g, i) => i !== idx ? g : { ...g, keywords: newKws, active: newActive, newInput: "" });
+        clone.grupos = newGroups;
+      }
+      return clone;
+    });
   };
-  const removeKw = (kw, lsKey, setList) => {
-    setList(prev => { const n=prev.filter(k=>k!==kw); lsSet(lsKey,n); return n; });
-    setActiveKw(prev => { const n=new Set(prev); n.delete(kw); lsSet("kw_active",[...n]); return n; });
-  };
-  const addStep  = (msg, state="wait") => setSteps(p => [...p, {msg, state}]);
-  const doneStep = st => setSteps(p => { const a=[...p]; if(a.length) a[a.length-1].state=st; return a; });
-  const stepIcon = s => s==="wait"?"⏳":s==="ok"?"✅":"⚪";
 
-  const enriquecerRegiones = async (items, regDesde, regHasta) => {
+  const removeKw = (divId, tipo, idx, kw) => {
+    updateDs(divId, ds => {
+      const clone = { ...ds };
+      if(tipo === "servicio") {
+        const newKws = ds.servicios.keywords.filter(k => k !== kw);
+        const newActive = new Set(ds.servicios.active); newActive.delete(kw);
+        const divConf = DIVISIONS.find(d=>d.id===divId);
+        lsSet(divConf.servicios.lsKey, newKws);
+        lsSet(divConf.servicios.lsKey + "_active", [...newActive]);
+        clone.servicios = { ...ds.servicios, keywords: newKws, active: newActive };
+      } else {
+        const newKws = ds.grupos[idx].keywords.filter(k => k !== kw);
+        const newActive = new Set(ds.grupos[idx].active); newActive.delete(kw);
+        const divConf = DIVISIONS.find(d=>d.id===divId);
+        lsSet(divConf.grupos[idx].lsKey, newKws);
+        lsSet(divConf.grupos[idx].lsKey + "_active", [...newActive]);
+        const newGroups = ds.grupos.map((g, i) => i !== idx ? g : { ...g, keywords: newKws, active: newActive });
+        clone.grupos = newGroups;
+      }
+      return clone;
+    });
+  };
+
+  const setInput = (divId, tipo, idx, val) => {
+    updateDs(divId, ds => {
+      const clone = { ...ds };
+      if(tipo === "servicio") clone.servicios = { ...ds.servicios, newInput: val };
+      else { const newGroups = ds.grupos.map((g,i) => i!==idx ? g : {...g, newInput: val}); clone.grupos = newGroups; }
+      return clone;
+    });
+  };
+
+  // ── Búsqueda ──────────────────────────────────────────────────────────
+  const enriquecerRegiones = async (items, divId) => {
+    const { regionDesde, regionHasta } = divStates[divId];
     const sinRegion = items.filter(r => !r.region && r.codigo);
     if(!sinRegion.length) return;
     try {
@@ -287,202 +463,228 @@ function App() {
       });
       if(!res.ok) return;
       const data = await res.json();
-
       let codigosValidos = null;
-      if(regDesde !== "todas" || regHasta !== "todas") {
-        const idxD = regDesde === "todas" ? 1 : REGIONES.findIndex(r => r.value === regDesde);
-        const idxH = regHasta === "todas" ? REGIONES.length-1 : REGIONES.findIndex(r => r.value === regHasta);
+      if(regionDesde !== "todas" || regionHasta !== "todas") {
+        const idxD = regionDesde === "todas" ? 1 : REGIONES.findIndex(r => r.value === regionDesde);
+        const idxH = regionHasta === "todas" ? REGIONES.length-1 : REGIONES.findIndex(r => r.value === regionHasta);
         const s = Math.min(idxD<1?1:idxD, idxH<1?REGIONES.length-1:idxH);
         const e = Math.max(idxD<1?1:idxD, idxH<1?REGIONES.length-1:idxH);
         codigosValidos = new Set(REGIONES.slice(s,e+1).map(r => r.value));
       }
-
-      setResults(prev => {
-        const actualizados = prev.map(r => {
+      updateDs(divId, ds => {
+        const actualizados = ds.results.map(r => {
           const d = data.resultados[r.codigo];
-          const regionReal = d ? (d.region || r.region) : r.region;
-          return {
-            ...r,
-            region:      regionReal || "Región no disponible",
-            organismo:   d ? (d.organismo  || r.organismo)   : r.organismo,
-            monto:       d ? (d.monto      || r.monto)       : r.monto,
-            descripcion: d ? (d.descripcion|| r.descripcion) : r.descripcion,
-          };
+          return d ? { ...r, region: d.region||r.region||"Región no disponible", organismo: d.organismo||r.organismo, monto: d.monto||r.monto, descripcion: d.descripcion||r.descripcion } : r;
         });
-        if(!codigosValidos) return actualizados;
-        return actualizados.filter(r => {
-          if(!r.region || r.region === "Región no disponible") return true;
-          const norm = s => s.toLowerCase()
-            .replace(/[áàä]/g,"a").replace(/[éèë]/g,"e").replace(/[íìï]/g,"i")
-            .replace(/[óòö]/g,"o").replace(/[úùü]/g,"u").replace(/ñ/g,"n")
-            .replace(/['''`´]/g,"").replace(/\s+/g," ").trim();
-          const regionNorm = norm(r.region);
-          const reg = REGIONES.find(re => re.value !== "todas" && regionNorm.includes(norm(re.label)));
+        if(!codigosValidos) return { ...ds, results: actualizados };
+        const norm = s => s.toLowerCase().replace(/[áàä]/g,"a").replace(/[éèë]/g,"e").replace(/[íìï]/g,"i").replace(/[óòö]/g,"o").replace(/[úùü]/g,"u").replace(/ñ/g,"n").replace(/['''`´]/g,"").replace(/\s+/g," ").trim();
+        const filtrados = actualizados.filter(r => {
+          if(!r.region || r.region==="Región no disponible") return true;
+          const reg = REGIONES.find(re => re.value !== "todas" && norm(r.region).includes(norm(re.label)));
           if(!reg) return true;
           return codigosValidos.has(reg.value);
         });
+        return { ...ds, results: filtrados };
       });
     } catch(e) {}
   };
 
-  // ── Búsqueda: una sola llamada con todas las keywords ──────────────────────
   const buscar = async () => {
-    const tecnicas  = [...kwVial, ...kwHidro].filter(k => activeKw.has(k));
-    const servicios = kwServicio.filter(k => activeKw.has(k));
-    if(!tecnicas.length) { setError("Selecciona al menos una keyword técnica (Vial o Hidráulica)."); return; }
-
-    setLoading(true); setError(""); setSteps([]); setResults([]);
-    abortRef.current = new AbortController();
-    timerRef.current = setInterval(() => setElapsed(e => e+1), 1000);
-
+    const divId = activeDivId2;
+    const ds = divStates[divId];
+    const tecnicas = ds.grupos.flatMap((g, i) => g.keywords.filter(k => g.active.has(k)));
+    const servicios = ds.servicios.keywords.filter(k => ds.servicios.active.has(k));
+    if(!tecnicas.length) {
+      updateDs(divId, ds => ({ ...ds, error: "Selecciona al menos una keyword técnica." }));
+      return;
+    }
+    updateDs(divId, ds => ({ ...ds, loading: true, error: "", steps: [], results: [], elapsed: 0 }));
+    if(abortRefs.current[divId]) abortRefs.current[divId].abort();
+    abortRefs.current[divId] = new AbortController();
+    timerRefs.current[divId] = setInterval(() => {
+      updateDs(divId, ds => ({ ...ds, elapsed: ds.elapsed + 1 }));
+    }, 1000);
+    const addStep = (msg, state="wait") => updateDs(divId, ds => ({ ...ds, steps: [...ds.steps, {msg, state}] }));
     try {
-      addStep(`Descargando licitaciones activas de Mercado Público...`);
-
-      const found = await buscarEnBackend(
-        tecnicas, servicios, regionDesde, regionHasta, abortRef.current.signal
-      );
-      doneStep(found.length ? "ok" : "empty");
-
-      if(found.length) addStep(`Filtrando por fecha y deduplicando...`);
-
-      const filtradas = filtrarPorFecha(found, soloVigentes, fechaInicio, fechaFin);
-      clearInterval(timerRef.current);
+      addStep("Descargando licitaciones activas de Mercado Público...");
+      const found = await buscarEnBackend(tecnicas, servicios, ds.regionDesde, ds.regionHasta, abortRefs.current[divId].signal);
+      clearInterval(timerRefs.current[divId]);
+      const filtradas = filtrarPorFecha(found, ds.soloVigentes, ds.fechaInicio, ds.fechaFin);
       const uniq = deduplicar(filtradas);
-
       if(uniq.length) {
-        doneStep("ok");
-        addStep(`✅ ${uniq.length} licitaciones relevantes encontradas`, "ok");
-        setResults(uniq);
+        updateDs(divId, ds => ({ ...ds, loading: false, results: uniq, steps: [...ds.steps.slice(0,-1), {msg: `✅ ${uniq.length} licitaciones relevantes encontradas`, state:"ok"}] }));
         setHistory(prev => deduplicar([...uniq, ...prev]).slice(0, 100));
         setTab("resultados");
-        enriquecerRegiones(uniq, regionDesde, regionHasta);
+        setTimeout(() => enriquecerRegiones(uniq, divId), 500);
       } else {
-        doneStep("empty");
-        setError("Sin resultados. Prueba activando más keywords o ampliando el rango de regiones.");
+        updateDs(divId, ds => ({ ...ds, loading: false, error: "Sin resultados. Prueba activando más keywords." }));
       }
     } catch(e) {
-      clearInterval(timerRef.current);
-      if(e.name==="AbortError") setError("Búsqueda cancelada.");
-      else setError(`Error: ${e.message}`);
+      clearInterval(timerRefs.current[divId]);
+      updateDs(divId, ds => ({ ...ds, loading: false, error: e.name==="AbortError" ? "Búsqueda cancelada." : `Error: ${e.message}` }));
     }
-    setLoading(false); setElapsed(0);
   };
 
-  const cancelar = () => { abortRef.current && abortRef.current.abort(); clearInterval(timerRef.current); };
+  const cancelar = () => {
+    if(abortRefs.current[activeDivId2]) abortRefs.current[activeDivId2].abort();
+    clearInterval(timerRefs.current[activeDivId2]);
+    updateDs(activeDivId2, ds => ({ ...ds, loading: false }));
+  };
 
   const verDetalle = async item => {
-    setSelected(item); setAnalysis("⏳ Analizando con IA..."); setAnalysisLoading(true); setTab("detalle");
-    setGestorEstado(null);
+    setSelected(item); setAnalysis("⏳ Analizando con IA..."); setAnalysisLoading(true); setGestorEstado(null); setTab("detalle");
     await new Promise(r => setTimeout(r, 100));
     try {
-      const res = await fetch(`${BACKEND_URL}/mp/analizar`, {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({item})
-      });
+      const res = await fetch(`${BACKEND_URL}/mp/analizar`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({item}) });
       if(!res.ok) { const err=await res.json().catch(()=>({})); setAnalysis(`Error: ${err.error||res.status}`); setAnalysisLoading(false); return; }
       const data = await res.json();
       const texto = data.analysis || "No se pudo obtener el análisis.";
       setAnalysis(texto);
-
-      // ── Envío automático al gestor si veredicto es 🟢 o 🟡 ──────────────
       const esParticpar = texto.includes("🟢");
       const esEvaluar   = texto.includes("🟡");
-      if (esParticpar || esEvaluar) {
+      if(esParticpar || esEvaluar) {
         try {
-          const gRes = await fetch(`${BACKEND_URL}/mp/guardar-gestor`, {
-            method: "POST", headers: {"Content-Type":"application/json"},
-            body: JSON.stringify({item})
-          });
+          const gRes = await fetch(`${BACKEND_URL}/mp/guardar-gestor`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({item}) });
           const gData = await gRes.json();
-          if (gData.ok) setGestorEstado("guardado");
-          else if (gData.mensaje?.includes("ya existe")) setGestorEstado("duplicado");
+          if(gData.ok) setGestorEstado("guardado");
+          else if(gData.mensaje?.includes("ya existe")) setGestorEstado("duplicado");
           else setGestorEstado("error");
         } catch(e) { setGestorEstado("error"); }
       }
-
     } catch(e) { setAnalysis(`Error de conexión: ${e.message}`); }
     setAnalysisLoading(false);
   };
 
-  const TABS = [
-    ["buscar",     "🔎 Buscar"],
-    ["resultados", `📋 Resultados (${results.length})`],
-    ["detalle",    "📄 Análisis IA"],
-    ["historial",  `🕐 Historial (${history.length})`],
-  ];
-
-  const KwChip = ({kw, color, lsKey, setList}) => {
-    const on = activeKw.has(kw);
-    return (
-      <div style={{display:"flex",alignItems:"center",borderRadius:20,border:`2px solid ${on?color:"#e2e8f0"}`,background:on?color+"18":"#f8fafc",overflow:"hidden"}}>
-        <button onClick={()=>toggleKw(kw)} style={{padding:"4px 10px",fontSize:12,cursor:"pointer",fontWeight:600,background:"transparent",border:"none",color:on?color:"#94a3b8"}}>
-          {on?"✓ ":""}{kw}
-        </button>
-        <button onClick={()=>removeKw(kw,lsKey,setList)} style={{padding:"4px 7px 4px 2px",fontSize:11,cursor:"pointer",background:"transparent",border:"none",color:"#94a3b8"}} title="Eliminar">✕</button>
-      </div>
-    );
-  };
+  // ── Render ────────────────────────────────────────────────────────────
+  const activDivConf = DIVISIONS.find(d => d.id === activeDivId2);
+  const totalActive = ds.grupos.reduce((s, g) => s + [...g.active].filter(k => g.keywords.includes(k)).length, 0) + [...ds.servicios.active].filter(k => ds.servicios.keywords.includes(k)).length;
+  const totalKws    = ds.grupos.reduce((s, g) => s + g.keywords.length, 0) + ds.servicios.keywords.length;
 
   return (
-    <div style={{fontFamily:"system-ui,sans-serif",maxWidth:900,margin:"0 auto",padding:16,color:"#1e293b",background:"#f8fafc",minHeight:"100vh"}}>
+    <div style={{fontFamily:"system-ui,sans-serif",maxWidth:960,margin:"0 auto",padding:16,color:"#1e293b",background:"#f0f4f8",minHeight:"100vh"}}>
 
-      <div style={{background:"linear-gradient(135deg,#1e3a5f,#2563eb)",borderRadius:12,padding:"20px 24px",marginBottom:20,color:"white"}}>
-        <div style={{fontSize:22,fontWeight:800}}>🏛️ Agente Mercado Público</div>
-        <div style={{fontSize:12,opacity:.8,marginTop:3}}>Licitaciones · Ingeniería Vial · Chile · API Oficial</div>
+      {/* Header */}
+      <div style={{background:`linear-gradient(135deg,#1e3a5f,${activDivConf.color})`,borderRadius:12,padding:"20px 24px",marginBottom:16,color:"white"}}>
+        <div style={{fontSize:22,fontWeight:800}}>🏛️ Agente Mercado Público — LEN Ingeniería</div>
+        <div style={{fontSize:12,opacity:.8,marginTop:3}}>Licitaciones · API Oficial · Chile</div>
       </div>
 
-      <div style={{display:"flex",gap:6,marginBottom:20,flexWrap:"wrap"}}>
-        {TABS.map(([k,l]) => (
-          <button key={k} onClick={()=>setTab(k)} style={{padding:"8px 16px",borderRadius:8,border:"none",cursor:"pointer",fontSize:13,fontWeight:600,background:tab===k?"#2563eb":"white",color:tab===k?"white":"#475569",boxShadow:"0 1px 3px rgba(0,0,0,.08)"}}>
+      {/* Tabs de divisiones */}
+      <div style={{background:"white",borderRadius:12,padding:6,marginBottom:16,display:"flex",flexWrap:"wrap",gap:4,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
+        {DIVISIONS.map(div => {
+          const isActive = div.id === activeDivId2;
+          const divResults = divStates[div.id].results.length;
+          return (
+            <button key={div.id} onClick={() => { setActiveDivId(div.id); setTab("buscar"); }}
+              style={{flex:"1 1 auto",padding:"10px 12px",borderRadius:8,border:`2px solid ${isActive ? div.color : "transparent"}`,cursor:"pointer",fontSize:13,fontWeight:700,background:isActive ? div.bg : "transparent",color:isActive ? div.color : "#64748b",transition:"all .15s",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+              <span>{div.icon}</span>
+              <span>{div.label}</span>
+              {divResults > 0 && <span style={{background:isActive?div.color:"#e2e8f0",color:isActive?"white":"#64748b",fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:99}}>{divResults}</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Sub-tabs */}
+      <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
+        {[
+          ["buscar",     "🔎 Buscar"],
+          ["resultados", `📋 Resultados (${ds.results.length})`],
+          ["detalle",    "📄 Análisis IA"],
+          ["historial",  `🕐 Historial (${history.length})`],
+        ].map(([k,l]) => (
+          <button key={k} onClick={() => setTab(k)} style={{padding:"8px 16px",borderRadius:8,border:"none",cursor:"pointer",fontSize:13,fontWeight:600,background:tab===k ? activDivConf.color : "white",color:tab===k ? "white":"#475569",boxShadow:"0 1px 3px rgba(0,0,0,.08)"}}>
             {l}
           </button>
         ))}
       </div>
 
+      {/* Tab: Buscar */}
       {tab==="buscar" && (
-        <div style={{display:"flex",flexDirection:"column",gap:16}}>
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
 
+          {/* Keywords */}
           <div style={{background:"white",borderRadius:12,padding:20,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-              <div style={{fontWeight:700,fontSize:14}}>🏷️ Palabras clave</div>
-              <div style={{fontSize:12,color:"#64748b"}}><b style={{color:activeKw.size===allKws().length?"#16a34a":"#ea580c"}}>{activeKw.size}</b> / {allKws().length} activas</div>
+              <div style={{fontWeight:700,fontSize:14}}>🏷️ Palabras clave — {activDivConf.label}</div>
+              <div style={{fontSize:12,color:"#64748b"}}><b style={{color:totalActive===totalKws?"#16a34a":"#ea580c"}}>{totalActive}</b> / {totalKws} activas</div>
             </div>
 
-            {[
-              {label:"Ingeniería Vial", color:"#2563eb", bg:"#eff6ff", border:"#bfdbfe", list:kwVial, setList:setKwVial, lsKey:"kw_vial", input:newKwVial, setInput:setNewKwVial},
-              {label:"Hidráulica / Hidrología", color:"#0891b2", bg:"#ecfeff", border:"#a5f3fc", list:kwHidro, setList:setKwHidro, lsKey:"kw_hidro", input:newKwHidro, setInput:setNewKwHidro},
-              {label:"Tipo de servicio", color:"#16a34a", bg:"#f0fdf4", border:"#bbf7d0", list:kwServicio, setList:setKwServicio, lsKey:"kw_servicio", input:newKwServicio, setInput:setNewKwServicio},
-            ].map(({label,color,bg,border,list,setList,lsKey,input,setInput}) => (
-              <div key={label} style={{marginBottom:18}}>
-                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                  <span style={{fontSize:11,fontWeight:700,color,textTransform:"uppercase",letterSpacing:1}}>{label}</span>
-                  <button onClick={()=>toggleGroup(list)} style={{fontSize:10,padding:"2px 8px",borderRadius:10,border:`1px solid ${border}`,background:bg,color,cursor:"pointer",fontWeight:600}}>
-                    {list.every(k=>activeKw.has(k))?"Desactivar todos":"Activar todos"}
-                  </button>
+            {/* Grupos técnicos */}
+            {ds.grupos.map((grupo, gi) => {
+              const grupConf = activDivConf.grupos[gi];
+              return (
+                <div key={gi} style={{marginBottom:16}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                    <span style={{fontSize:11,fontWeight:700,color:grupConf.color,textTransform:"uppercase",letterSpacing:1}}>{grupConf.label}</span>
+                    <button onClick={() => toggleGroup(activeDivId2,"tecnica",gi)} style={{fontSize:10,padding:"2px 8px",borderRadius:10,border:`1px solid ${grupConf.border}`,background:grupConf.bg,color:grupConf.color,cursor:"pointer",fontWeight:600}}>
+                      {grupo.keywords.every(k=>grupo.active.has(k))?"Desactivar todos":"Activar todos"}
+                    </button>
+                  </div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+                    {grupo.keywords.map(kw => {
+                      const on = grupo.active.has(kw);
+                      return (
+                        <div key={kw} style={{display:"flex",alignItems:"center",borderRadius:20,border:`2px solid ${on?grupConf.color:"#e2e8f0"}`,background:on?grupConf.color+"18":"#f8fafc",overflow:"hidden"}}>
+                          <button onClick={() => toggleKw(activeDivId2,"tecnica",gi,kw)} style={{padding:"4px 10px",fontSize:12,cursor:"pointer",fontWeight:600,background:"transparent",border:"none",color:on?grupConf.color:"#94a3b8"}}>
+                            {on?"✓ ":""}{kw}
+                          </button>
+                          <button onClick={() => removeKw(activeDivId2,"tecnica",gi,kw)} style={{padding:"4px 7px 4px 2px",fontSize:11,cursor:"pointer",background:"transparent",border:"none",color:"#94a3b8"}} title="Eliminar">✕</button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{display:"flex",gap:6}}>
+                    <input value={grupo.newInput||""} onChange={e => setInput(activeDivId2,"tecnica",gi,e.target.value)}
+                      onKeyDown={e => e.key==="Enter" && addKw(activeDivId2,"tecnica",gi,grupo.newInput||"")}
+                      placeholder={`Agregar keyword de ${grupConf.label.toLowerCase()}...`}
+                      style={{flex:1,padding:"7px 12px",borderRadius:8,border:"1px dashed #cbd5e1",fontSize:12,outline:"none",background:"#fafafa"}}/>
+                    <button onClick={() => addKw(activeDivId2,"tecnica",gi,grupo.newInput||"")}
+                      style={{padding:"7px 14px",borderRadius:8,background:grupConf.bg,color:grupConf.color,border:`1px solid ${grupConf.border}`,fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Agregar</button>
+                  </div>
                 </div>
-                <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
-                  {list.map(kw => <KwChip key={kw} kw={kw} color={color} lsKey={lsKey} setList={setList}/>)}
-                </div>
-                <div style={{display:"flex",gap:6}}>
-                  <input value={input} onChange={e=>setInput(e.target.value)}
-                    onKeyDown={e=>e.key==="Enter"&&addKw(input,lsKey,setList,setInput)}
-                    placeholder={`Agregar keyword de ${label.toLowerCase()}...`}
-                    style={{flex:1,padding:"7px 12px",borderRadius:8,border:"1px dashed #cbd5e1",fontSize:12,outline:"none",background:"#fafafa"}}/>
-                  <button onClick={()=>addKw(input,lsKey,setList,setInput)}
-                    style={{padding:"7px 14px",borderRadius:8,background:bg,color,border:`1px solid ${border}`,fontSize:12,fontWeight:700,cursor:"pointer"}}>
-                    + Agregar
-                  </button>
-                </div>
+              );
+            })}
+
+            {/* Tipo de servicio */}
+            <div style={{marginBottom:4}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                <span style={{fontSize:11,fontWeight:700,color:"#16a34a",textTransform:"uppercase",letterSpacing:1}}>Tipo de Servicio</span>
+                <button onClick={() => toggleGroup(activeDivId2,"servicio",0)} style={{fontSize:10,padding:"2px 8px",borderRadius:10,border:"1px solid #bbf7d0",background:"#f0fdf4",color:"#16a34a",cursor:"pointer",fontWeight:600}}>
+                  {ds.servicios.keywords.every(k=>ds.servicios.active.has(k))?"Desactivar todos":"Activar todos"}
+                </button>
               </div>
-            ))}
+              <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+                {ds.servicios.keywords.map(kw => {
+                  const on = ds.servicios.active.has(kw);
+                  return (
+                    <div key={kw} style={{display:"flex",alignItems:"center",borderRadius:20,border:`2px solid ${on?"#16a34a":"#e2e8f0"}`,background:on?"#16a34a18":"#f8fafc",overflow:"hidden"}}>
+                      <button onClick={() => toggleKw(activeDivId2,"servicio",0,kw)} style={{padding:"4px 10px",fontSize:12,cursor:"pointer",fontWeight:600,background:"transparent",border:"none",color:on?"#16a34a":"#94a3b8"}}>
+                        {on?"✓ ":""}{kw}
+                      </button>
+                      <button onClick={() => removeKw(activeDivId2,"servicio",0,kw)} style={{padding:"4px 7px 4px 2px",fontSize:11,cursor:"pointer",background:"transparent",border:"none",color:"#94a3b8"}} title="Eliminar">✕</button>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{display:"flex",gap:6}}>
+                <input value={ds.servicios.newInput||""} onChange={e => setInput(activeDivId2,"servicio",0,e.target.value)}
+                  onKeyDown={e => e.key==="Enter" && addKw(activeDivId2,"servicio",0,ds.servicios.newInput||"")}
+                  placeholder="Agregar tipo de servicio..."
+                  style={{flex:1,padding:"7px 12px",borderRadius:8,border:"1px dashed #cbd5e1",fontSize:12,outline:"none",background:"#fafafa"}}/>
+                <button onClick={() => addKw(activeDivId2,"servicio",0,ds.servicios.newInput||"")}
+                  style={{padding:"7px 14px",borderRadius:8,background:"#f0fdf4",color:"#16a34a",border:"1px solid #bbf7d0",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Agregar</button>
+              </div>
+            </div>
           </div>
 
+          {/* Regiones */}
           <div style={{background:"white",borderRadius:12,padding:20,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
             <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>📍 Rango de regiones</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:12,alignItems:"end"}}>
               <div>
                 <div style={{fontSize:12,fontWeight:600,color:"#64748b",marginBottom:6}}>Desde</div>
-                <select value={regionDesde} onChange={e=>setRegionDesde(e.target.value)}
+                <select value={ds.regionDesde} onChange={e => { lsSet("region_desde_"+activeDivId2, e.target.value); updateDs(activeDivId2, ds => ({...ds, regionDesde: e.target.value})); }}
                   style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid #cbd5e1",fontSize:13,background:"white"}}>
                   {REGIONES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                 </select>
@@ -490,71 +692,60 @@ function App() {
               <div style={{fontSize:18,color:"#94a3b8",paddingBottom:8,textAlign:"center"}}>→</div>
               <div>
                 <div style={{fontSize:12,fontWeight:600,color:"#64748b",marginBottom:6}}>Hasta</div>
-                <select value={regionHasta} onChange={e=>setRegionHasta(e.target.value)}
+                <select value={ds.regionHasta} onChange={e => { lsSet("region_hasta_"+activeDivId2, e.target.value); updateDs(activeDivId2, ds => ({...ds, regionHasta: e.target.value})); }}
                   style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid #cbd5e1",fontSize:13,background:"white"}}>
                   {REGIONES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                 </select>
               </div>
             </div>
-            <div style={{fontSize:11,color:"#94a3b8",marginTop:8}}>💡 El filtro de región se aplica sobre el texto del título de cada licitación.</div>
           </div>
 
+          {/* Fechas */}
           <div style={{background:"white",borderRadius:12,padding:20,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
             <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>📅 Filtro de fechas</div>
-            <div style={{display:"flex",gap:8,marginBottom:16}}>
-              <button onClick={()=>{setSoloVigentes(true);setFechaInicio(new Date().toISOString().split("T")[0]);setFechaFin("");}}
-                style={{flex:1,padding:"9px 0",borderRadius:8,border:"2px solid",fontSize:13,fontWeight:600,cursor:"pointer",borderColor:soloVigentes?"#2563eb":"#e2e8f0",background:soloVigentes?"#eff6ff":"white",color:soloVigentes?"#2563eb":"#94a3b8"}}>
+            <div style={{display:"flex",gap:8,marginBottom:12}}>
+              <button onClick={() => updateDs(activeDivId2, ds => ({...ds, soloVigentes:true, fechaInicio:new Date().toISOString().split("T")[0], fechaFin:""}))}
+                style={{flex:1,padding:"9px 0",borderRadius:8,border:"2px solid",fontSize:13,fontWeight:600,cursor:"pointer",borderColor:ds.soloVigentes?"#2563eb":"#e2e8f0",background:ds.soloVigentes?"#eff6ff":"white",color:ds.soloVigentes?"#2563eb":"#94a3b8"}}>
                 ✅ Solo vigentes
               </button>
-              <button onClick={()=>{setSoloVigentes(false);setFechaInicio("");setFechaFin("");}}
-                style={{flex:1,padding:"9px 0",borderRadius:8,border:"2px solid",fontSize:13,fontWeight:600,cursor:"pointer",borderColor:!soloVigentes?"#2563eb":"#e2e8f0",background:!soloVigentes?"#eff6ff":"white",color:!soloVigentes?"#2563eb":"#94a3b8"}}>
+              <button onClick={() => updateDs(activeDivId2, ds => ({...ds, soloVigentes:false, fechaInicio:"", fechaFin:""}))}
+                style={{flex:1,padding:"9px 0",borderRadius:8,border:"2px solid",fontSize:13,fontWeight:600,cursor:"pointer",borderColor:!ds.soloVigentes?"#2563eb":"#e2e8f0",background:!ds.soloVigentes?"#eff6ff":"white",color:!ds.soloVigentes?"#2563eb":"#94a3b8"}}>
                 📅 Rango manual
               </button>
             </div>
-            {soloVigentes ? (
-              <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#15803d"}}>
-                ✅ Se buscarán licitaciones con cierre igual o posterior a hoy (<b>{new Date().toLocaleDateString("es-CL")}</b>).
-              </div>
-            ) : (
-              <>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            {ds.soloVigentes
+              ? <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#15803d"}}>✅ Licitaciones con cierre igual o posterior a hoy (<b>{new Date().toLocaleDateString("es-CL")}</b>).</div>
+              : <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
                   <div>
                     <div style={{fontSize:12,fontWeight:600,color:"#64748b",marginBottom:6}}>Fecha inicio publicación</div>
-                    <input type="date" value={fechaInicio} onChange={e=>setFechaInicio(e.target.value)}
+                    <input type="date" value={ds.fechaInicio} onChange={e => updateDs(activeDivId2, ds => ({...ds, fechaInicio:e.target.value}))}
                       style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid #cbd5e1",fontSize:13}}/>
                   </div>
                   <div>
                     <div style={{fontSize:12,fontWeight:600,color:"#64748b",marginBottom:6}}>Fecha fin cierre</div>
-                    <input type="date" value={fechaFin} onChange={e=>setFechaFin(e.target.value)}
+                    <input type="date" value={ds.fechaFin} onChange={e => updateDs(activeDivId2, ds => ({...ds, fechaFin:e.target.value}))}
                       style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid #cbd5e1",fontSize:13}}/>
                   </div>
                 </div>
-                <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#1e40af",marginTop:8}}>
-                  {fechaInicio||fechaFin
-                    ? `📅 Mostrando licitaciones publicadas desde ${fechaInicio||"cualquier fecha"} con cierre hasta ${fechaFin||"cualquier fecha"}.`
-                    : "📅 Sin fechas definidas: se mostrarán licitaciones publicadas desde el 01-01-2026 en adelante, incluyendo vencidas."
-                  }
-                </div>
-              </>
-            )}
+            }
           </div>
 
+          {/* Botón buscar */}
           <div style={{background:"white",borderRadius:12,padding:20,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
             <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
-              <button onClick={buscar} disabled={loading} style={{background:loading?"#94a3b8":"#2563eb",color:"white",border:"none",padding:"12px 32px",borderRadius:8,fontSize:15,fontWeight:700,cursor:loading?"not-allowed":"pointer",boxShadow:loading?"none":"0 2px 8px rgba(37,99,235,.35)"}}>
-                {loading ? `⏳ Buscando... ${elapsed}s` : "🚀 Buscar Licitaciones"}
+              <button onClick={buscar} disabled={ds.loading}
+                style={{background:ds.loading?"#94a3b8":activDivConf.color,color:"white",border:"none",padding:"12px 32px",borderRadius:8,fontSize:15,fontWeight:700,cursor:ds.loading?"not-allowed":"pointer",boxShadow:ds.loading?"none":`0 2px 8px ${activDivConf.color}55`}}>
+                {ds.loading ? `⏳ Buscando... ${ds.elapsed}s` : "🚀 Buscar Licitaciones"}
               </button>
-              {loading && (
-                <button onClick={cancelar} style={{background:"#fee2e2",color:"#dc2626",border:"none",padding:"12px 20px",borderRadius:8,fontSize:14,fontWeight:600,cursor:"pointer"}}>✕ Cancelar</button>
-              )}
+              {ds.loading && <button onClick={cancelar} style={{background:"#fee2e2",color:"#dc2626",border:"none",padding:"12px 20px",borderRadius:8,fontSize:14,fontWeight:600,cursor:"pointer"}}>✕ Cancelar</button>}
             </div>
-            {error && <div style={{marginTop:12,background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",fontSize:13,color:"#dc2626"}}>⚠️ {error}</div>}
-            {steps.length > 0 && (
+            {ds.error && <div style={{marginTop:12,background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",fontSize:13,color:"#dc2626"}}>⚠️ {ds.error}</div>}
+            {ds.steps.length > 0 && (
               <div style={{marginTop:16}}>
                 <div style={{fontSize:12,fontWeight:700,color:"#64748b",marginBottom:8}}>Progreso de búsqueda</div>
-                {steps.map((s,i) => (
+                {ds.steps.map((s,i) => (
                   <div key={i} style={{fontSize:12,color:s.state==="ok"?"#15803d":s.state==="empty"?"#94a3b8":"#2563eb",display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
-                    <span>{stepIcon(s.state)}</span><span>{s.msg}</span>
+                    <span>{s.state==="wait"?"⏳":s.state==="ok"?"✅":"⚪"}</span><span>{s.msg}</span>
                   </div>
                 ))}
               </div>
@@ -563,13 +754,17 @@ function App() {
         </div>
       )}
 
+      {/* Tab: Resultados */}
       {tab==="resultados" && (
         <div>
-          {results.length===0
-            ? <div style={{textAlign:"center",color:"#94a3b8",padding:48,background:"white",borderRadius:12}}>Sin resultados. Realiza una búsqueda primero.</div>
+          {ds.results.length===0
+            ? <div style={{textAlign:"center",color:"#94a3b8",padding:48,background:"white",borderRadius:12}}>Sin resultados para {activDivConf.label}. Realiza una búsqueda primero.</div>
             : <>
-                <div style={{fontSize:13,color:"#64748b",marginBottom:12}}>{results.length} licitaciones encontradas</div>
-                {results.map((r,i) => (
+                <div style={{fontSize:13,color:"#64748b",marginBottom:12,display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{background:activDivConf.bg,color:activDivConf.color,padding:"3px 10px",borderRadius:99,fontSize:11,fontWeight:700}}>{activDivConf.icon} {activDivConf.label}</span>
+                  <span>{ds.results.length} licitaciones encontradas</span>
+                </div>
+                {ds.results.map((r,i) => (
                   <div key={i} style={{background:"white",border:"1px solid #e2e8f0",borderRadius:10,padding:16,marginBottom:10,boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}>
                     <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
                       <span style={{background:"#eff6ff",color:"#2563eb",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>🏛️ Mercado Público</span>
@@ -586,12 +781,8 @@ function App() {
                     </div>
                     {r.descripcion && <div style={{fontSize:12,color:"#475569",marginTop:8,lineHeight:1.5}}>{r.descripcion}</div>}
                     <div style={{display:"flex",gap:8,marginTop:10,flexWrap:"wrap"}}>
-                      <button onClick={()=>verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>
-                        🤖 Analizar con IA
-                      </button>
-                      {r.url && <a href={r.url} target="_blank" rel="noreferrer" style={{background:"#f8fafc",color:"#475569",border:"1px solid #e2e8f0",padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600}}>
-                        🔗 Ver en MP
-                      </a>}
+                      <button onClick={() => verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>🤖 Analizar con IA</button>
+                      {r.url && <a href={r.url} target="_blank" rel="noreferrer" style={{background:"#f8fafc",color:"#475569",border:"1px solid #e2e8f0",padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600}}>🔗 Ver en MP</a>}
                     </div>
                   </div>
                 ))}
@@ -600,6 +791,7 @@ function App() {
         </div>
       )}
 
+      {/* Tab: Análisis IA */}
       {tab==="detalle" && (
         <div>
           {!selected
@@ -607,9 +799,9 @@ function App() {
             : <div style={{background:"white",borderRadius:12,padding:24,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
                 <div style={{fontWeight:800,fontSize:15,marginBottom:4}}>{selected.titulo}</div>
                 <div style={{fontSize:12,color:"#64748b",marginBottom:8}}>{selected.organismo} · Código: {selected.codigo||"N/A"}</div>
-                {gestorEstado === "guardado"   && <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"8px 14px",fontSize:12,color:"#15803d",marginBottom:12}}>✅ Licitación enviada al Gestor automáticamente</div>}
-                {gestorEstado === "duplicado"  && <div style={{background:"#fefce8",border:"1px solid #fef08a",borderRadius:8,padding:"8px 14px",fontSize:12,color:"#854d0e",marginBottom:12}}>⚠️ Esta licitación ya estaba en el Gestor</div>}
-                {gestorEstado === "error"      && <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"8px 14px",fontSize:12,color:"#dc2626",marginBottom:12}}>❌ No se pudo guardar en el Gestor — agrégala manualmente</div>}
+                {gestorEstado==="guardado"  && <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"8px 14px",fontSize:12,color:"#15803d",marginBottom:12}}>✅ Enviada al Gestor automáticamente</div>}
+                {gestorEstado==="duplicado" && <div style={{background:"#fefce8",border:"1px solid #fef08a",borderRadius:8,padding:"8px 14px",fontSize:12,color:"#854d0e",marginBottom:12}}>⚠️ Ya estaba en el Gestor</div>}
+                {gestorEstado==="error"     && <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"8px 14px",fontSize:12,color:"#dc2626",marginBottom:12}}>❌ No se pudo guardar — agrégala manualmente</div>}
                 <div style={{borderTop:"1px solid #e2e8f0",paddingTop:16}}>
                   <div style={{fontWeight:700,fontSize:13,marginBottom:14,color:"#2563eb"}}>🤖 Análisis de Factibilidad</div>
                   {analysisLoading
@@ -617,18 +809,13 @@ function App() {
                     : <AnalysisRenderer text={analysis} />
                   }
                 </div>
-                {selected.url && (
-                  <div style={{marginTop:20}}>
-                    <a href={selected.url} target="_blank" rel="noreferrer" style={{background:"#eff6ff",color:"#2563eb",padding:"10px 20px",borderRadius:8,fontSize:13,fontWeight:600}}>
-                      🔗 Abrir en Mercado Público
-                    </a>
-                  </div>
-                )}
+                {selected.url && <div style={{marginTop:20}}><a href={selected.url} target="_blank" rel="noreferrer" style={{background:"#eff6ff",color:"#2563eb",padding:"10px 20px",borderRadius:8,fontSize:13,fontWeight:600}}>🔗 Abrir en Mercado Público</a></div>}
               </div>
           }
         </div>
       )}
 
+      {/* Tab: Historial */}
       {tab==="historial" && (
         <div>
           {history.length===0
@@ -636,7 +823,7 @@ function App() {
             : <>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
                   <div style={{fontSize:13,color:"#64748b"}}>{history.length} licitaciones guardadas</div>
-                  <button onClick={()=>setHistory([])} style={{background:"#fee2e2",color:"#dc2626",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>🗑️ Limpiar</button>
+                  <button onClick={() => setHistory([])} style={{background:"#fee2e2",color:"#dc2626",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>🗑️ Limpiar</button>
                 </div>
                 {history.map((r,i) => (
                   <div key={i} style={{background:"white",border:"1px solid #e2e8f0",borderRadius:8,padding:12,marginBottom:8}}>
@@ -646,15 +833,74 @@ function App() {
                     </div>
                     <div style={{fontWeight:600,fontSize:13}}>{r.titulo}</div>
                     <div style={{fontSize:11,color:"#94a3b8",marginTop:3}}>{r.organismo}{r.fechaCierre?` · Cierre: ${r.fechaCierre}`:""}</div>
-                    <button onClick={()=>verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"4px 10px",borderRadius:6,fontSize:11,cursor:"pointer",marginTop:8,fontWeight:600}}>
-                      🤖 Analizar
-                    </button>
+                    <button onClick={() => verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"4px 10px",borderRadius:6,fontSize:11,cursor:"pointer",marginTop:8,fontWeight:600}}>🤖 Analizar</button>
                   </div>
                 ))}
               </>
           }
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Renderizador del análisis IA ──────────────────────────────────────────
+function AnalysisRenderer({ text }) {
+  if (!text) return null;
+  const esParticipar = text.includes("🟢");
+  const esEvaluar    = text.includes("🟡");
+  const esDescartar  = text.includes("🔴");
+  const veredictoColor = esParticipar ? "#f0fdf4" : esEvaluar ? "#fefce8" : esDescartar ? "#fef2f2" : "#f8fafc";
+  const veredictoB    = esParticipar ? "#bbf7d0" : esEvaluar ? "#fef08a" : esDescartar ? "#fecaca" : "#e2e8f0";
+  const veredictoText = esParticipar ? "#15803d" : esEvaluar ? "#854d0e" : esDescartar ? "#dc2626" : "#475569";
+  const parseTabla = (bloque) => {
+    const lineas = bloque.split("\n").filter(l => l.includes("|"));
+    const filas  = lineas.map(l => l.split("|").map(c => c.trim()).filter(Boolean)).filter(f => f.length >= 2 && !f.every(c => c.match(/^[-\s]+$/)));
+    if (!filas.length) return null;
+    const encabezado = filas[0];
+    const datos = filas.slice(1).filter(f => !f.every(c => c.match(/^[-\s]+$/)) && !f.join("").match(/^[-|\s]+$/));
+    return (
+      <div style={{overflowX:"auto",marginTop:8}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+          <thead><tr style={{background:"#f1f5f9"}}>{encabezado.map((h,i) => <th key={i} style={{padding:"8px 12px",textAlign:"left",fontWeight:700,color:"#475569",borderBottom:"2px solid #e2e8f0",whiteSpace:"nowrap"}}>{h}</th>)}</tr></thead>
+          <tbody>{datos.map((fila,i) => { const isTotal = fila[0].toUpperCase().includes("TOTAL"); return <tr key={i} style={{background:isTotal?"#f8fafc":i%2===0?"white":"#f8fafc",borderBottom:"1px solid #e2e8f0"}}>{fila.map((celda,j) => <td key={j} style={{padding:"8px 12px",color:isTotal?"#1e293b":"#334155",fontWeight:isTotal?700:400,verticalAlign:"top"}}>{celda}</td>)}</tr>; })}</tbody>
+        </table>
+      </div>
+    );
+  };
+  const secciones = [];
+  const regex = /(📋|🏢|📅|📊|🎯|⚠️)/g;
+  let match; const indices = [];
+  while ((match = regex.exec(text)) !== null) indices.push(match.index);
+  indices.forEach((idx,i) => {
+    const fin = indices[i+1] ?? text.length;
+    const bloque = text.slice(idx, fin).trim();
+    const primeraLinea = bloque.split("\n")[0].trim();
+    const contenido = bloque.slice(primeraLinea.length).trim();
+    secciones.push({ titulo: primeraLinea, contenido });
+  });
+  if (!secciones.length) return <div style={{fontSize:13,lineHeight:1.9,whiteSpace:"pre-wrap",color:"#334155"}}>{text}</div>;
+  const seccionConfig = {
+    "📋": { bg:"#f0f9ff", border:"#bae6fd", titleColor:"#0369a1" },
+    "🏢": { bg:"#f5f3ff", border:"#ddd6fe", titleColor:"#6d28d9" },
+    "📅": { bg:"#f0fdf4", border:"#bbf7d0", titleColor:"#15803d" },
+    "📊": { bg:"#f8fafc", border:"#e2e8f0", titleColor:"#1e293b" },
+    "🎯": { bg: veredictoColor, border: veredictoB, titleColor: veredictoText },
+    "⚠️": { bg:"#fffbeb", border:"#fde68a", titleColor:"#92400e" },
+  };
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      {secciones.map((s,i) => {
+        const emoji = ["📋","🏢","📅","📊","🎯","⚠️"].find(e => s.titulo.startsWith(e)) || "📋";
+        const cfg = seccionConfig[emoji] || { bg:"#f8fafc", border:"#e2e8f0", titleColor:"#1e293b" };
+        const esTabla = s.contenido.includes("|") && s.contenido.split("\n").filter(l => l.includes("|")).length > 2;
+        return (
+          <div key={i} style={{background:cfg.bg,border:`1px solid ${cfg.border}`,borderRadius:10,padding:"14px 16px"}}>
+            <div style={{fontWeight:700,fontSize:13,color:cfg.titleColor,marginBottom:8}}>{s.titulo}</div>
+            {esTabla ? parseTabla(s.contenido) : <div style={{fontSize:13,lineHeight:1.7,color:"#334155",whiteSpace:"pre-wrap"}}>{s.contenido}</div>}
+          </div>
+        );
+      })}
     </div>
   );
 }
