@@ -337,6 +337,10 @@ function App() {
   const [analysis, setAnalysis]             = useState("");
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [gestorEstado, setGestorEstado]     = useState(null);
+  const [generalLoading, setGeneralLoading] = useState(false);
+  const [generalProgress, setGeneralProgress] = useState([]);
+  const [generalResults, setGeneralResults] = useState({});
+  const generalAbortRef = useRef(null);
   const abortRefs = useRef({});
   const timerRefs = useRef({});
 
@@ -555,6 +559,52 @@ function App() {
     setAnalysisLoading(false);
   };
 
+  // ── Búsqueda General ─────────────────────────────────────────────────
+  const buscarGeneral = async () => {
+    setGeneralLoading(true);
+    setGeneralProgress([]);
+    setGeneralResults({});
+    setTab("general");
+    if(generalAbortRef.current) generalAbortRef.current.abort();
+    generalAbortRef.current = new AbortController();
+
+    const addProg = (divId, msg, state="wait") => setGeneralProgress(prev => {
+      const idx = prev.findIndex(p => p.divId === divId);
+      if(idx >= 0) { const n=[...prev]; n[idx]={divId,msg,state}; return n; }
+      return [...prev, {divId, msg, state}];
+    });
+
+    const nuevosResultados = {};
+    for(const div of DIVISIONS) {
+      const ds = divStates[div.id];
+      const tecnicas = ds.grupos.flatMap(g => g.keywords.filter(k => g.active.has(k)));
+      const servicios = ds.servicios.keywords.filter(k => ds.servicios.active.has(k));
+      if(!tecnicas.length) {
+        addProg(div.id, `${div.icon} ${div.label} — sin keywords activas`, "skip");
+        continue;
+      }
+      addProg(div.id, `${div.icon} ${div.label} — buscando...`, "wait");
+      try {
+        const found = await buscarEnBackend(tecnicas, servicios, ds.regionDesde, ds.regionHasta, generalAbortRef.current.signal);
+        const filtradas = filtrarPorFecha(found, ds.soloVigentes, ds.fechaInicio, ds.fechaFin);
+        const uniq = deduplicar(filtradas);
+        nuevosResultados[div.id] = uniq;
+        addProg(div.id, `${div.icon} ${div.label} — ${uniq.length} resultado(s)`, uniq.length > 0 ? "ok" : "empty");
+        if(uniq.length) setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100));
+      } catch(e) {
+        if(e.name === "AbortError") { addProg(div.id, `${div.icon} ${div.label} — cancelado`, "skip"); break; }
+        addProg(div.id, `${div.icon} ${div.label} — error`, "error");
+      }
+    }
+    setGeneralResults(nuevosResultados);
+    setGeneralLoading(false);
+  };
+
+  const cancelarGeneral = () => {
+    if(generalAbortRef.current) generalAbortRef.current.abort();
+    setGeneralLoading(false);
+  };
+
   // ── Render ────────────────────────────────────────────────────────────
   const activDivConf = DIVISIONS.find(d => d.id === activeDivId2);
   const totalActive = ds.grupos.reduce((s, g) => s + [...g.active].filter(k => g.keywords.includes(k)).length, 0) + [...ds.servicios.active].filter(k => ds.servicios.keywords.includes(k)).length;
@@ -564,9 +614,15 @@ function App() {
     <div style={{fontFamily:"system-ui,sans-serif",maxWidth:960,margin:"0 auto",padding:16,color:"#1e293b",background:"#f0f4f8",minHeight:"100vh"}}>
 
       {/* Header */}
-      <div style={{background:`linear-gradient(135deg,#1e3a5f,${activDivConf.color})`,borderRadius:12,padding:"20px 24px",marginBottom:16,color:"white"}}>
-        <div style={{fontSize:22,fontWeight:800}}>🏛️ Agente Mercado Público — LEN Ingeniería</div>
-        <div style={{fontSize:12,opacity:.8,marginTop:3}}>Licitaciones · API Oficial · Chile</div>
+      <div style={{background:`linear-gradient(135deg,#1e3a5f,${activDivConf.color})`,borderRadius:12,padding:"20px 24px",marginBottom:16,color:"white",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
+        <div>
+          <div style={{fontSize:22,fontWeight:800}}>🏛️ Agente Mercado Público — LEN Ingeniería</div>
+          <div style={{fontSize:12,opacity:.8,marginTop:3}}>Licitaciones · API Oficial · Chile</div>
+        </div>
+        <button onClick={generalLoading ? cancelarGeneral : buscarGeneral}
+          style={{background:generalLoading?"rgba(255,255,255,.2)":"rgba(255,255,255,.15)",color:"white",border:"2px solid rgba(255,255,255,.4)",padding:"10px 20px",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",backdropFilter:"blur(4px)",transition:"all .15s"}}>
+          {generalLoading ? "✕ Cancelar búsqueda" : "🔍 Búsqueda General"}
+        </button>
       </div>
 
       {/* Tabs de divisiones */}
@@ -590,6 +646,7 @@ function App() {
         {[
           ["buscar",     "🔎 Buscar"],
           ["resultados", `📋 Resultados (${ds.results.length})`],
+          ["general",    `🔍 General (${Object.values(generalResults).reduce((s,r)=>s+r.length,0)})`],
           ["detalle",    "📄 Análisis IA"],
           ["historial",  `🕐 Historial (${history.length})`],
         ].map(([k,l]) => (
@@ -812,6 +869,110 @@ function App() {
                 {selected.url && <div style={{marginTop:20}}><a href={selected.url} target="_blank" rel="noreferrer" style={{background:"#eff6ff",color:"#2563eb",padding:"10px 20px",borderRadius:8,fontSize:13,fontWeight:600}}>🔗 Abrir en Mercado Público</a></div>}
               </div>
           }
+        </div>
+      )}
+
+      {/* Tab: Búsqueda General */}
+      {tab==="general" && (
+        <div>
+          {/* Header con fecha y total */}
+          <div style={{background:"white",borderRadius:12,padding:"16px 20px",marginBottom:16,boxShadow:"0 1px 4px rgba(0,0,0,.07)",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+            <div>
+              <div style={{fontWeight:700,fontSize:15}}>🔍 Búsqueda General — Todas las Divisiones</div>
+              <div style={{fontSize:12,color:"#64748b",marginTop:2}}>{new Date().toLocaleDateString("es-CL",{weekday:"long",year:"numeric",month:"long",day:"numeric"})}</div>
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:12}}>
+              {Object.values(generalResults).some(r=>r.length>0) && (
+                <div style={{background:"#eff6ff",color:"#2563eb",padding:"6px 14px",borderRadius:99,fontSize:13,fontWeight:700}}>
+                  Total: {Object.values(generalResults).reduce((s,r)=>s+r.length,0)} licitaciones
+                </div>
+              )}
+              <button onClick={generalLoading ? cancelarGeneral : buscarGeneral}
+                style={{background:generalLoading?"#fee2e2":"#2563eb",color:generalLoading?"#dc2626":"white",border:"none",padding:"8px 18px",borderRadius:8,fontSize:13,fontWeight:600,cursor:"pointer"}}>
+                {generalLoading ? "✕ Cancelar" : "🔄 Nueva búsqueda"}
+              </button>
+            </div>
+          </div>
+
+          {/* Progreso */}
+          {generalProgress.length > 0 && (
+            <div style={{background:"white",borderRadius:12,padding:"14px 20px",marginBottom:16,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Progreso</div>
+              {generalProgress.map((p,i) => {
+                const div = DIVISIONS.find(d=>d.id===p.divId);
+                const color = p.state==="ok"?"#15803d":p.state==="empty"?"#94a3b8":p.state==="error"?"#dc2626":p.state==="skip"?"#94a3b8":div?.color||"#2563eb";
+                const icon  = p.state==="ok"?"✅":p.state==="empty"?"⚪":p.state==="error"?"❌":p.state==="skip"?"—":"⏳";
+                return (
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,fontSize:13,color}}>
+                    <span>{icon}</span><span>{p.msg}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Sin resultados todavía */}
+          {!generalLoading && generalProgress.length===0 && Object.keys(generalResults).length===0 && (
+            <div style={{textAlign:"center",color:"#94a3b8",padding:64,background:"white",borderRadius:12}}>
+              <div style={{fontSize:48,marginBottom:16}}>🔍</div>
+              <div style={{fontSize:16,fontWeight:600,marginBottom:8}}>Búsqueda General</div>
+              <div style={{fontSize:13,marginBottom:24}}>Haz clic en "🔍 Búsqueda General" en el header para buscar en todas las divisiones simultáneamente</div>
+              <button onClick={buscarGeneral} style={{background:"#2563eb",color:"white",border:"none",padding:"12px 28px",borderRadius:8,fontSize:14,fontWeight:700,cursor:"pointer"}}>
+                🚀 Iniciar Búsqueda General
+              </button>
+            </div>
+          )}
+
+          {/* Resultados agrupados por división */}
+          {Object.keys(generalResults).length > 0 && DIVISIONS.map(div => {
+            const results = generalResults[div.id] || [];
+            if(!results.length) return null;
+            return (
+              <div key={div.id} style={{marginBottom:20}}>
+                {/* Header de división */}
+                <div style={{background:div.bg,border:`2px solid ${div.color}22`,borderRadius:10,padding:"12px 16px",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:18}}>{div.icon}</span>
+                    <span style={{fontWeight:700,fontSize:14,color:div.color}}>{div.label}</span>
+                    <span style={{background:div.color,color:"white",fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:99}}>{results.length}</span>
+                  </div>
+                  <button onClick={() => { setActiveDivId(div.id); updateDs(div.id, ds => ({...ds, results})); setTab("resultados"); }}
+                    style={{background:"white",color:div.color,border:`1px solid ${div.color}`,padding:"4px 12px",borderRadius:6,fontSize:11,fontWeight:600,cursor:"pointer"}}>
+                    Ver en división →
+                  </button>
+                </div>
+
+                {/* Tarjetas de resultados */}
+                {results.map((r,i) => (
+                  <div key={i} style={{background:"white",border:"1px solid #e2e8f0",borderLeft:`4px solid ${div.color}`,borderRadius:8,padding:14,marginBottom:8,boxShadow:"0 1px 3px rgba(0,0,0,.04)"}}>
+                    <div style={{display:"flex",gap:6,marginBottom:6,flexWrap:"wrap"}}>
+                      {r.estado && <span style={{background:"#f0fdf4",color:"#15803d",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>● {r.estado}</span>}
+                      <span style={{background:"#fefce8",color:"#854d0e",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>📍 {r.region||"Cargando..."}</span>
+                      {r.fechaCierre && <span style={{background:"#f8fafc",color:"#64748b",fontSize:11,padding:"2px 8px",borderRadius:12}}>⏰ {r.fechaCierre}</span>}
+                    </div>
+                    <div style={{fontWeight:700,fontSize:13,marginBottom:3,lineHeight:1.4}}>{r.titulo}</div>
+                    <div style={{fontSize:11,color:"#94a3b8",marginBottom:8}}>{r.organismo} {r.codigo ? `· ${r.codigo}` : ""}</div>
+                    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                      <button onClick={() => verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"5px 12px",borderRadius:6,fontSize:11,cursor:"pointer",fontWeight:600}}>🤖 Analizar con IA</button>
+                      {r.url && <a href={r.url} target="_blank" rel="noreferrer" style={{background:"#f8fafc",color:"#475569",border:"1px solid #e2e8f0",padding:"5px 12px",borderRadius:6,fontSize:11,fontWeight:600}}>🔗 Ver en MP</a>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+
+          {/* Divisiones sin resultados */}
+          {Object.keys(generalResults).length > 0 && (
+            <div style={{background:"white",borderRadius:10,padding:"12px 16px",marginTop:8}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Sin resultados</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {DIVISIONS.filter(div => !(generalResults[div.id]||[]).length).map(div => (
+                  <span key={div.id} style={{background:"#f1f5f9",color:"#94a3b8",fontSize:11,padding:"3px 10px",borderRadius:99}}>{div.icon} {div.label}</span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
