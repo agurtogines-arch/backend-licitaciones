@@ -308,6 +308,16 @@ function filtrarPorFecha(arr, soloVigentes, fechaInicio, fechaFin) {
     return true;
   });
 }
+// ── Organismos conocidos con código MP ────────────────────────────────────────
+const ORGANISMOS = [
+  { id:"sectra",  nombre:"SECTRA",  codigo:"619284", icon:"🚦", division:"infra",
+    desc:"Secretaría de Planificación de Transporte" },
+  { id:"mop",     nombre:"MOP Vialidad", codigo:"1491", icon:"🛣️", division:"infra",
+    desc:"Dirección de Vialidad MOP" },
+  { id:"doh",     nombre:"DOH",    codigo:"1561", icon:"💧", division:"zonasur",
+    desc:"Dirección de Obras Hidráulicas" },
+];
+
 async function buscarEnBackend(tecnicas, servicios, regionDesde, regionHasta, signal) {
   const params = new URLSearchParams({ keywords: tecnicas.join(","), servicios: servicios.join(",") });
   if(regionDesde !== "todas") params.set("desde", regionDesde);
@@ -321,6 +331,21 @@ async function buscarEnBackend(tecnicas, servicios, regionDesde, regionHasta, si
   if(!res.ok) throw new Error(`El backend respondió ${res.status}`);
   const data = await res.json();
   return (data.resultados||[]).map(r => ({...r, fuente:"Mercado Público"}));
+}
+
+async function buscarPorOrganismo(organismo, regionDesde, regionHasta, signal) {
+  const params = new URLSearchParams({ organismo: organismo.codigo });
+  if(regionDesde !== "todas") params.set("desde", regionDesde);
+  if(regionHasta !== "todas") params.set("hasta", regionHasta);
+  let res;
+  try { res = await fetch(`${BACKEND_URL}/buscar-organismo?${params}`, {signal}); }
+  catch(e) {
+    if(e.name==="AbortError") throw e;
+    return [];
+  }
+  if(!res.ok) return [];
+  const data = await res.json();
+  return (data.resultados||[]).map(r => ({...r, fuente: organismo.nombre, fuenteIcon: organismo.icon}));
 }
 
 // ── Componente principal ──────────────────────────────────────────────────
@@ -575,6 +600,8 @@ function App() {
     });
 
     const nuevosResultados = {};
+
+    // Buscar en divisiones
     for(const div of DIVISIONS) {
       const ds = divStates[div.id];
       const tecnicas = ds.grupos.flatMap(g => g.keywords.filter(k => g.active.has(k)));
@@ -596,6 +623,22 @@ function App() {
         addProg(div.id, `${div.icon} ${div.label} — error`, "error");
       }
     }
+
+    // Buscar en organismos específicos
+    for(const org of ORGANISMOS) {
+      addProg(`org_${org.id}`, `${org.icon} ${org.nombre} — buscando...`, "wait");
+      try {
+        const found = await buscarPorOrganismo(org, "todas", "todas", generalAbortRef.current.signal);
+        const uniq = deduplicar(found);
+        nuevosResultados[`org_${org.id}`] = uniq;
+        addProg(`org_${org.id}`, `${org.icon} ${org.nombre} — ${uniq.length} resultado(s)`, uniq.length > 0 ? "ok" : "empty");
+        if(uniq.length) setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100));
+      } catch(e) {
+        if(e.name === "AbortError") { addProg(`org_${org.id}`, `${org.icon} ${org.nombre} — cancelado`, "skip"); break; }
+        addProg(`org_${org.id}`, `${org.icon} ${org.nombre} — error`, "error");
+      }
+    }
+
     setGeneralResults(nuevosResultados);
     setGeneralLoading(false);
   };
@@ -961,6 +1004,48 @@ function App() {
               </div>
             );
           })}
+
+          {/* Resultados de organismos específicos */}
+          {Object.keys(generalResults).length > 0 && ORGANISMOS.some(org => (generalResults[`org_${org.id}`]||[]).length > 0) && (
+            <div style={{marginBottom:20}}>
+              <div style={{fontWeight:700,fontSize:13,color:"#475569",marginBottom:10,padding:"8px 0",borderBottom:"2px solid #e2e8f0"}}>
+                🏛️ Organismos Específicos
+              </div>
+              {ORGANISMOS.map(org => {
+                const results = generalResults[`org_${org.id}`] || [];
+                if(!results.length) return null;
+                return (
+                  <div key={org.id} style={{marginBottom:16}}>
+                    <div style={{background:"#f8fafc",border:"2px solid #e2e8f0",borderRadius:10,padding:"12px 16px",marginBottom:8,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <span style={{fontSize:18}}>{org.icon}</span>
+                        <div>
+                          <span style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>{org.nombre}</span>
+                          <span style={{fontSize:11,color:"#64748b",marginLeft:8}}>{org.desc}</span>
+                        </div>
+                        <span style={{background:"#1e293b",color:"white",fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:99}}>{results.length}</span>
+                      </div>
+                    </div>
+                    {results.map((r,i) => (
+                      <div key={i} style={{background:"white",border:"1px solid #e2e8f0",borderLeft:"4px solid #475569",borderRadius:8,padding:14,marginBottom:6,boxShadow:"0 1px 3px rgba(0,0,0,.04)"}}>
+                        <div style={{display:"flex",gap:6,marginBottom:6,flexWrap:"wrap"}}>
+                          <span style={{background:"#f1f5f9",color:"#475569",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>{org.icon} {org.nombre}</span>
+                          {r.estado && <span style={{background:"#f0fdf4",color:"#15803d",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>● {r.estado}</span>}
+                          {r.fechaCierre && <span style={{background:"#f8fafc",color:"#64748b",fontSize:11,padding:"2px 8px",borderRadius:12}}>⏰ {r.fechaCierre}</span>}
+                        </div>
+                        <div style={{fontWeight:700,fontSize:13,marginBottom:3,lineHeight:1.4}}>{r.titulo}</div>
+                        <div style={{fontSize:11,color:"#94a3b8",marginBottom:8}}>{r.codigo}</div>
+                        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                          <button onClick={() => verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"5px 12px",borderRadius:6,fontSize:11,cursor:"pointer",fontWeight:600}}>🤖 Analizar con IA</button>
+                          {r.url && <a href={r.url} target="_blank" rel="noreferrer" style={{background:"#f8fafc",color:"#475569",border:"1px solid #e2e8f0",padding:"5px 12px",borderRadius:6,fontSize:11,fontWeight:600}}>🔗 Ver en MP</a>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {/* Divisiones sin resultados */}
           {Object.keys(generalResults).length > 0 && (
