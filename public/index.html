@@ -278,10 +278,14 @@ function deduplicar(arr) {
 }
 function parseFecha(str) {
   if(!str||str==="–") return null;
+  // Formato ISO: 2026-04-29 o 2026-04-29T17:31:00
+  if(str.includes("-") && str.length >= 10 && str[4]==="-") {
+    return new Date(str); // el navegador maneja ISO correctamente
+  }
+  // Formato DD/MM/YYYY o DD-MM-YYYY
   const p = str.split(/[-\/]/);
-  if(p.length===3) {
-    const [d,m,y] = p;
-    if(y&&y.length===4) return new Date(`${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`);
+  if(p.length===3 && p[2].length===4) {
+    return new Date(`${p[2]}-${p[1].padStart(2,"0")}-${p[0].padStart(2,"0")}`);
   }
   return new Date(str);
 }
@@ -292,7 +296,11 @@ function filtrarPorFecha(arr, soloVigentes, fechaInicio, fechaFin) {
     const cierre = parseFecha(r.fechaCierre);
     const pub    = parseFecha(r.fechaPublicacion);
     if(soloVigentes) {
-      if(cierre && cierre < hoy) return false;
+      // Descartar solo si el cierre fue ANTES de hoy (no hoy mismo)
+      if(cierre) {
+        const cierreDia = new Date(cierre); cierreDia.setHours(0,0,0,0);
+        if(cierreDia < hoy) return false;
+      }
     } else {
       if(fechaInicio || fechaFin) {
         const fi = fechaInicio ? new Date(fechaInicio) : null;
@@ -609,8 +617,7 @@ function App() {
       addProg(div.id, `${div.icon} ${div.label} — buscando...`, "wait");
       try {
         const found = await buscarEnBackend(tecnicas, servicios, ds.regionDesde, ds.regionHasta, generalAbortRef.current.signal);
-        const filtradas = filtrarPorFecha(found, ds.soloVigentes, ds.fechaInicio, ds.fechaFin);
-        const uniq = deduplicar(filtradas);
+        const uniq = deduplicar(found); // sin filtro de fechas en búsqueda general
         nuevosResultados[div.id] = uniq;
         addProg(div.id, `${div.icon} ${div.label} — ${uniq.length} resultado(s)`, uniq.length > 0 ? "ok" : "empty");
         if(uniq.length) setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100));
