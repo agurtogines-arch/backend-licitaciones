@@ -690,14 +690,16 @@ function App() {
       addProg(div.id, `${div.icon} ${div.label} — buscando...`, "wait");
       try {
         const found = await buscarEnBackend(tecnicas, servicios, ds.regionDesde, ds.regionHasta, generalAbortRef.current.signal);
-        const uniq = deduplicar(found); // sin filtro de fechas en búsqueda general
+        const uniq = deduplicar(found);
         nuevosResultados[div.id] = uniq;
         addProg(div.id, `${div.icon} ${div.label} — ${uniq.length} resultado(s)`, uniq.length > 0 ? "ok" : "empty");
         if(uniq.length) setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100));
       } catch(e) {
         if(e.name === "AbortError") { addProg(div.id, `${div.icon} ${div.label} — cancelado`, "skip"); break; }
-        addProg(div.id, `${div.icon} ${div.label} — error`, "error");
+        addProg(div.id, `${div.icon} ${div.label} — error: ${e.message}`, "error");
       }
+      // Pausa entre divisiones para no sobrecargar el backend
+      await new Promise(r => setTimeout(r, 1500));
     }
 
     // Buscar en organismos específicos
