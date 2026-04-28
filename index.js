@@ -190,7 +190,96 @@ app.get("/buscar", async (req, res) => {
   }
 });
 
-// ── Detalle en lote ───────────────────────────────────────────────────────────
+// ── Búsqueda por Organismo (SECTRA, MOP, etc.) ───────────────────────────────
+app.get("/buscar-organismo", async (req, res) => {
+  const codigoOrganismo = (req.query.organismo || "").trim();
+  const keywords        = (req.query.keywords || "").trim().split(",").map(k => k.trim()).filter(Boolean);
+  const servicios       = (req.query.servicios || "").trim().split(",").map(k => k.trim()).filter(Boolean);
+  const desdeParam      = req.query.desde || "todas";
+  const hastaParam      = req.query.hasta || "todas";
+
+  if (!codigoOrganismo) return res.status(400).json({ error: "Parámetro organismo requerido" });
+
+  let codigosValidos = null;
+  if (desdeParam !== "todas" || hastaParam !== "todas") {
+    const idxDesde = desdeParam === "todas" ? 0 : REGIONES.findIndex(r => r.codigo === desdeParam);
+    const idxHasta = hastaParam === "todas" ? REGIONES.length - 1 : REGIONES.findIndex(r => r.codigo === hastaParam);
+    const start = Math.min(idxDesde < 0 ? 0 : idxDesde, idxHasta < 0 ? REGIONES.length - 1 : idxHasta);
+    const end   = Math.max(idxDesde < 0 ? 0 : idxDesde, idxHasta < 0 ? REGIONES.length - 1 : idxHasta);
+    codigosValidos = new Set(REGIONES.slice(start, end + 1).map(r => r.codigo));
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeoutId  = setTimeout(() => controller.abort(), 90000);
+
+    const mpUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json` +
+                  `?estado=activas&codigoOrganismo=${codigoOrganismo}&ticket=${TICKET}`;
+
+    const mpRes = await fetch(mpUrl, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (!mpRes.ok) return res.json({ total: 0, resultados: [] });
+    const data = await mpRes.json();
+    let licitaciones = data.Listado || [];
+
+    // Normalización y filtro por keywords si se proporcionan
+    const norm = s => (s || "").toLowerCase()
+      .replace(/[áàä]/g, "a").replace(/[éèë]/g, "e").replace(/[íìï]/g, "i")
+      .replace(/[óòö]/g, "o").replace(/[úùü]/g, "u").replace(/ñ/g, "n")
+      .replace(/['''`´]/g, "").trim();
+    const stem = t => t.length >= 6 ? t.slice(0, -2) : t;
+    const matchesKw = (titulo, kw) => {
+      const tNorm = norm(titulo);
+      const terms = norm(kw).split(/\s+/).filter(t => t.length >= 3);
+      if (!terms.length) return false;
+      return terms.every(t => tNorm.includes(stem(t)));
+    };
+
+    // Si hay keywords, filtrar — si no, devolver todas las del organismo
+    let filtradas = licitaciones;
+    if (keywords.length > 0) {
+      filtradas = licitaciones.filter(l => {
+        const titulo = `${l.Nombre || ""} ${l.Descripcion || ""}`;
+        const matchTec = keywords.some(kw => matchesKw(titulo, kw));
+        if (!matchTec) return false;
+        if (servicios.length === 0) return true;
+        return servicios.some(s => matchesKw(titulo, s));
+      });
+    }
+
+    // Mapear resultados
+    let resultado = filtradas.map(l => {
+      const textoCompleto  = `${l.Nombre || ""} ${l.Descripcion || ""}`;
+      const regionExtraida = extraerRegionDeTexto(textoCompleto);
+      return {
+        titulo:           l.Nombre || "Sin título",
+        codigo:           l.CodigoExterno || "",
+        organismo:        "–",
+        region:           regionExtraida?.nombre || null,
+        codigoRegion:     regionExtraida?.codigo || null,
+        estado:           estadoTexto(l.CodigoEstado),
+        fechaPublicacion: formatFecha(l.FechaPublicacion),
+        fechaCierre:      formatFecha(l.FechaCierre),
+        monto:            null,
+        descripcion:      "",
+        url:              `https://www.mercadopublico.cl/Procurement/Modules/RFB/DetailsAcquisition.aspx?idlicitacion=${l.CodigoExterno}`,
+        fuente:           "Mercado Público"
+      };
+    });
+
+    if (codigosValidos) {
+      resultado = resultado.filter(r => !r.codigoRegion || codigosValidos.has(r.codigoRegion));
+    }
+
+    res.json({ total: resultado.length, resultados: resultado });
+
+  } catch (err) {
+    if (err.name === "AbortError") return res.status(504).json({ error: "Tiempo de espera agotado" });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 app.post("/detalle-lote", async (req, res) => {
   const { codigos } = req.body;
   if (!codigos || !Array.isArray(codigos)) return res.status(400).json({ error: "codigos requerido" });
@@ -594,7 +683,7 @@ async function extraerTextoPDF(buffer) {
     const data = await pdfParse(buffer);
     const avgChars = data.numpages > 0 ? data.text.length / data.numpages : 0;
     return {
-      texto:     data.text.substring(0, 60000), // 60K por PDF para capturar secciones profundas
+      texto:     data.text.substring(0, 40000), // 40K por PDF
       paginas:   data.numpages,
       escaneado: avgChars < 50,
       ok:        true
@@ -673,14 +762,23 @@ app.post("/mp/analizar-bases", (req, res) => {
         return res.status(422).json({ error: "No se pudo extraer texto de ningún PDF.", escaneados: escaneadosCount, auditoria: archivosAuditoria });
       }
 
-      // Priorizar documentos relevantes, completar con genéricos si hay espacio
-      const LIMITE_TOTAL = 150000;
+      // Límite total y por agente
+      const LIMITE_TOTAL = 80000;
       let textoTotal = textosRelevantes.join("\n\n");
       if (textoTotal.length < LIMITE_TOTAL && textosGenericos.length) {
         const espacio = LIMITE_TOTAL - textoTotal.length;
         textoTotal += "\n\n" + textosGenericos.join("\n\n").substring(0, espacio);
       }
       textoTotal = textoTotal.substring(0, LIMITE_TOTAL);
+
+      // Cada agente recibe un fragmento distinto del texto para respetar el límite de tokens
+      // Agentes 1 y 2 leen el inicio (identificación, fechas suelen estar al principio)
+      // Agentes 3 y 4 leen la parte media (garantías, requisitos)
+      // Agente 5 lee el final (alcance técnico suele estar al final en TR)
+      const FRAG = Math.floor(textoTotal.length / 3);
+      const textoInicio = textoTotal.substring(0, FRAG * 2);        // 0% - 67%
+      const textoMedio  = textoTotal.substring(FRAG, FRAG * 3);     // 33% - 100%
+      const textoFinal  = textoTotal.substring(FRAG * 2);           // 67% - 100%
 
       // ── Helper para llamar GPT-4o ──────────────────────────────────────────
       const gpt = async (systemPrompt, userPrompt) => {
@@ -714,23 +812,23 @@ Responde ÚNICAMENTE con JSON válido sin markdown.`;
 
       // ── 5 Agentes especializados secuenciales ─────────────────────────────
       console.log("[analizar-bases] Iniciando agente 1: Identificación");
-      const r1 = await gpt(BASE_SYSTEM, `${META}\n\nDOCUMENTOS:\n${textoTotal}\n\nExtrae SOLO identificación y descripción del proyecto. JSON:\n{"identificacion":{"nombre":"","codigo_mp":"","mandante":"","region":"","tipo_licitacion":"","monto_estimado":"","fecha_cierre":"","tipo_proceso":"","modalidad_contrato":"","moneda":"","vigencia_contrato":"","inicio_estimado":"","contacto":"","plataforma_envio":"","url_mp":"","documentos_licitacion":""},"proposito":{"objetivo_general":"","alcance_detallado":"","naturaleza_encargo":"","obras_principales":"","grupos_trabajo":"","especialidades_requeridas":""}}`);
+      const r1 = await gpt(BASE_SYSTEM, `${META}\n\nDOCUMENTOS:\n${textoInicio}\n\nExtrae SOLO identificación y descripción del proyecto. JSON:\n{"identificacion":{"nombre":"","codigo_mp":"","mandante":"","region":"","tipo_licitacion":"","monto_estimado":"","fecha_cierre":"","tipo_proceso":"","modalidad_contrato":"","moneda":"","vigencia_contrato":"","inicio_estimado":"","contacto":"","plataforma_envio":"","url_mp":"","documentos_licitacion":""},"proposito":{"objetivo_general":"","alcance_detallado":"","naturaleza_encargo":"","obras_principales":"","grupos_trabajo":"","especialidades_requeridas":""}}`);
       await sleep(15000);
 
       console.log("[analizar-bases] Iniciando agente 2: Calendario");
-      const r2 = await gpt(BASE_SYSTEM, `${META}\n\nDOCUMENTOS:\n${textoTotal}\n\nExtrae TODAS las fechas y hitos del proceso. Para cada fecha incluye hora si existe, lugar si aplica, y observaciones importantes. JSON:\n{"calendario":[{"hito":"","fecha_plazo":"","observaciones":"","estado":"✔ Pasado o Próximo o —"}],"preguntas_sugeridas":[""]}`);
+      const r2 = await gpt(BASE_SYSTEM, `${META}\n\nDOCUMENTOS:\n${textoInicio}\n\nExtrae TODAS las fechas y hitos del proceso. Para cada fecha incluye hora si existe, lugar si aplica, y observaciones importantes. JSON:\n{"calendario":[{"hito":"","fecha_plazo":"","observaciones":"","estado":"✔ Pasado o Próximo o —"}],"preguntas_sugeridas":[""]}`);
       await sleep(15000);
 
       console.log("[analizar-bases] Iniciando agente 3: Garantías y Pagos");
-      const r3 = await gpt(BASE_SYSTEM, `${META}\n\nDOCUMENTOS:\n${textoTotal}\n\nExtrae garantías (monto exacto, forma, vigencia, lugar entrega, glosa), esquema de pagos por hitos (porcentaje exacto, descripción hito), condiciones de pago y multas. JSON:\n{"garantias":[{"tipo":"","monto":"","vigencia":"","forma":"","lugar_entrega":"","glosa":"","observaciones":""}],"esquema_pagos":[{"estado_pago":"","hito_etapa":"","porcentaje":"","descripcion":""}],"condiciones_pago":[{"condicion":"","descripcion":""}],"multas":[{"causal":"","monto":"","alcance":"","tope":""}]}`);
+      const r3 = await gpt(BASE_SYSTEM, `${META}\n\nDOCUMENTOS:\n${textoMedio}\n\nExtrae garantías (monto exacto, forma, vigencia, lugar entrega, glosa), esquema de pagos por hitos (porcentaje exacto, descripción hito), condiciones de pago y multas. JSON:\n{"garantias":[{"tipo":"","monto":"","vigencia":"","forma":"","lugar_entrega":"","glosa":"","observaciones":""}],"esquema_pagos":[{"estado_pago":"","hito_etapa":"","porcentaje":"","descripcion":""}],"condiciones_pago":[{"condicion":"","descripcion":""}],"multas":[{"causal":"","monto":"","alcance":"","tope":""}]}`);
       await sleep(15000);
 
       console.log("[analizar-bases] Iniciando agente 4: Requisitos y Puntos Críticos");
-      const r4 = await gpt(BASE_SYSTEM, `${META}\n\nDOCUMENTOS:\n${textoTotal}\n\nExtrae requisitos de empresa (con fuente y cómo acreditar), requisitos de profesionales (cargo, título, experiencia, dedicación) y puntos críticos (🔴 excluyentes/riesgosos, 🟡 importantes, 🟢 favorables, ℹ informativos). JSON:\n{"requisitos_empresa":[{"requisito":"","descripcion":"","fuente":"","como_acreditar":""}],"requisitos_profesionales":[{"cargo":"","titulo_requerido":"","experiencia":"","dedicacion":"","como_acreditar":""}],"puntos_criticos":[{"indicador":"🔴 o 🟡 o 🟢 o ℹ","punto":"","descripcion_detallada":""}]}`);
+      const r4 = await gpt(BASE_SYSTEM, `${META}\n\nDOCUMENTOS:\n${textoMedio}\n\nExtrae requisitos de empresa (con fuente y cómo acreditar), requisitos de profesionales (cargo, título, experiencia, dedicación) y puntos críticos (🔴 excluyentes/riesgosos, 🟡 importantes, 🟢 favorables, ℹ informativos). JSON:\n{"requisitos_empresa":[{"requisito":"","descripcion":"","fuente":"","como_acreditar":""}],"requisitos_profesionales":[{"cargo":"","titulo_requerido":"","experiencia":"","dedicacion":"","como_acreditar":""}],"puntos_criticos":[{"indicador":"🔴 o 🟡 o 🟢 o ℹ","punto":"","descripcion_detallada":""}]}`);
       await sleep(15000);
 
       console.log("[analizar-bases] Iniciando agente 5: Alcance Técnico");
-      const r5 = await gpt(BASE_SYSTEM, `${META}\n\nDOCUMENTOS:\n${textoTotal}\n\nExtrae alcance técnico completo: etapas con duración y entregables específicos, especialidades requeridas, condiciones operativas, formatos de entrega y normativa aplicable. JSON:\n{"alcance_tecnico":{"etapas":[{"etapa":"","duracion":"","contenido":"","entregables":""}],"especialidades":[{"especialidad":"","alcance_principal":""}],"condiciones_operativas":"","formatos_entrega":"","normativa_aplicable":""}}`);
+      const r5 = await gpt(BASE_SYSTEM, `${META}\n\nDOCUMENTOS:\n${textoFinal}\n\nExtrae alcance técnico completo: etapas con duración y entregables específicos, especialidades requeridas, condiciones operativas, formatos de entrega y normativa aplicable. JSON:\n{"alcance_tecnico":{"etapas":[{"etapa":"","duracion":"","contenido":"","entregables":""}],"especialidades":[{"especialidad":"","alcance_principal":""}],"condiciones_operativas":"","formatos_entrega":"","normativa_aplicable":""}}`);
 
       console.log("[analizar-bases] Todos los agentes completados, consolidando resultados");
 
