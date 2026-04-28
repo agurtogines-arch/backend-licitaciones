@@ -310,12 +310,8 @@ function filtrarPorFecha(arr, soloVigentes, fechaInicio, fechaFin) {
 }
 // ── Organismos conocidos con código MP ────────────────────────────────────────
 const ORGANISMOS = [
-  { id:"sectra",  nombre:"SECTRA",  codigo:"619284", icon:"🚦", division:"infra",
+  { id:"sectra", nombre:"SECTRA", codigo:"7007", icon:"🚦", division:"infra",
     desc:"Secretaría de Planificación de Transporte" },
-  { id:"mop",     nombre:"MOP Vialidad", codigo:"1491", icon:"🛣️", division:"infra",
-    desc:"Dirección de Vialidad MOP" },
-  { id:"doh",     nombre:"DOH",    codigo:"1561", icon:"💧", division:"zonasur",
-    desc:"Dirección de Obras Hidráulicas" },
 ];
 
 async function buscarEnBackend(tecnicas, servicios, regionDesde, regionHasta, signal) {
