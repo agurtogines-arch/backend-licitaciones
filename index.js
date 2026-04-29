@@ -1415,4 +1415,147 @@ app.get("/buscar-minvu", async (req, res) => {
   }
 });
 
+// ── Búsqueda ECONSSA ─────────────────────────────────────────────────────────
+app.get("/buscar-econssa", async (req, res) => {
+  const keywords = (req.query.keywords || "").split(",").map(k => k.trim()).filter(Boolean);
+  const servicios = (req.query.servicios || "").split(",").map(k => k.trim()).filter(Boolean);
+
+  try {
+    const pageRes = await fetch("https://www.econssachile.cl/nosotros/proveedores/39-licitaciones-vigentes", {
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" }
+    });
+    if (!pageRes.ok) return res.status(502).json({ error: `ECONSSA respondió ${pageRes.status}` });
+    const html = await pageRes.text();
+
+    // Extraer títulos h2-h4 como licitaciones
+    const titulosMatch = [...html.matchAll(/<h[234][^>]*>(.*?)<\/h[234]>/gis)];
+    const cleanHtml = s => (s||"").replace(/<[^>]+>/g,"").replace(/&amp;/g,"&").replace(/&quot;/g,'"').replace(/&#[0-9]+;/g, c => String.fromCharCode(parseInt(c.slice(2,-1)))).replace(/&[a-z]+;/g,"").replace(/\s+/g," ").trim();
+
+    // Extraer PDFs agrupados por título
+    const pdfMatches = [...html.matchAll(/href=["']([^"']+\.(?:pdf|docx|doc))["']/gi)];
+    const pdfs = pdfMatches.map(m => m[1].startsWith("http") ? m[1] : "https://www.econssachile.cl" + m[1]);
+
+    // Construir licitaciones — cada h3/h4 es un título
+    const licitaciones = [];
+    let pdfIdx = 0;
+    for (const match of titulosMatch) {
+      const titulo = cleanHtml(match[1]);
+      if (titulo.length < 15) continue;
+      if (titulo.toLowerCase().includes("memorias") || titulo.toLowerCase().includes("auditoría operacional")) continue;
+      // Asignar PDFs cercanos
+      const urlBase = pdfs[pdfIdx] || "https://www.econssachile.cl/nosotros/proveedores/39-licitaciones-vigentes";
+      pdfIdx = Math.min(pdfIdx + 3, pdfs.length - 1);
+      licitaciones.push({
+        titulo,
+        organismo: "ECONSSA Chile S.A.",
+        region: detectarRegionEconssa(titulo),
+        estado: "Vigente",
+        fechaPublicacion: "",
+        fechaCierre: "",
+        monto: null,
+        descripcion: "",
+        url: urlBase,
+        fuente: "ECONSSA",
+        codigo: ""
+      });
+    }
+
+    // Filtrar por keywords
+    const norm = s => (s||"").toLowerCase().replace(/[áàä]/g,"a").replace(/[éèë]/g,"e").replace(/[íìï]/g,"i").replace(/[óòö]/g,"o").replace(/[úùü]/g,"u").replace(/ñ/g,"n").trim();
+    const stem = t => t.length >= 6 ? t.slice(0,-2) : t;
+    const matchKw = (titulo, kw) => norm(kw).split(/\s+/).filter(t=>t.length>=3).every(t=>norm(titulo).includes(stem(t)));
+
+    let resultado = licitaciones;
+    if (keywords.length > 0) {
+      resultado = licitaciones.filter(l => {
+        const matchTec = keywords.some(kw => matchKw(l.titulo, kw));
+        if (!matchTec) return false;
+        if (!servicios.length) return true;
+        return servicios.some(s => matchKw(l.titulo, s));
+      });
+    }
+
+    res.json({ total: resultado.length, resultados: resultado });
+  } catch(err) {
+    console.error("[buscar-econssa]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+function detectarRegionEconssa(titulo) {
+  const t = titulo.toLowerCase();
+  if (t.includes("antofagasta") || t.includes("chuquicamata")) return "Antofagasta";
+  if (t.includes("hospicio") || t.includes("iquique") || t.includes("tarapacá")) return "Tarapacá";
+  if (t.includes("tocopilla")) return "Antofagasta";
+  if (t.includes("atacama") || t.includes("copiapó")) return "Atacama";
+  if (t.includes("valparaíso") || t.includes("peñuelas")) return "Valparaíso";
+  return "Norte";
+}
+
+// ── Búsqueda Puerto San Antonio ────────────────────────────────────────────── 
+app.get("/buscar-psa", async (req, res) => {
+  const keywords = (req.query.keywords || "").split(",").map(k => k.trim()).filter(Boolean);
+  const servicios = (req.query.servicios || "").split(",").map(k => k.trim()).filter(Boolean);
+
+  try {
+    const pageRes = await fetch("https://www.puertosanantonio.com/licitaciones-publicas", {
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" }
+    });
+    if (!pageRes.ok) return res.status(502).json({ error: `PSA respondió ${pageRes.status}` });
+    const html = await pageRes.text();
+
+    const cleanHtml = s => (s||"").replace(/<[^>]+>/g,"").replace(/\s+/g," ").trim();
+
+    // Extraer filas de la tabla
+    const rows = [...html.matchAll(/<tr[^>]*>(.*?)<\/tr>/gis)].slice(1); // skip header
+    const licitaciones = [];
+
+    for (const row of rows) {
+      const cells = [...row[1].matchAll(/<td[^>]*>(.*?)<\/td>/gis)].map(c => cleanHtml(c[1]));
+      if (cells.length < 2) continue;
+      const codigo = cells[0];
+      const titulo = cells[1];
+      if (!titulo || titulo.length < 5) continue;
+
+      // Extraer URL del adjunto
+      const urlMatch = row[1].match(/href=["']([^"']+\.pdf)["']/i);
+      const url = urlMatch ? (urlMatch[1].startsWith("http") ? urlMatch[1] : "https://www.puertosanantonio.com" + urlMatch[1]) : "https://www.puertosanantonio.com/licitaciones-publicas";
+
+      licitaciones.push({
+        titulo,
+        codigo,
+        organismo: "Puerto San Antonio",
+        region: "Valparaíso",
+        estado: "Publicada",
+        fechaPublicacion: "",
+        fechaCierre: "",
+        monto: null,
+        descripcion: "",
+        url,
+        fuente: "Puerto San Antonio",
+      });
+    }
+
+    // Filtrar por keywords
+    const norm = s => (s||"").toLowerCase().replace(/[áàä]/g,"a").replace(/[éèë]/g,"e").replace(/[íìï]/g,"i").replace(/[óòö]/g,"o").replace(/[úùü]/g,"u").replace(/ñ/g,"n").trim();
+    const stem = t => t.length >= 6 ? t.slice(0,-2) : t;
+    const matchKw = (titulo, kw) => norm(kw).split(/\s+/).filter(t=>t.length>=3).every(t=>norm(titulo).includes(stem(t)));
+
+    let resultado = licitaciones;
+    if (keywords.length > 0) {
+      resultado = licitaciones.filter(l => {
+        const matchTec = keywords.some(kw => matchKw(l.titulo, kw));
+        if (!matchTec) return false;
+        if (!servicios.length) return true;
+        return servicios.some(s => matchKw(l.titulo, s));
+      });
+    }
+
+    res.json({ total: resultado.length, resultados: resultado });
+  } catch(err) {
+    console.error("[buscar-psa]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(PORT, () => console.log(`Backend licitaciones en puerto ${PORT} | Ticket: ${TICKET.substring(0,8)}...`));
