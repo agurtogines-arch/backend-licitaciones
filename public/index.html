@@ -334,6 +334,8 @@ const ORGANISMOS = [
 
 // ── Mapeo portales externos → divisiones LEN ─────────────────────────────────
 const PORTAL_DIVISIONS_MAP = {
+  econssa: ["medioambiente", "infra"],
+  psa:     ["infra", "ito"],
   sectra: ["zonasur", "infra"],
   efe:    ["infra", "ito"],
   minvu:  ["civil", "ito"]
@@ -580,6 +582,85 @@ function App() {
       if(e.name!=="AbortError") setMinvuError(`Error: ${e.message}`);
     }
     setMinvuLoading(false);
+  };
+
+
+  // ── Estado ECONSSA ───────────────────────────────────────────────────────
+  const [econssaResults, setEconssaResults] = useState([]);
+  const [econssaLoading, setEconssaLoading] = useState(false);
+  const [econssaSteps, setEconssaSteps]     = useState([]);
+  const [econssaError, setEconssaError]     = useState("");
+  const [econssaElapsed, setEconssaElapsed] = useState(0);
+  const econssaAbortRef = useRef(null);
+  const econssaTimerRef = useRef(null);
+
+  const buscarECONSSA = async () => {
+    const { keywords, servicios } = getPortalKeywords("econssa", divStates);
+    const searches = getPortalSearches("econssa", divStates);
+    setEconssaLoading(true); setEconssaError(""); setEconssaSteps([]); setEconssaResults([]); setEconssaElapsed(0);
+    if(econssaAbortRef.current) econssaAbortRef.current.abort();
+    econssaAbortRef.current = new AbortController();
+    econssaTimerRef.current = setInterval(() => setEconssaElapsed(e => e+1), 1000);
+    try {
+      const divLabels = searches.length ? searches.map(s=>s.divLabel).join(" + ") : "sin filtro";
+      setEconssaSteps([{msg:`💧 Buscando en ECONSSA con keywords de ${divLabels}...`, state:"wait"}]);
+      const params = new URLSearchParams();
+      if(keywords.length) params.set("keywords", keywords.join(","));
+      if(servicios.length) params.set("servicios", servicios.join(","));
+      const res = await fetch(`${BACKEND_URL}/buscar-econssa?${params}`, {signal: econssaAbortRef.current.signal});
+      const data = await res.json();
+      clearInterval(econssaTimerRef.current);
+      if(!res.ok) { setEconssaError(data.error||"Error ECONSSA"); setEconssaLoading(false); return; }
+      const uniq = deduplicar(data.resultados||[]);
+      if(uniq.length) {
+        setEconssaResults(uniq);
+        setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100));
+        setEconssaSteps([{msg:`✅ ${uniq.length} licitaciones encontradas en ECONSSA`, state:"ok"}]);
+      } else { setEconssaError("Sin resultados. Activa keywords en Zona Sur o Medio Ambiente."); }
+    } catch(e) {
+      clearInterval(econssaTimerRef.current);
+      if(e.name!=="AbortError") setEconssaError(`Error: ${e.message}`);
+    }
+    setEconssaLoading(false);
+  };
+
+  // ── Estado Puerto San Antonio ─────────────────────────────────────────────
+  const [psaResults, setPsaResults]     = useState([]);
+  const [psaLoading, setPsaLoading]     = useState(false);
+  const [psaSteps, setPsaSteps]         = useState([]);
+  const [psaError, setPsaError]         = useState("");
+  const [psaElapsed, setPsaElapsed]     = useState(0);
+  const psaAbortRef = useRef(null);
+  const psaTimerRef = useRef(null);
+
+  const buscarPSA = async () => {
+    const { keywords, servicios } = getPortalKeywords("psa", divStates);
+    const searches = getPortalSearches("psa", divStates);
+    setPsaLoading(true); setPsaError(""); setPsaSteps([]); setPsaResults([]); setPsaElapsed(0);
+    if(psaAbortRef.current) psaAbortRef.current.abort();
+    psaAbortRef.current = new AbortController();
+    psaTimerRef.current = setInterval(() => setPsaElapsed(e => e+1), 1000);
+    try {
+      const divLabels = searches.length ? searches.map(s=>s.divLabel).join(" + ") : "sin filtro";
+      setPsaSteps([{msg:`⚓ Buscando en Puerto San Antonio con keywords de ${divLabels}...`, state:"wait"}]);
+      const params = new URLSearchParams();
+      if(keywords.length) params.set("keywords", keywords.join(","));
+      if(servicios.length) params.set("servicios", servicios.join(","));
+      const res = await fetch(`${BACKEND_URL}/buscar-psa?${params}`, {signal: psaAbortRef.current.signal});
+      const data = await res.json();
+      clearInterval(psaTimerRef.current);
+      if(!res.ok) { setPsaError(data.error||"Error PSA"); setPsaLoading(false); return; }
+      const uniq = deduplicar(data.resultados||[]);
+      if(uniq.length) {
+        setPsaResults(uniq);
+        setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100));
+        setPsaSteps([{msg:`✅ ${uniq.length} licitaciones encontradas en Puerto San Antonio`, state:"ok"}]);
+      } else { setPsaError("Sin resultados. Activa keywords en Infraestructura o ITO."); }
+    } catch(e) {
+      clearInterval(psaTimerRef.current);
+      if(e.name!=="AbortError") setPsaError(`Error: ${e.message}`);
+    }
+    setPsaLoading(false);
   };
 
   const updateDs = useCallback((divId, updater) => {
@@ -908,6 +989,44 @@ function App() {
       else addProg("minvu", `🏗️ MINVU — error: ${e.message}`, "error");
     }
 
+    // ── Paso 5: ECONSSA ───────────────────────────────────────────────────────
+    await new Promise(r => setTimeout(r, 1500));
+    addProg("econssa", "💧 ECONSSA — buscando...", "wait");
+    try {
+      const { keywords: kwE, servicios: srvE } = getPortalKeywords("econssa", divStates);
+      const params = new URLSearchParams();
+      if(kwE.length) params.set("keywords", kwE.join(","));
+      if(srvE.length) params.set("servicios", srvE.join(","));
+      const res = await fetch(`${BACKEND_URL}/buscar-econssa?${params}`, {signal: generalAbortRef.current.signal});
+      const data = await res.json();
+      const uniq = deduplicar(data.resultados||[]);
+      nuevosResultados["econssa"] = uniq;
+      addProg("econssa", `💧 ECONSSA — ${uniq.length} resultado(s)`, uniq.length>0?"ok":"empty");
+      if(uniq.length) setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100));
+    } catch(e) {
+      if(e.name==="AbortError") addProg("econssa","💧 ECONSSA — cancelado","skip");
+      else addProg("econssa",`💧 ECONSSA — error: ${e.message}`,"error");
+    }
+
+    // ── Paso 6: Puerto San Antonio ────────────────────────────────────────────
+    await new Promise(r => setTimeout(r, 1500));
+    addProg("psa", "⚓ Puerto San Antonio — buscando...", "wait");
+    try {
+      const { keywords: kwP, servicios: srvP } = getPortalKeywords("psa", divStates);
+      const params = new URLSearchParams();
+      if(kwP.length) params.set("keywords", kwP.join(","));
+      if(srvP.length) params.set("servicios", srvP.join(","));
+      const res = await fetch(`${BACKEND_URL}/buscar-psa?${params}`, {signal: generalAbortRef.current.signal});
+      const data = await res.json();
+      const uniq = deduplicar(data.resultados||[]);
+      nuevosResultados["psa"] = uniq;
+      addProg("psa", `⚓ Puerto San Antonio — ${uniq.length} resultado(s)`, uniq.length>0?"ok":"empty");
+      if(uniq.length) setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100));
+    } catch(e) {
+      if(e.name==="AbortError") addProg("psa","⚓ Puerto San Antonio — cancelado","skip");
+      else addProg("psa",`⚓ Puerto San Antonio — error: ${e.message}`,"error");
+    }
+
     setGeneralResults(nuevosResultados);
     setGeneralLoading(false);
   };
@@ -934,9 +1053,9 @@ function App() {
             <div style={{color:"rgba(255,255,255,.6)",fontSize:11,marginTop:1}}>LEN Ingeniería · Chile · API Oficial</div>
           </div>
         </div>
-        <button onClick={activePortal==="mp" ? (generalLoading ? cancelarGeneral : buscarGeneral) : activePortal==="sectra" ? buscarSECTRA : activePortal==="efe" ? buscarEFE : buscarMINVU}
+        <button onClick={activePortal==="mp" ? (generalLoading ? cancelarGeneral : buscarGeneral) : activePortal==="sectra" ? buscarSECTRA : activePortal==="efe" ? buscarEFE : activePortal==="minvu" ? buscarMINVU : activePortal==="econssa" ? buscarECONSSA : buscarPSA}
           style={{background:"#F5B731",color:"#1E2D5A",border:"none",padding:"10px 20px",borderRadius:10,fontSize:13,fontWeight:800,cursor:"pointer",transition:"all .15s",boxShadow:"0 2px 8px rgba(245,183,49,.4)"}}>
-          {activePortal==="mp" ? (generalLoading ? "✕ Cancelar" : "🔍 Búsqueda General") : activePortal==="sectra" ? (sectraLoading ? `⏳ ${sectraElapsed}s...` : "🔍 Buscar en SECTRA") : activePortal==="efe" ? (efeLoading ? `⏳ ${efeElapsed}s...` : "🚂 Buscar en EFE") : (minvuLoading ? `⏳ ${minvuElapsed}s...` : "🏗️ Buscar en MINVU")}
+          {activePortal==="mp" ? (generalLoading ? "✕ Cancelar" : "🔍 Búsqueda General") : activePortal==="sectra" ? (sectraLoading ? `⏳ ${sectraElapsed}s...` : "🔍 Buscar en SECTRA") : activePortal==="efe" ? (efeLoading ? `⏳ ${efeElapsed}s...` : "🚂 Buscar en EFE") : activePortal==="minvu" ? (minvuLoading ? `⏳ ${minvuElapsed}s...` : "🏗️ Buscar en MINVU") : activePortal==="econssa" ? (econssaLoading ? `⏳ ${econssaElapsed}s...` : "💧 Buscar en ECONSSA") : (psaLoading ? `⏳ ${psaElapsed}s...` : "⚓ Buscar en PSA")}
         </button>
       </div>
 
@@ -958,6 +1077,14 @@ function App() {
         <button className={`portal-tab ${activePortal==="minvu"?"active":""}`} onClick={() => setActivePortal("minvu")}>
           🏗️ MINVU
           {minvuResults.length > 0 && <span className="ptag">{minvuResults.length}</span>}
+        </button>
+        <button className={`portal-tab ${activePortal==="econssa"?"active":""}`} onClick={() => setActivePortal("econssa")}>
+          💧 ECONSSA
+          {econssaResults.length > 0 && <span className="ptag">{econssaResults.length}</span>}
+        </button>
+        <button className={`portal-tab ${activePortal==="psa"?"active":""}`} onClick={() => setActivePortal("psa")}>
+          ⚓ Pto. San Antonio
+          {psaResults.length > 0 && <span className="ptag">{psaResults.length}</span>}
         </button>
       </div>
 
@@ -1563,6 +1690,85 @@ function App() {
                   <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                     <button onClick={()=>verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>🤖 Analizar con IA</button>
                     {r.url && <a href={r.url} target="_blank" rel="noreferrer" style={{background:"#f8fafc",color:"#475569",border:"1px solid #e2e8f0",padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600}}>🔗 Ver en MINVU</a>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activePortal==="econssa" && (
+        <div style={{padding:"16px 0"}}>
+          <div style={{background:"white",borderRadius:12,padding:20,marginBottom:14,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
+            <div style={{fontWeight:700,fontSize:14,marginBottom:8}}>💧 ECONSSA — Empresa Constructora Sanitaria Norte Grande</div>
+            <div style={{background:"#ecfeff",border:"1px solid #a5f3fc",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#0891b2",marginBottom:16}}>
+              💧 ECONSSA usa las keywords activas de <b>Medio Ambiente</b> e <b>Infraestructura</b> — configúralas desde esas divisiones en LEN-MP.<br/>
+              <span style={{color:"#64748b",marginTop:4,display:"block"}}>Especialidad: estudios hidráulicos, DIA, ITO sanitaria — Regiones Tarapacá, Antofagasta, Atacama.</span>
+            </div>
+            <button onClick={buscarECONSSA} disabled={econssaLoading}
+              style={{background:econssaLoading?"#94a3b8":"#0891b2",color:"white",border:"none",padding:"12px 32px",borderRadius:8,fontSize:15,fontWeight:700,cursor:econssaLoading?"not-allowed":"pointer"}}>
+              {econssaLoading ? `⏳ Buscando... ${econssaElapsed}s` : "💧 Buscar en ECONSSA"}
+            </button>
+            {econssaError && <div style={{marginTop:12,background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",fontSize:13,color:"#dc2626"}}>⚠️ {econssaError}</div>}
+            {econssaSteps.map((s,i) => <div key={i} style={{marginTop:8,fontSize:12,color:s.state==="ok"?"#15803d":"#2563eb",display:"flex",gap:6}}><span>{s.state==="ok"?"✅":"⏳"}</span><span>{s.msg}</span></div>)}
+          </div>
+          {econssaResults.length > 0 && (
+            <div>
+              <div style={{fontSize:13,color:"#64748b",marginBottom:12,display:"flex",alignItems:"center",gap:8}}>
+                <span style={{background:"#ecfeff",color:"#0891b2",padding:"3px 10px",borderRadius:99,fontSize:11,fontWeight:700}}>💧 ECONSSA</span>
+                <span>{econssaResults.length} licitaciones encontradas</span>
+              </div>
+              {econssaResults.map((r,i) => (
+                <div key={i} style={{background:"white",border:"1px solid #e2e8f0",borderLeft:"4px solid #0891b2",borderRadius:10,padding:16,marginBottom:10,boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}>
+                  <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
+                    <span style={{background:"#ecfeff",color:"#0891b2",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>💧 ECONSSA</span>
+                    <span style={{background:"#fefce8",color:"#854d0e",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>📍 {r.region||"Norte"}</span>
+                  </div>
+                  <div style={{fontWeight:700,fontSize:14,marginBottom:8,lineHeight:1.4}}>{r.titulo}</div>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                    <button onClick={()=>verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>🤖 Analizar con IA</button>
+                    {r.url && <a href={r.url} target="_blank" rel="noreferrer" style={{background:"#f8fafc",color:"#475569",border:"1px solid #e2e8f0",padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600}}>🔗 Ver en ECONSSA</a>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activePortal==="psa" && (
+        <div style={{padding:"16px 0"}}>
+          <div style={{background:"white",borderRadius:12,padding:20,marginBottom:14,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
+            <div style={{fontWeight:700,fontSize:14,marginBottom:8}}>⚓ Puerto San Antonio — Empresa Portuaria</div>
+            <div style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#475569",marginBottom:16}}>
+              ⚓ Puerto San Antonio usa las keywords activas de <b>Infraestructura</b> e <b>Inspección Técnica</b> — configúralas desde esas divisiones en LEN-MP.<br/>
+              <span style={{color:"#64748b",marginTop:4,display:"block"}}>95 licitaciones activas · Región Valparaíso · ITO portuaria, obras costeras.</span>
+            </div>
+            <button onClick={buscarPSA} disabled={psaLoading}
+              style={{background:psaLoading?"#94a3b8":"#334155",color:"white",border:"none",padding:"12px 32px",borderRadius:8,fontSize:15,fontWeight:700,cursor:psaLoading?"not-allowed":"pointer"}}>
+              {psaLoading ? `⏳ Buscando... ${psaElapsed}s` : "⚓ Buscar en Puerto San Antonio"}
+            </button>
+            {psaError && <div style={{marginTop:12,background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",fontSize:13,color:"#dc2626"}}>⚠️ {psaError}</div>}
+            {psaSteps.map((s,i) => <div key={i} style={{marginTop:8,fontSize:12,color:s.state==="ok"?"#15803d":"#2563eb",display:"flex",gap:6}}><span>{s.state==="ok"?"✅":"⏳"}</span><span>{s.msg}</span></div>)}
+          </div>
+          {psaResults.length > 0 && (
+            <div>
+              <div style={{fontSize:13,color:"#64748b",marginBottom:12,display:"flex",alignItems:"center",gap:8}}>
+                <span style={{background:"#f1f5f9",color:"#334155",padding:"3px 10px",borderRadius:99,fontSize:11,fontWeight:700}}>⚓ Puerto San Antonio</span>
+                <span>{psaResults.length} licitaciones encontradas</span>
+              </div>
+              {psaResults.map((r,i) => (
+                <div key={i} style={{background:"white",border:"1px solid #e2e8f0",borderLeft:"4px solid #334155",borderRadius:10,padding:16,marginBottom:10,boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}>
+                  <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
+                    <span style={{background:"#f1f5f9",color:"#334155",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>⚓ Pto. San Antonio</span>
+                    <span style={{background:"#fefce8",color:"#854d0e",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>📍 Valparaíso</span>
+                    {r.codigo && <span style={{background:"#f0fdf4",color:"#15803d",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>{r.codigo}</span>}
+                  </div>
+                  <div style={{fontWeight:700,fontSize:14,marginBottom:8,lineHeight:1.4}}>{r.titulo}</div>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                    <button onClick={()=>verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>🤖 Analizar con IA</button>
+                    {r.url && <a href={r.url} target="_blank" rel="noreferrer" style={{background:"#f8fafc",color:"#475569",border:"1px solid #e2e8f0",padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600}}>🔗 Ver en PSA</a>}
                   </div>
                 </div>
               ))}
