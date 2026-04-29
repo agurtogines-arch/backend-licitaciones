@@ -608,9 +608,13 @@ function App() {
       if(keywords.length) params.set("keywords", keywords.join(","));
       if(servicios.length) params.set("servicios", servicios.join(","));
       const res = await fetch(`${BACKEND_URL}/buscar-econssa?${params}`, {signal: econssaAbortRef.current.signal});
-      const data = await res.json();
       clearInterval(econssaTimerRef.current);
-      if(!res.ok) { setEconssaError(data.error||"Error ECONSSA"); setEconssaLoading(false); return; }
+      const rawText = await res.text();
+      if(!res.ok || rawText.trim().startsWith("<")) {
+        setEconssaError("Error al conectar con ECONSSA — verifica que el backend esté actualizado en Render.");
+        setEconssaLoading(false); return;
+      }
+      const data = JSON.parse(rawText);
       const uniq = deduplicar(data.resultados||[]);
       if(uniq.length) {
         setEconssaResults(uniq);
@@ -647,9 +651,13 @@ function App() {
       if(keywords.length) params.set("keywords", keywords.join(","));
       if(servicios.length) params.set("servicios", servicios.join(","));
       const res = await fetch(`${BACKEND_URL}/buscar-psa?${params}`, {signal: psaAbortRef.current.signal});
-      const data = await res.json();
       clearInterval(psaTimerRef.current);
-      if(!res.ok) { setPsaError(data.error||"Error PSA"); setPsaLoading(false); return; }
+      const rawText = await res.text();
+      if(!res.ok || rawText.trim().startsWith("<")) {
+        setPsaError("Error al conectar con Puerto San Antonio — verifica que el backend esté actualizado en Render.");
+        setPsaLoading(false); return;
+      }
+      const data = JSON.parse(rawText);
       const uniq = deduplicar(data.resultados||[]);
       if(uniq.length) {
         setPsaResults(uniq);
