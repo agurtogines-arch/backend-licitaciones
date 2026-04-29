@@ -190,7 +190,119 @@ app.get("/buscar", async (req, res) => {
   }
 });
 
-// ── Búsqueda por Organismo (SECTRA, MOP, etc.) ───────────────────────────────
+// ── Búsqueda General MP (una sola llamada, filtra por todas las divisiones) ───
+app.post("/buscar-general", async (req, res) => {
+  const divisiones = req.body.divisiones || []; // [{id, keywords, servicios, regionDesde, regionHasta}]
+  if (!divisiones.length) return res.status(400).json({ error: "Divisiones requeridas" });
+
+  try {
+    const controller = new AbortController();
+    const timeoutId  = setTimeout(() => controller.abort(), 90000);
+
+    // UNA SOLA descarga de todas las licitaciones activas
+    const fetchAll = async (extraParams) => {
+      const usaEstado = !extraParams.includes("tipo=SC");
+      const mpUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json` +
+                    `?${usaEstado ? "estado=activas&" : ""}ticket=${TICKET}${extraParams}`;
+      try {
+        const mpRes = await fetch(mpUrl, { signal: controller.signal });
+        if (!mpRes.ok) return [];
+        const data = await mpRes.json();
+        return data.Listado || [];
+      } catch(e) { if(e.name==="AbortError") throw e; return []; }
+    };
+
+    const [sinTipo, conSC] = await Promise.all([fetchAll(""), fetchAll("&tipo=SC")]);
+    clearTimeout(timeoutId);
+
+    // Deduplicar pool total
+    const vistos = new Set();
+    const pool   = [];
+    for (const l of [...sinTipo, ...conSC]) {
+      const cod = l.CodigoExterno || JSON.stringify(l);
+      if (!vistos.has(cod)) { vistos.add(cod); pool.push(l); }
+    }
+
+    // Normalización y stemming
+    const norm = s => (s || "").toLowerCase()
+      .replace(/[áàä]/g,"a").replace(/[éèë]/g,"e").replace(/[íìï]/g,"i")
+      .replace(/[óòö]/g,"o").replace(/[úùü]/g,"u").replace(/ñ/g,"n")
+      .replace(/['''`´]/g,"").trim();
+    const stem = t => t.length >= 6 ? t.slice(0,-2) : t;
+    const matchKw = (titulo, kw) => {
+      const tNorm = norm(titulo);
+      const terms = norm(kw).split(/\s+/).filter(t => t.length >= 3);
+      if (!terms.length) return false;
+      return terms.every(t => tNorm.includes(stem(t)));
+    };
+
+    const mapItem = l => {
+      const textoCompleto  = `${l.Nombre || ""} ${l.Descripcion || ""}`;
+      const regionExtraida = extraerRegionDeTexto(textoCompleto);
+      return {
+        titulo:          l.Nombre || "Sin título",
+        codigo:          l.CodigoExterno || "",
+        organismo:       "–",
+        region:          regionExtraida?.nombre || null,
+        codigoRegion:    regionExtraida?.codigo || null,
+        estado:          estadoTexto(l.CodigoEstado),
+        fechaPublicacion: formatFecha(l.FechaPublicacion),
+        fechaCierre:     formatFecha(l.FechaCierre),
+        monto:           null,
+        descripcion:     "",
+        url:             `https://www.mercadopublico.cl/Procurement/Modules/RFB/DetailsAcquisition.aspx?idlicitacion=${l.CodigoExterno}`,
+        fuente:          "Mercado Público"
+      };
+    };
+
+    // Filtrar pool por cada división
+    const resultados = {};
+    for (const div of divisiones) {
+      const { id, keywords, servicios, regionDesde, regionHasta } = div;
+      if (!keywords?.length) { resultados[id] = []; continue; }
+
+      // Filtro región
+      let codigosValidos = null;
+      if (regionDesde !== "todas" || regionHasta !== "todas") {
+        const idxD = regionDesde === "todas" ? 0 : REGIONES.findIndex(r => r.codigo === regionDesde);
+        const idxH = regionHasta === "todas" ? REGIONES.length-1 : REGIONES.findIndex(r => r.codigo === regionHasta);
+        const s = Math.min(idxD<0?0:idxD, idxH<0?REGIONES.length-1:idxH);
+        const e = Math.max(idxD<0?0:idxD, idxH<0?REGIONES.length-1:idxH);
+        codigosValidos = new Set(REGIONES.slice(s,e+1).map(r => r.codigo));
+      }
+
+      // Filtro keywords
+      const filtradas = pool.filter(l => {
+        const titulo = `${l.Nombre || ""} ${l.Descripcion || ""}`;
+        const matchTec = keywords.some(kw => matchKw(titulo, kw));
+        if (!matchTec) return false;
+        if (!servicios?.length) return true;
+        return servicios.some(s => matchKw(titulo, s));
+      });
+
+      let mapped = filtradas.map(mapItem);
+      if (codigosValidos) {
+        mapped = mapped.filter(r => !r.codigoRegion || codigosValidos.has(r.codigoRegion));
+      }
+
+      // Deduplicar por título normalizado
+      const seen = new Set();
+      resultados[id] = mapped.filter(r => {
+        const k = norm(r.titulo);
+        if (seen.has(k)) return false;
+        seen.add(k); return true;
+      });
+    }
+
+    res.json({ ok: true, resultados, total: pool.length });
+
+  } catch(err) {
+    if(err.name==="AbortError") return res.status(504).json({ error:"Tiempo de espera agotado" });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 app.get("/buscar-organismo", async (req, res) => {
   const codigoOrganismo = (req.query.organismo || "").trim();
   const keywords        = (req.query.keywords || "").trim().split(",").map(k => k.trim()).filter(Boolean);
