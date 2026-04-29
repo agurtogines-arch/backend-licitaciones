@@ -462,6 +462,7 @@ function App() {
   const [efeSteps, setEfeSteps]     = useState([]);
   const [efeError, setEfeError]     = useState("");
   const [efeElapsed, setEfeElapsed] = useState(0);
+  const [efeSoloVigentes, setEfeSoloVigentes] = useState(true);
   const [efeNewKw, setEfeNewKw]     = useState("");
   const [efeNewServ, setEfeNewServ] = useState("");
   const efeAbortRef = useRef(null);
@@ -485,9 +486,12 @@ function App() {
       if(!res.ok) { setEfeError((data.error||"Error al consultar EFE") + " — Intenta de nuevo."); setEfeLoading(false); return; }
       const uniq = deduplicar(data.resultados||[]);
       if(uniq.length) {
-        setEfeResults(uniq);
-        setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100));
-        setEfeSteps([{msg:`✅ ${uniq.length} licitaciones encontradas en EFE`, state:"ok"}]);
+        // Aplicar filtro de vigentes si está activo
+        const ESTADOS_ACTIVOS = ["EN VENTA DE BASES","EN PERÍODO","EN PERIODO","CHARLA","CONSULTAS","EN RECEPCIÓN","EN RECEPCION","EN EVALUACIÓN","EN EVALUACION"];
+        const filtrados = efeSoloVigentes ? uniq.filter(r => ESTADOS_ACTIVOS.some(e => (r.estado||"").toUpperCase().includes(e))) : uniq;
+        setEfeResults(filtrados);
+        setHistory(prev => deduplicar([...filtrados,...prev]).slice(0,100));
+        setEfeSteps([{msg:`✅ ${filtrados.length} licitaciones encontradas en EFE`, state:"ok"}]);
       } else {
         setEfeError("Sin resultados. Prueba activando más keywords.");
       }
@@ -727,8 +731,8 @@ function App() {
     const nuevosResultados = {};
 
     // ── Paso 1: UNA sola petición para todas las divisiones MP ────────────
+    addProg("mp_general", "🏛️ Descargando licitaciones de Mercado Público...", "wait");
     DIVISIONS.forEach(div => addProg(div.id, `${div.icon} ${div.label} — esperando...`, "wait"));
-    addProg("mp_general", "🏛️ Descargando licitaciones MP...", "wait");
 
     try {
       const payload = DIVISIONS.map(div => {
@@ -750,7 +754,7 @@ function App() {
       });
       const data = await res.json();
 
-      addProg("mp_general", `🏛️ MP descargado — ${data.total||0} licitaciones activas`, "ok");
+      addProg("mp_general", `🏛️ Mercado Público — ${data.total||0} licitaciones activas descargadas`, "ok");
 
       // Distribuir resultados por división
       DIVISIONS.forEach(div => {
@@ -1511,6 +1515,18 @@ function App() {
             {/* Sin filtro de región — EFE opera a nivel nacional */}
             <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"8px 14px",fontSize:12,color:"#15803d",marginBottom:16}}>
               🚂 EFE opera a nivel nacional — no se aplica filtro de región
+            </div>
+
+            {/* Filtro vigentes */}
+            <div style={{display:"flex",gap:8,marginBottom:16}}>
+              <button onClick={() => setEfeSoloVigentes(true)}
+                style={{flex:1,padding:"9px 0",borderRadius:8,border:"2px solid",fontSize:13,fontWeight:600,cursor:"pointer",borderColor:efeSoloVigentes?"#2563eb":"#e2e8f0",background:efeSoloVigentes?"#eff6ff":"white",color:efeSoloVigentes?"#2563eb":"#94a3b8"}}>
+                ✅ Solo vigentes
+              </button>
+              <button onClick={() => setEfeSoloVigentes(false)}
+                style={{flex:1,padding:"9px 0",borderRadius:8,border:"2px solid",fontSize:13,fontWeight:600,cursor:"pointer",borderColor:!efeSoloVigentes?"#2563eb":"#e2e8f0",background:!efeSoloVigentes?"#eff6ff":"white",color:!efeSoloVigentes?"#2563eb":"#94a3b8"}}>
+                📋 Todas (incluye adjudicadas)
+              </button>
             </div>
 
             <button onClick={buscarEFE} disabled={efeLoading}
