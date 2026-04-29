@@ -595,19 +595,13 @@ function App() {
   const econssaTimerRef = useRef(null);
 
   const buscarECONSSA = async () => {
-    const { keywords, servicios } = getPortalKeywords("econssa", divStates);
-    const searches = getPortalSearches("econssa", divStates);
     setEconssaLoading(true); setEconssaError(""); setEconssaSteps([]); setEconssaResults([]); setEconssaElapsed(0);
     if(econssaAbortRef.current) econssaAbortRef.current.abort();
     econssaAbortRef.current = new AbortController();
     econssaTimerRef.current = setInterval(() => setEconssaElapsed(e => e+1), 1000);
     try {
-      const divLabels = searches.length ? searches.map(s=>s.divLabel).join(" + ") : "sin filtro";
-      setEconssaSteps([{msg:`💧 Buscando en ECONSSA con keywords de ${divLabels}...`, state:"wait"}]);
-      const params = new URLSearchParams();
-      if(keywords.length) params.set("keywords", keywords.join(","));
-      if(servicios.length) params.set("servicios", servicios.join(","));
-      const res = await fetch(`${BACKEND_URL}/buscar-econssa?${params}`, {signal: econssaAbortRef.current.signal});
+      setEconssaSteps([{msg:"💧 Conectando con ECONSSA...", state:"wait"}]);
+      const res = await fetch(`${BACKEND_URL}/buscar-econssa`, {signal: econssaAbortRef.current.signal});
       clearInterval(econssaTimerRef.current);
       const rawText = await res.text();
       if(!res.ok || rawText.trim().startsWith("<")) {
@@ -620,7 +614,7 @@ function App() {
         setEconssaResults(uniq);
         setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100));
         setEconssaSteps([{msg:`✅ ${uniq.length} licitaciones encontradas en ECONSSA`, state:"ok"}]);
-      } else { setEconssaError("Sin resultados. Activa keywords en Zona Sur o Medio Ambiente."); }
+      } else { setEconssaError("Sin resultados."); }
     } catch(e) {
       clearInterval(econssaTimerRef.current);
       if(e.name!=="AbortError") setEconssaError(`Error: ${e.message}`);
@@ -638,19 +632,13 @@ function App() {
   const psaTimerRef = useRef(null);
 
   const buscarPSA = async () => {
-    const { keywords, servicios } = getPortalKeywords("psa", divStates);
-    const searches = getPortalSearches("psa", divStates);
     setPsaLoading(true); setPsaError(""); setPsaSteps([]); setPsaResults([]); setPsaElapsed(0);
     if(psaAbortRef.current) psaAbortRef.current.abort();
     psaAbortRef.current = new AbortController();
     psaTimerRef.current = setInterval(() => setPsaElapsed(e => e+1), 1000);
     try {
-      const divLabels = searches.length ? searches.map(s=>s.divLabel).join(" + ") : "sin filtro";
-      setPsaSteps([{msg:`⚓ Buscando en Puerto San Antonio con keywords de ${divLabels}...`, state:"wait"}]);
-      const params = new URLSearchParams();
-      if(keywords.length) params.set("keywords", keywords.join(","));
-      if(servicios.length) params.set("servicios", servicios.join(","));
-      const res = await fetch(`${BACKEND_URL}/buscar-psa?${params}`, {signal: psaAbortRef.current.signal});
+      setPsaSteps([{msg:"⚓ Conectando con Puerto San Antonio...", state:"wait"}]);
+      const res = await fetch(`${BACKEND_URL}/buscar-psa`, {signal: psaAbortRef.current.signal});
       clearInterval(psaTimerRef.current);
       const rawText = await res.text();
       if(!res.ok || rawText.trim().startsWith("<")) {
@@ -663,7 +651,7 @@ function App() {
         setPsaResults(uniq);
         setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100));
         setPsaSteps([{msg:`✅ ${uniq.length} licitaciones encontradas en Puerto San Antonio`, state:"ok"}]);
-      } else { setPsaError("Sin resultados. Activa keywords en Infraestructura o ITO."); }
+      } else { setPsaError("Sin resultados."); }
     } catch(e) {
       clearInterval(psaTimerRef.current);
       if(e.name!=="AbortError") setPsaError(`Error: ${e.message}`);
@@ -1001,11 +989,7 @@ function App() {
     await new Promise(r => setTimeout(r, 1500));
     addProg("econssa", "💧 ECONSSA — buscando...", "wait");
     try {
-      const { keywords: kwE, servicios: srvE } = getPortalKeywords("econssa", divStates);
-      const params = new URLSearchParams();
-      if(kwE.length) params.set("keywords", kwE.join(","));
-      if(srvE.length) params.set("servicios", srvE.join(","));
-      const res = await fetch(`${BACKEND_URL}/buscar-econssa?${params}`, {signal: generalAbortRef.current.signal});
+      const res = await fetch(`${BACKEND_URL}/buscar-econssa`, {signal: generalAbortRef.current.signal});
       const data = await res.json();
       const uniq = deduplicar(data.resultados||[]);
       nuevosResultados["econssa"] = uniq;
@@ -1020,11 +1004,7 @@ function App() {
     await new Promise(r => setTimeout(r, 1500));
     addProg("psa", "⚓ Puerto San Antonio — buscando...", "wait");
     try {
-      const { keywords: kwP, servicios: srvP } = getPortalKeywords("psa", divStates);
-      const params = new URLSearchParams();
-      if(kwP.length) params.set("keywords", kwP.join(","));
-      if(srvP.length) params.set("servicios", srvP.join(","));
-      const res = await fetch(`${BACKEND_URL}/buscar-psa?${params}`, {signal: generalAbortRef.current.signal});
+      const res = await fetch(`${BACKEND_URL}/buscar-psa`, {signal: generalAbortRef.current.signal});
       const data = await res.json();
       const uniq = deduplicar(data.resultados||[]);
       nuevosResultados["psa"] = uniq;
@@ -1711,7 +1691,7 @@ function App() {
           <div style={{background:"white",borderRadius:12,padding:20,marginBottom:14,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
             <div style={{fontWeight:700,fontSize:14,marginBottom:8}}>💧 ECONSSA — Empresa Constructora Sanitaria Norte Grande</div>
             <div style={{background:"#ecfeff",border:"1px solid #a5f3fc",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#0891b2",marginBottom:16}}>
-              💧 ECONSSA usa las keywords activas de <b>Medio Ambiente</b> e <b>Infraestructura</b> — configúralas desde esas divisiones en LEN-MP.<br/>
+              💧 ECONSSA muestra todas sus licitaciones publicadas sin filtro — son todas relevantes para LEN.<br/>
               <span style={{color:"#64748b",marginTop:4,display:"block"}}>Especialidad: estudios hidráulicos, DIA, ITO sanitaria — Regiones Tarapacá, Antofagasta, Atacama.</span>
             </div>
             <button onClick={buscarECONSSA} disabled={econssaLoading}
@@ -1750,7 +1730,7 @@ function App() {
           <div style={{background:"white",borderRadius:12,padding:20,marginBottom:14,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
             <div style={{fontWeight:700,fontSize:14,marginBottom:8}}>⚓ Puerto San Antonio — Empresa Portuaria</div>
             <div style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#475569",marginBottom:16}}>
-              ⚓ Puerto San Antonio usa las keywords activas de <b>Infraestructura</b> e <b>Inspección Técnica</b> — configúralas desde esas divisiones en LEN-MP.<br/>
+              ⚓ Puerto San Antonio muestra todas sus licitaciones publicadas sin filtro.<br/>
               <span style={{color:"#64748b",marginTop:4,display:"block"}}>95 licitaciones activas · Región Valparaíso · ITO portuaria, obras costeras.</span>
             </div>
             <button onClick={buscarPSA} disabled={psaLoading}
