@@ -399,7 +399,7 @@ async function buscarPorOrganismo(organismo, regionDesde, regionHasta, signal) {
 
 // ── Componente principal ──────────────────────────────────────────────────
 function App() {
-  const [activePortal, setActivePortal]      = useState("mp");
+  const [activePortal, setActivePortal]      = useState("home");
   const [soloVigentesGlobal, setSoloVigentesGlobal] = useState(() => {
     try { const v = localStorage.getItem("global_solo_vigentes"); return v !== null ? JSON.parse(v) : true; } catch(e){ return true; }
   });
@@ -877,8 +877,7 @@ function App() {
     setGeneralLoading(true);
     setGeneralProgress([]);
     setGeneralResults({});
-    setActivePortal("mp");  // siempre ir a MP para ver el progreso
-    setTab("general");
+    setActivePortal("home");
     if(generalAbortRef.current) generalAbortRef.current.abort();
     generalAbortRef.current = new AbortController();
 
@@ -1085,6 +1084,9 @@ function App() {
 
       {/* ── PORTAL NAVIGATION ── */}
       <div className="portal-nav">
+        <button className={`portal-tab ${activePortal==="home"?"active":""}`} onClick={() => setActivePortal("home")}>
+          🏠 Inicio
+        </button>
         <button className={`portal-tab ${activePortal==="mp"?"active":""}`} onClick={() => setActivePortal("mp")}>
           🏛️ LEN — Mercado Público
           {Object.values(divStates).reduce((s,d)=>s+d.results.length,0) > 0 &&
@@ -1112,6 +1114,142 @@ function App() {
         </button>
       </div>
 
+      {/* ── PORTAL INICIO ── */}
+      {activePortal==="home" && (
+        <div style={{padding:"16px 0"}}>
+
+          {/* Bienvenida / estado */}
+          {!generalLoading && generalProgress.length===0 && (
+            <div style={{background:"linear-gradient(135deg,#1E2D5A,#2d4a8a)",borderRadius:16,padding:"36px 32px",marginBottom:20,color:"white",textAlign:"center"}}>
+              <div style={{fontSize:40,marginBottom:12}}>🔍</div>
+              <div style={{fontSize:22,fontWeight:800,marginBottom:8}}>Agente de Licitaciones LEN</div>
+              <div style={{fontSize:14,opacity:.75,marginBottom:24,maxWidth:480,margin:"0 auto 24px"}}>
+                Busca simultáneamente en Mercado Público, SECTRA, EFE, MINVU, ECONSSA y Puerto San Antonio
+              </div>
+              <button onClick={buscarGeneral}
+                style={{background:"#F5B731",color:"#1E2D5A",border:"none",padding:"14px 36px",borderRadius:12,fontSize:16,fontWeight:800,cursor:"pointer",boxShadow:"0 4px 16px rgba(245,183,49,.5)"}}>
+                🚀 Iniciar Búsqueda General
+              </button>
+              <div style={{marginTop:14,fontSize:12,opacity:.6}}>
+                {soloVigentesGlobal ? "✅ Modo: solo licitaciones vigentes" : "📋 Modo: todas las licitaciones"}
+              </div>
+            </div>
+          )}
+
+          {/* Progreso búsqueda general */}
+          {(generalLoading || generalProgress.length > 0) && (
+            <div style={{background:"white",borderRadius:12,padding:"20px 24px",marginBottom:16,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+                <div style={{fontWeight:700,fontSize:15}}>
+                  {generalLoading ? "⏳ Buscando en todas las plataformas..." : "✅ Búsqueda completada"}
+                </div>
+                {generalLoading && (
+                  <button onClick={cancelarGeneral} style={{background:"#fee2e2",color:"#dc2626",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>
+                    ✕ Cancelar
+                  </button>
+                )}
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:8}}>
+                {generalProgress.map((p,i) => {
+                  const div = DIVISIONS.find(d=>d.id===p.divId);
+                  const isMp = p.divId==="mp_general";
+                  const bg   = p.state==="ok"?"#f0fdf4":p.state==="empty"?"#f8fafc":p.state==="error"?"#fef2f2":p.state==="skip"?"#f8fafc":"#eff6ff";
+                  const color= p.state==="ok"?"#15803d":p.state==="empty"?"#94a3b8":p.state==="error"?"#dc2626":p.state==="skip"?"#94a3b8":div?.color||"#2563eb";
+                  const icon = p.state==="ok"?"✅":p.state==="empty"?"⚪":p.state==="error"?"❌":p.state==="skip"?"—":"⏳";
+                  if(isMp) return (
+                    <div key={i} style={{gridColumn:"1/-1",background:bg,border:`1px solid ${color}22`,borderRadius:8,padding:"8px 12px",fontSize:12,color,display:"flex",gap:6,alignItems:"center"}}>
+                      <span>{icon}</span><span>{p.msg}</span>
+                    </div>
+                  );
+                  return (
+                    <div key={i} style={{background:bg,border:`1px solid ${color}22`,borderRadius:8,padding:"8px 12px",fontSize:12,color,display:"flex",gap:6,alignItems:"center"}}>
+                      <span>{icon}</span><span style={{flex:1}}>{p.msg}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Dashboard de resultados */}
+          {Object.keys(generalResults).length > 0 && !generalLoading && (
+            <>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                <div style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>
+                  📊 Resultados — {new Date().toLocaleDateString("es-CL",{weekday:"long",day:"numeric",month:"long"})}
+                </div>
+                <div style={{fontSize:13,color:"#2563eb",fontWeight:700}}>
+                  Total: {Object.values(generalResults).reduce((s,r)=>s+r.length,0)} licitaciones
+                </div>
+              </div>
+
+              {/* LEN — Mercado Público */}
+              <div style={{marginBottom:20}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>🏛️ LEN — Mercado Público</div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:8}}>
+                  {DIVISIONS.map(div => {
+                    const count = (generalResults[div.id]||[]).length;
+                    return (
+                      <button key={div.id}
+                        onClick={() => { setActiveDivId(div.id); setActivePortal("mp"); setTab("resultados"); }}
+                        style={{background:count>0?div.bg:"#f8fafc",border:`2px solid ${count>0?div.color:"#e2e8f0"}`,borderRadius:10,padding:"12px 14px",cursor:count>0?"pointer":"default",textAlign:"left",transition:"all .15s",opacity:count>0?1:.6}}>
+                        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+                          <span style={{fontSize:18}}>{div.icon}</span>
+                          <span style={{fontWeight:700,fontSize:12,color:count>0?div.color:"#94a3b8",flex:1}}>{div.label}</span>
+                          <span style={{background:count>0?div.color:"#e2e8f0",color:count>0?"white":"#94a3b8",fontSize:12,fontWeight:800,padding:"2px 8px",borderRadius:99,minWidth:24,textAlign:"center"}}>{count}</span>
+                        </div>
+                        <div style={{fontSize:10,color:count>0?"#64748b":"#cbd5e1"}}>
+                          {count>0?"Clic para ver resultados →":"Sin resultados"}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Portales externos */}
+              <div>
+                <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>🌐 Portales Externos</div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:8}}>
+                  {[
+                    {key:`org_sectra`, label:"SECTRA",           icon:"🚦", portal:"sectra", color:"#1E2D5A"},
+                    {key:"efe",        label:"EFE",               icon:"🚂", portal:"efe",    color:"#1E2D5A"},
+                    {key:"minvu",      label:"MINVU/SERVIU",      icon:"🏗️", portal:"minvu",  color:"#7c3aed"},
+                    {key:"econssa",    label:"ECONSSA",           icon:"💧", portal:"econssa",color:"#0891b2"},
+                    {key:"psa",        label:"Pto. San Antonio",  icon:"⚓", portal:"psa",    color:"#334155"},
+                  ].map(p => {
+                    const count = (generalResults[p.key]||[]).length;
+                    return (
+                      <button key={p.key}
+                        onClick={() => setActivePortal(p.portal)}
+                        style={{background:count>0?"white":"#f8fafc",border:`2px solid ${count>0?p.color:"#e2e8f0"}`,borderRadius:10,padding:"12px 14px",cursor:count>0?"pointer":"default",textAlign:"left",transition:"all .15s",opacity:count>0?1:.6}}>
+                        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+                          <span style={{fontSize:18}}>{p.icon}</span>
+                          <span style={{fontWeight:700,fontSize:12,color:count>0?p.color:"#94a3b8",flex:1}}>{p.label}</span>
+                          <span style={{background:count>0?p.color:"#e2e8f0",color:count>0?"white":"#94a3b8",fontSize:12,fontWeight:800,padding:"2px 8px",borderRadius:99,minWidth:24,textAlign:"center"}}>{count}</span>
+                        </div>
+                        <div style={{fontSize:10,color:count>0?"#64748b":"#cbd5e1"}}>
+                          {count>0?"Clic para ver resultados →":"Sin resultados"}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Botón nueva búsqueda */}
+              <div style={{textAlign:"center",marginTop:24}}>
+                <button onClick={buscarGeneral}
+                  style={{background:"#1E2D5A",color:"white",border:"none",padding:"12px 28px",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer"}}>
+                  🔄 Nueva Búsqueda General
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── PORTAL MP ── */}
       {activePortal==="mp" && <>
       {/* Tabs de divisiones */}
       <div style={{background:"white",borderRadius:12,padding:6,marginBottom:16,display:"flex",flexWrap:"wrap",gap:4,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
@@ -1134,7 +1272,6 @@ function App() {
         {[
           ["buscar",     "🔎 Buscar"],
           ["resultados", `📋 Resultados (${ds.results.length})`],
-          ["general",    `🔍 General (${Object.values(generalResults).reduce((s,r)=>s+r.length,0)})`],
           ["detalle",    "📄 Análisis IA"],
           ["historial",  `🕐 Historial (${history.length})`],
         ].map(([k,l]) => (
@@ -1360,112 +1497,6 @@ function App() {
         </div>
       )}
 
-      {/* Tab: Búsqueda General */}
-      {tab==="general" && (
-        <div>
-          {/* Header */}
-          <div style={{background:"white",borderRadius:12,padding:"16px 20px",marginBottom:16,boxShadow:"0 1px 4px rgba(0,0,0,.07)",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
-            <div>
-              <div style={{fontWeight:700,fontSize:15}}>🔍 Búsqueda General — {new Date().toLocaleDateString("es-CL",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div>
-              <div style={{fontSize:12,color:"#64748b",marginTop:2}}>
-                {soloVigentesGlobal ? "✅ Solo licitaciones vigentes" : "📋 Todas las licitaciones"}
-              </div>
-            </div>
-            {Object.values(generalResults).some(r=>r.length>0) && (
-              <div style={{background:"#eff6ff",color:"#2563eb",padding:"6px 14px",borderRadius:99,fontSize:13,fontWeight:700}}>
-                Total: {Object.values(generalResults).reduce((s,r)=>s+r.length,0)} licitaciones
-              </div>
-            )}
-          </div>
-
-          {/* Progreso */}
-          {generalProgress.length > 0 && (
-            <div style={{background:"white",borderRadius:12,padding:"14px 20px",marginBottom:16,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
-              <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Progreso</div>
-              {generalProgress.map((p,i) => {
-                const div = DIVISIONS.find(d=>d.id===p.divId);
-                const color = p.state==="ok"?"#15803d":p.state==="empty"?"#94a3b8":p.state==="error"?"#dc2626":p.state==="skip"?"#94a3b8":div?.color||"#2563eb";
-                const icon  = p.state==="ok"?"✅":p.state==="empty"?"⚪":p.state==="error"?"❌":p.state==="skip"?"—":"⏳";
-                return (
-                  <div key={i} style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,fontSize:13,color}}>
-                    <span>{icon}</span><span>{p.msg}</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Sin resultados todavía */}
-          {!generalLoading && generalProgress.length===0 && Object.keys(generalResults).length===0 && (
-            <div style={{textAlign:"center",color:"#94a3b8",padding:64,background:"white",borderRadius:12}}>
-              <div style={{fontSize:48,marginBottom:16}}>🔍</div>
-              <div style={{fontSize:16,fontWeight:600,marginBottom:8}}>Búsqueda General</div>
-              <div style={{fontSize:13,marginBottom:24}}>Haz clic en "🔍 Búsqueda General" en el header para buscar en todas las divisiones y portales</div>
-              <button onClick={buscarGeneral} style={{background:"#2563eb",color:"white",border:"none",padding:"12px 28px",borderRadius:8,fontSize:14,fontWeight:700,cursor:"pointer"}}>
-                🚀 Iniciar Búsqueda General
-              </button>
-            </div>
-          )}
-
-          {/* Resumen por divisiones LEN-MP */}
-          {Object.keys(generalResults).length > 0 && (
-            <div>
-              <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>
-                🏛️ LEN — Mercado Público
-              </div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:10,marginBottom:20}}>
-                {DIVISIONS.map(div => {
-                  const count = (generalResults[div.id]||[]).length;
-                  return (
-                    <button key={div.id} onClick={() => { setActiveDivId(div.id); setTab("resultados"); }}
-                      style={{background:count>0?div.bg:"#f8fafc",border:`2px solid ${count>0?div.color:"#e2e8f0"}`,borderRadius:10,padding:"14px 16px",cursor:"pointer",textAlign:"left",transition:"all .15s"}}>
-                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-                        <span style={{fontSize:20}}>{div.icon}</span>
-                        <span style={{fontWeight:700,fontSize:13,color:count>0?div.color:"#94a3b8"}}>{div.label}</span>
-                        <span style={{marginLeft:"auto",background:count>0?div.color:"#e2e8f0",color:count>0?"white":"#94a3b8",fontSize:12,fontWeight:700,padding:"2px 8px",borderRadius:99}}>{count}</span>
-                      </div>
-                      {count>0
-                        ? <div style={{fontSize:11,color:"#64748b"}}>Ver resultados en la pestaña →</div>
-                        : <div style={{fontSize:11,color:"#94a3b8"}}>Sin resultados</div>
-                      }
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Portales externos */}
-              <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>
-                Portales Externos
-              </div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:10}}>
-                {[
-                  {key:`org_sectra`, label:"SECTRA", icon:"🚦", portal:"sectra", color:"#1E2D5A"},
-                  {key:"efe",        label:"EFE",    icon:"🚂", portal:"efe",    color:"#1E2D5A"},
-                  {key:"minvu",      label:"MINVU",  icon:"🏗️", portal:"minvu",  color:"#7c3aed"},
-                  {key:"econssa",    label:"ECONSSA",icon:"💧", portal:"econssa",color:"#0891b2"},
-                  {key:"psa",        label:"Puerto San Antonio",icon:"⚓",portal:"psa",color:"#334155"},
-                ].map(p => {
-                  const count = (generalResults[p.key]||[]).length;
-                  return (
-                    <button key={p.key} onClick={() => setActivePortal(p.portal)}
-                      style={{background:count>0?"white":"#f8fafc",border:`2px solid ${count>0?p.color:"#e2e8f0"}`,borderRadius:10,padding:"14px 16px",cursor:"pointer",textAlign:"left",transition:"all .15s"}}>
-                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-                        <span style={{fontSize:20}}>{p.icon}</span>
-                        <span style={{fontWeight:700,fontSize:13,color:count>0?p.color:"#94a3b8"}}>{p.label}</span>
-                        <span style={{marginLeft:"auto",background:count>0?p.color:"#e2e8f0",color:count>0?"white":"#94a3b8",fontSize:12,fontWeight:700,padding:"2px 8px",borderRadius:99}}>{count}</span>
-                      </div>
-                      {count>0
-                        ? <div style={{fontSize:11,color:"#64748b"}}>Ver en pestaña →</div>
-                        : <div style={{fontSize:11,color:"#94a3b8"}}>Sin resultados</div>
-                      }
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Tab: Historial */}
       {tab==="historial" && (
