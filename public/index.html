@@ -450,7 +450,55 @@ function App() {
   };
 
 
-  // ── Actualizar estado de división ──────────────────────────────────────
+  // ── Estado EFE ────────────────────────────────────────────────────────────
+  const EFE_KW_DEFAULT = ["Vialidad","Infraestructura","Geotecnia","Hidráulic","Topografía","Civil","Señalización","Estación","Puente","Túnel","Inspección Técnica","ITO","Diseño","Consultoría","Estudio"];
+  const EFE_SERV_DEFAULT = ["Estudio","Consultoría","Diseño","Inspección","Asesoría","ITO"];
+  const [efeKw, setEfeKw]           = useState(() => { try { const v=localStorage.getItem("efe_kw"); return v?JSON.parse(v):EFE_KW_DEFAULT; } catch(e){ return EFE_KW_DEFAULT; }});
+  const [efeActive, setEfeActive]   = useState(() => { try { const v=localStorage.getItem("efe_active"); return new Set(v?JSON.parse(v):EFE_KW_DEFAULT); } catch(e){ return new Set(EFE_KW_DEFAULT); }});
+  const [efeServ, setEfeServ]       = useState(() => { try { const v=localStorage.getItem("efe_serv"); return v?JSON.parse(v):EFE_SERV_DEFAULT; } catch(e){ return EFE_SERV_DEFAULT; }});
+  const [efeServActive, setEfeServActive] = useState(() => { try { const v=localStorage.getItem("efe_serv_active"); return new Set(v?JSON.parse(v):EFE_SERV_DEFAULT); } catch(e){ return new Set(EFE_SERV_DEFAULT); }});
+  const [efeResults, setEfeResults] = useState([]);
+  const [efeLoading, setEfeLoading] = useState(false);
+  const [efeSteps, setEfeSteps]     = useState([]);
+  const [efeError, setEfeError]     = useState("");
+  const [efeElapsed, setEfeElapsed] = useState(0);
+  const [efeNewKw, setEfeNewKw]     = useState("");
+  const [efeNewServ, setEfeNewServ] = useState("");
+  const efeAbortRef = useRef(null);
+  const efeTimerRef = useRef(null);
+
+  const buscarEFE = async () => {
+    const tecnicas = efeKw.filter(k => efeActive.has(k));
+    setEfeLoading(true); setEfeError(""); setEfeSteps([]); setEfeResults([]); setEfeElapsed(0);
+    if(efeAbortRef.current) efeAbortRef.current.abort();
+    efeAbortRef.current = new AbortController();
+    efeTimerRef.current = setInterval(() => setEfeElapsed(e => e+1), 1000);
+    try {
+      setEfeSteps([{msg:"Conectando con EFE Trenes de Chile...", state:"wait"}]);
+      const servicios = efeServ.filter(k => efeServActive.has(k));
+      const params = new URLSearchParams();
+      if(tecnicas.length) params.set("keywords", tecnicas.join(","));
+      if(servicios.length) params.set("servicios", servicios.join(","));
+      const res = await fetch(`${BACKEND_URL}/buscar-efe?${params}`, {signal: efeAbortRef.current.signal});
+      const data = await res.json();
+      clearInterval(efeTimerRef.current);
+      if(!res.ok) { setEfeError(data.error||"Error al consultar EFE"); setEfeLoading(false); return; }
+      const uniq = deduplicar(data.resultados||[]);
+      if(uniq.length) {
+        setEfeResults(uniq);
+        setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100));
+        setEfeSteps([{msg:`✅ ${uniq.length} licitaciones encontradas en EFE`, state:"ok"}]);
+      } else {
+        setEfeError("Sin resultados. Prueba activando más keywords.");
+      }
+    } catch(e) {
+      clearInterval(efeTimerRef.current);
+      if(e.name!=="AbortError") setEfeError(`Error: ${e.message}`);
+    }
+    setEfeLoading(false);
+  };
+
+
   const updateDs = useCallback((divId, updater) => {
     setDivStates(prev => ({ ...prev, [divId]: updater(prev[divId]) }));
   }, []);
@@ -717,6 +765,25 @@ function App() {
       }
     }
 
+    // Buscar en EFE
+    addProg("efe", "🚂 EFE — buscando...", "wait");
+    try {
+      const tecnicasEfe = efeKw.filter(k => efeActive.has(k));
+      const serviciosEfe = efeServ.filter(k => efeServActive.has(k));
+      const params = new URLSearchParams();
+      if(tecnicasEfe.length) params.set("keywords", tecnicasEfe.join(","));
+      if(serviciosEfe.length) params.set("servicios", serviciosEfe.join(","));
+      const res = await fetch(`${BACKEND_URL}/buscar-efe?${params}`, {signal: generalAbortRef.current.signal});
+      const data = await res.json();
+      const uniq = deduplicar(data.resultados || []);
+      nuevosResultados["efe"] = uniq;
+      addProg("efe", `🚂 EFE — ${uniq.length} resultado(s)`, uniq.length > 0 ? "ok" : "empty");
+      if(uniq.length) setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100));
+    } catch(e) {
+      if(e.name === "AbortError") { addProg("efe", "🚂 EFE — cancelado", "skip"); }
+      else addProg("efe", `🚂 EFE — error: ${e.message}`, "error");
+    }
+
     setGeneralResults(nuevosResultados);
     setGeneralLoading(false);
   };
@@ -743,10 +810,9 @@ function App() {
             <div style={{color:"rgba(255,255,255,.6)",fontSize:11,marginTop:1}}>LEN Ingeniería · Chile · API Oficial</div>
           </div>
         </div>
-        <button onClick={activePortal==="mp" ? (generalLoading ? cancelarGeneral : buscarGeneral) : buscarSECTRA}
-          disabled={activePortal==="sectra" && sectraLoading}
+        <button onClick={activePortal==="mp" ? (generalLoading ? cancelarGeneral : buscarGeneral) : activePortal==="sectra" ? buscarSECTRA : buscarEFE}
           style={{background:"#F5B731",color:"#1E2D5A",border:"none",padding:"10px 20px",borderRadius:10,fontSize:13,fontWeight:800,cursor:"pointer",transition:"all .15s",boxShadow:"0 2px 8px rgba(245,183,49,.4)"}}>
-          {activePortal==="mp" ? (generalLoading ? "✕ Cancelar" : "🔍 Búsqueda General") : (sectraLoading ? `⏳ ${sectraElapsed}s...` : "🔍 Buscar en SECTRA")}
+          {activePortal==="mp" ? (generalLoading ? "✕ Cancelar" : "🔍 Búsqueda General") : activePortal==="sectra" ? (sectraLoading ? `⏳ ${sectraElapsed}s...` : "🔍 Buscar en SECTRA") : (efeLoading ? `⏳ ${efeElapsed}s...` : "🚂 Buscar en EFE")}
         </button>
       </div>
 
@@ -760,6 +826,10 @@ function App() {
         <button className={`portal-tab ${activePortal==="sectra"?"active":""}`} onClick={() => setActivePortal("sectra")}>
           🚦 SECTRA
           {sectraResults.length > 0 && <span className="ptag">{sectraResults.length}</span>}
+        </button>
+        <button className={`portal-tab ${activePortal==="efe"?"active":""}`} onClick={() => setActivePortal("efe")}>
+          🚂 EFE
+          {efeResults.length > 0 && <span className="ptag">{efeResults.length}</span>}
         </button>
       </div>
 
@@ -1143,6 +1213,37 @@ function App() {
             </div>
           )}
 
+          {/* Resultados EFE en General */}
+          {(generalResults["efe"]||[]).length > 0 && (
+            <div style={{marginBottom:20}}>
+              <div style={{fontWeight:700,fontSize:13,color:"#475569",marginBottom:10,padding:"8px 0",borderBottom:"2px solid #e2e8f0"}}>
+                🚂 EFE Trenes de Chile
+              </div>
+              <div style={{background:"#1E2D5A0A",border:"2px solid #1E2D5A22",borderRadius:10,padding:"12px 16px",marginBottom:8,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:18}}>🚂</span>
+                  <span style={{fontWeight:700,fontSize:14,color:"#1E2D5A"}}>EFE Trenes de Chile</span>
+                  <span style={{background:"#1E2D5A",color:"white",fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:99}}>{(generalResults["efe"]||[]).length}</span>
+                </div>
+                <button onClick={() => setActivePortal("efe")} style={{background:"white",color:"#1E2D5A",border:"1px solid #1E2D5A33",padding:"4px 12px",borderRadius:6,fontSize:11,fontWeight:600,cursor:"pointer"}}>Ver en EFE →</button>
+              </div>
+              {(generalResults["efe"]||[]).map((r,i) => (
+                <div key={i} style={{background:"white",border:"1px solid #e2e8f0",borderLeft:"4px solid #1E2D5A",borderRadius:8,padding:14,marginBottom:6}}>
+                  <div style={{display:"flex",gap:6,marginBottom:6,flexWrap:"wrap"}}>
+                    <span style={{background:"#1E2D5A18",color:"#1E2D5A",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>🚂 EFE</span>
+                    {r.estado && <span style={{background:"#f0fdf4",color:"#15803d",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>● {r.estado}</span>}
+                    {r.fechaPublicacion && <span style={{background:"#f8fafc",color:"#64748b",fontSize:11,padding:"2px 8px",borderRadius:12}}>📅 {r.fechaPublicacion}</span>}
+                  </div>
+                  <div style={{fontWeight:700,fontSize:13,marginBottom:8,lineHeight:1.4}}>{r.titulo}</div>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                    <button onClick={() => verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"5px 12px",borderRadius:6,fontSize:11,cursor:"pointer",fontWeight:600}}>🤖 Analizar con IA</button>
+                    {r.url && <a href={r.url} target="_blank" rel="noreferrer" style={{background:"#f8fafc",color:"#475569",border:"1px solid #e2e8f0",padding:"5px 12px",borderRadius:6,fontSize:11,fontWeight:600}}>🔗 Ver en EFE</a>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Divisiones sin resultados */}
           {Object.keys(generalResults).length > 0 && (
             <div style={{background:"white",borderRadius:10,padding:"12px 16px",marginTop:8}}>
@@ -1313,6 +1414,112 @@ function App() {
                   <div style={{display:"flex",gap:8,marginTop:10,flexWrap:"wrap"}}>
                     <button onClick={()=>verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>🤖 Analizar con IA</button>
                     {r.url && <a href={r.url} target="_blank" rel="noreferrer" style={{background:"#f8fafc",color:"#475569",border:"1px solid #e2e8f0",padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600}}>🔗 Ver en MP</a>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activePortal==="efe" && (
+        <div style={{padding:"16px 0"}}>
+          <div style={{background:"white",borderRadius:12,padding:20,marginBottom:14,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+              <div>
+                <div style={{fontWeight:700,fontSize:14}}>🚂 EFE — Empresa de Ferrocarriles del Estado</div>
+                <div style={{fontSize:11,color:"#64748b",marginTop:2}}>657 licitaciones activas · Chile · Infraestructura ferroviaria</div>
+              </div>
+              <div style={{fontSize:12,color:"#64748b"}}><b style={{color:"#475569"}}>{[...efeActive].filter(k=>efeKw.includes(k)).length}</b> / {efeKw.length} activas</div>
+            </div>
+
+            {/* Keywords EFE */}
+            <div style={{marginBottom:16}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#475569",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Términos Técnicos</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+                {efeKw.map(kw => {
+                  const on = efeActive.has(kw);
+                  return (
+                    <div key={kw} style={{display:"flex",alignItems:"center",borderRadius:20,border:`2px solid ${on?"#475569":"#e2e8f0"}`,background:on?"#47556918":"#f8fafc",overflow:"hidden"}}>
+                      <button onClick={() => { const n=new Set(efeActive); n.has(kw)?n.delete(kw):n.add(kw); setEfeActive(n); localStorage.setItem("efe_active",JSON.stringify([...n])); }}
+                        style={{padding:"4px 10px",fontSize:12,cursor:"pointer",fontWeight:600,background:"transparent",border:"none",color:on?"#475569":"#94a3b8"}}>
+                        {on?"✓ ":""}{kw}
+                      </button>
+                      <button onClick={() => { const nk=efeKw.filter(k=>k!==kw); setEfeKw(nk); localStorage.setItem("efe_kw",JSON.stringify(nk)); const na=new Set(efeActive); na.delete(kw); setEfeActive(na); localStorage.setItem("efe_active",JSON.stringify([...na])); }}
+                        style={{padding:"4px 7px 4px 2px",fontSize:11,cursor:"pointer",background:"transparent",border:"none",color:"#94a3b8"}}>✕</button>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{display:"flex",gap:6}}>
+                <input value={efeNewKw} onChange={e=>setEfeNewKw(e.target.value)}
+                  onKeyDown={e=>{if(e.key==="Enter"&&efeNewKw.trim()){const k=efeNewKw.trim();if(!efeKw.includes(k)){const nk=[...efeKw,k];setEfeKw(nk);localStorage.setItem("efe_kw",JSON.stringify(nk));const na=new Set([...efeActive,k]);setEfeActive(na);localStorage.setItem("efe_active",JSON.stringify([...na]));}setEfeNewKw("");}}}
+                  placeholder="Agregar keyword EFE..." style={{flex:1,padding:"7px 12px",borderRadius:8,border:"1px dashed #cbd5e1",fontSize:12,outline:"none"}}/>
+                <button onClick={()=>{if(efeNewKw.trim()){const k=efeNewKw.trim();if(!efeKw.includes(k)){const nk=[...efeKw,k];setEfeKw(nk);localStorage.setItem("efe_kw",JSON.stringify(nk));const na=new Set([...efeActive,k]);setEfeActive(na);localStorage.setItem("efe_active",JSON.stringify([...na]));}setEfeNewKw("");}}}
+                  style={{padding:"7px 14px",borderRadius:8,background:"#f1f5f9",color:"#475569",border:"1px solid #e2e8f0",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Agregar</button>
+              </div>
+            </div>
+
+            {/* Tipo de servicio */}
+            <div style={{marginBottom:16}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#16a34a",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Tipo de Servicio</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+                {efeServ.map(kw => {
+                  const on = efeServActive.has(kw);
+                  return (
+                    <div key={kw} style={{display:"flex",alignItems:"center",borderRadius:20,border:`2px solid ${on?"#16a34a":"#e2e8f0"}`,background:on?"#16a34a18":"#f8fafc",overflow:"hidden"}}>
+                      <button onClick={() => { const n=new Set(efeServActive); n.has(kw)?n.delete(kw):n.add(kw); setEfeServActive(n); localStorage.setItem("efe_serv_active",JSON.stringify([...n])); }}
+                        style={{padding:"4px 10px",fontSize:12,cursor:"pointer",fontWeight:600,background:"transparent",border:"none",color:on?"#16a34a":"#94a3b8"}}>
+                        {on?"✓ ":""}{kw}
+                      </button>
+                      <button onClick={() => { const nk=efeServ.filter(k=>k!==kw); setEfeServ(nk); localStorage.setItem("efe_serv",JSON.stringify(nk)); const na=new Set(efeServActive); na.delete(kw); setEfeServActive(na); localStorage.setItem("efe_serv_active",JSON.stringify([...na])); }}
+                        style={{padding:"4px 7px 4px 2px",fontSize:11,cursor:"pointer",background:"transparent",border:"none",color:"#94a3b8"}}>✕</button>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{display:"flex",gap:6}}>
+                <input value={efeNewServ} onChange={e=>setEfeNewServ(e.target.value)}
+                  onKeyDown={e=>{if(e.key==="Enter"&&efeNewServ.trim()){const k=efeNewServ.trim();if(!efeServ.includes(k)){const nk=[...efeServ,k];setEfeServ(nk);localStorage.setItem("efe_serv",JSON.stringify(nk));const na=new Set([...efeServActive,k]);setEfeServActive(na);localStorage.setItem("efe_serv_active",JSON.stringify([...na]));}setEfeNewServ("");}}}
+                  placeholder="Agregar tipo de servicio..." style={{flex:1,padding:"7px 12px",borderRadius:8,border:"1px dashed #cbd5e1",fontSize:12,outline:"none"}}/>
+                <button onClick={()=>{if(efeNewServ.trim()){const k=efeNewServ.trim();if(!efeServ.includes(k)){const nk=[...efeServ,k];setEfeServ(nk);localStorage.setItem("efe_serv",JSON.stringify(nk));const na=new Set([...efeServActive,k]);setEfeServActive(na);localStorage.setItem("efe_serv_active",JSON.stringify([...na]));}setEfeNewServ("");}}}
+                  style={{padding:"7px 14px",borderRadius:8,background:"#f0fdf4",color:"#16a34a",border:"1px solid #bbf7d0",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Agregar</button>
+              </div>
+            </div>
+
+            {/* Sin filtro de región — EFE opera a nivel nacional */}
+            <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"8px 14px",fontSize:12,color:"#15803d",marginBottom:16}}>
+              🚂 EFE opera a nivel nacional — no se aplica filtro de región
+            </div>
+
+            <button onClick={buscarEFE} disabled={efeLoading}
+              style={{background:efeLoading?"#94a3b8":"#1E2D5A",color:"white",border:"none",padding:"12px 32px",borderRadius:8,fontSize:15,fontWeight:700,cursor:efeLoading?"not-allowed":"pointer"}}>
+              {efeLoading ? `⏳ Buscando... ${efeElapsed}s` : "🚂 Buscar en EFE"}
+            </button>
+            {efeError && <div style={{marginTop:12,background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",fontSize:13,color:"#dc2626"}}>⚠️ {efeError}</div>}
+            {efeSteps.map((s,i) => <div key={i} style={{marginTop:8,fontSize:12,color:s.state==="ok"?"#15803d":"#2563eb",display:"flex",gap:6}}><span>{s.state==="ok"?"✅":"⏳"}</span><span>{s.msg}</span></div>)}
+          </div>
+
+          {/* Resultados EFE */}
+          {efeResults.length > 0 && (
+            <div>
+              <div style={{fontSize:13,color:"#64748b",marginBottom:12,display:"flex",alignItems:"center",gap:8}}>
+                <span style={{background:"#1E2D5A18",color:"#1E2D5A",padding:"3px 10px",borderRadius:99,fontSize:11,fontWeight:700}}>🚂 EFE</span>
+                <span>{efeResults.length} licitaciones encontradas</span>
+              </div>
+              {efeResults.map((r,i) => (
+                <div key={i} style={{background:"white",border:"1px solid #e2e8f0",borderLeft:"4px solid #1E2D5A",borderRadius:10,padding:16,marginBottom:10,boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}>
+                  <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
+                    <span style={{background:"#1E2D5A18",color:"#1E2D5A",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>🚂 EFE</span>
+                    {r.estado && <span style={{background:"#f0fdf4",color:"#15803d",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>● {r.estado}</span>}
+                    {r.fechaPublicacion && <span style={{background:"#f8fafc",color:"#64748b",fontSize:11,padding:"2px 8px",borderRadius:12}}>📅 {r.fechaPublicacion}</span>}
+                    {r.fechaCierre && <span style={{background:"#fef2f2",color:"#dc2626",fontSize:11,padding:"2px 8px",borderRadius:12}}>⏰ Fin venta: {r.fechaCierre}</span>}
+                  </div>
+                  <div style={{fontWeight:700,fontSize:14,marginBottom:4,lineHeight:1.4}}>{r.titulo}</div>
+                  <div style={{fontSize:12,color:"#64748b",marginBottom:8}}>EFE Trenes de Chile</div>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                    <button onClick={()=>verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>🤖 Analizar con IA</button>
+                    {r.url && <a href={r.url} target="_blank" rel="noreferrer" style={{background:"#f8fafc",color:"#475569",border:"1px solid #e2e8f0",padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600}}>🔗 Ver en EFE</a>}
                   </div>
                 </div>
               ))}
