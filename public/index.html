@@ -502,6 +502,53 @@ function App() {
     setEfeLoading(false);
   };
 
+  // ── Estado MINVU ─────────────────────────────────────────────────────────
+  const MINVU_KW_DEFAULT = ["Mejoramiento Barrio","Pavimentación","Vías Urbanas","Aceras","Urbanización","Espacio Público","Pasaje","Conjunto Habitacional","Villa","Obras Menores","Conservación Vial Urbana"];
+  const MINVU_SERV_DEFAULT = ["Estudio","Diseño","Consultoría","Inspección","Asesoría"];
+  const [minvuKw, setMinvuKw]           = useState(() => { try { const v=localStorage.getItem("minvu_kw"); return v?JSON.parse(v):MINVU_KW_DEFAULT; } catch(e){ return MINVU_KW_DEFAULT; }});
+  const [minvuActive, setMinvuActive]   = useState(() => { try { const v=localStorage.getItem("minvu_active"); return new Set(v?JSON.parse(v):MINVU_KW_DEFAULT); } catch(e){ return new Set(MINVU_KW_DEFAULT); }});
+  const [minvuServ, setMinvuServ]       = useState(() => { try { const v=localStorage.getItem("minvu_serv"); return v?JSON.parse(v):MINVU_SERV_DEFAULT; } catch(e){ return MINVU_SERV_DEFAULT; }});
+  const [minvuServActive, setMinvuServActive] = useState(() => { try { const v=localStorage.getItem("minvu_serv_active"); return new Set(v?JSON.parse(v):MINVU_SERV_DEFAULT); } catch(e){ return new Set(MINVU_SERV_DEFAULT); }});
+  const [minvuResults, setMinvuResults] = useState([]);
+  const [minvuLoading, setMinvuLoading] = useState(false);
+  const [minvuSteps, setMinvuSteps]     = useState([]);
+  const [minvuError, setMinvuError]     = useState("");
+  const [minvuElapsed, setMinvuElapsed] = useState(0);
+  const [minvuNewKw, setMinvuNewKw]     = useState("");
+  const [minvuNewServ, setMinvuNewServ] = useState("");
+  const minvuAbortRef = useRef(null);
+  const minvuTimerRef = useRef(null);
+
+  const buscarMINVU = async () => {
+    const tecnicas = minvuKw.filter(k => minvuActive.has(k));
+    setMinvuLoading(true); setMinvuError(""); setMinvuSteps([]); setMinvuResults([]); setMinvuElapsed(0);
+    if(minvuAbortRef.current) minvuAbortRef.current.abort();
+    minvuAbortRef.current = new AbortController();
+    minvuTimerRef.current = setInterval(() => setMinvuElapsed(e => e+1), 1000);
+    try {
+      setMinvuSteps([{msg:"Conectando con Portal Proveedores Técnicos MINVU...", state:"wait"}]);
+      const servicios = minvuServ.filter(k => minvuServActive.has(k));
+      const params = new URLSearchParams();
+      if(tecnicas.length) params.set("keywords", tecnicas.join(","));
+      if(servicios.length) params.set("servicios", servicios.join(","));
+      const res = await fetch(`${BACKEND_URL}/buscar-minvu?${params}`, {signal: minvuAbortRef.current.signal});
+      const data = await res.json();
+      clearInterval(minvuTimerRef.current);
+      if(!res.ok) { setMinvuError((data.error||"Error al consultar MINVU") + " — Intenta de nuevo."); setMinvuLoading(false); return; }
+      const uniq = deduplicar(data.resultados||[]);
+      if(uniq.length) {
+        setMinvuResults(uniq);
+        setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100));
+        setMinvuSteps([{msg:`✅ ${uniq.length} licitaciones encontradas en MINVU/SERVIU`, state:"ok"}]);
+      } else {
+        setMinvuError("Sin resultados. Prueba activando más keywords.");
+      }
+    } catch(e) {
+      clearInterval(minvuTimerRef.current);
+      if(e.name!=="AbortError") setMinvuError(`Error: ${e.message}`);
+    }
+    setMinvuLoading(false);
+  };
 
   const updateDs = useCallback((divId, updater) => {
     setDivStates(prev => ({ ...prev, [divId]: updater(prev[divId]) }));
