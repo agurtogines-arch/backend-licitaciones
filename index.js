@@ -1349,4 +1349,70 @@ app.get("/buscar-efe", async (req, res) => {
   }
 });
 
+// ── Búsqueda MINVU ───────────────────────────────────────────────────────────
+app.get("/buscar-minvu", async (req, res) => {
+  const keywords = (req.query.keywords || "").split(",").map(k => k.trim()).filter(Boolean);
+  const servicios = (req.query.servicios || "").split(",").map(k => k.trim()).filter(Boolean);
+
+  try {
+    // Obtener las últimas 100 licitaciones vía API REST WordPress
+    const pages = await Promise.all([1,2,3,4].map(page =>
+      fetch(`https://proveedores-tecnicos.minvu.gob.cl/wp-json/wp/v2/posts?categories=36&per_page=25&page=${page}&_fields=id,title,excerpt,date,link&orderby=date&order=desc`)
+        .then(r => r.ok ? r.json() : [])
+        .catch(() => [])
+    ));
+    const posts = pages.flat();
+
+    const cleanHtml = s => (s||"").replace(/<[^>]+>/g,"").replace(/&nbsp;/g," ").replace(/&amp;/g,"&").replace(/\s+/g," ").trim();
+
+    const licitaciones = posts.map(p => {
+      const texto   = cleanHtml(p.excerpt?.rendered || "");
+      const titulo  = cleanHtml(p.title?.rendered || "");
+      const idMatch = texto.match(/(?:ID:|Licitación\s+ID:)\s*([\w-]+)/i);
+      const respMatch = texto.match(/Responsable[^:]*:\s*(.+?)(?:Fecha|$)/is);
+      const cierreMatch = texto.match(/Fecha de Cierre:\s*([\d-]+)/);
+
+      return {
+        titulo,
+        codigo:          idMatch ? idMatch[1] : "",
+        organismo:       respMatch ? respMatch[1].replace(/\n/g," ").trim().substring(0,80) : "MINVU/SERVIU",
+        region:          null,
+        estado:          "Publicada",
+        fechaPublicacion: p.date ? p.date.substring(0,10) : "",
+        fechaCierre:     cierreMatch ? cierreMatch[1] : "",
+        monto:           null,
+        descripcion:     "",
+        url:             p.link || "",
+        fuente:          "MINVU",
+        codigo_fuente:   "minvu"
+      };
+    }).filter(l => l.titulo);
+
+    // Filtrar por keywords si se proporcionan
+    const norm = s => (s||"").toLowerCase()
+      .replace(/[áàä]/g,"a").replace(/[éèë]/g,"e").replace(/[íìï]/g,"i")
+      .replace(/[óòö]/g,"o").replace(/[úùü]/g,"u").replace(/ñ/g,"n").trim();
+    const stem = t => t.length >= 6 ? t.slice(0,-2) : t;
+    const matchKw = (titulo, kw) => {
+      const tNorm = norm(titulo);
+      return norm(kw).split(/\s+/).filter(t=>t.length>=3).every(t=>tNorm.includes(stem(t)));
+    };
+
+    let resultado = licitaciones;
+    if (keywords.length > 0) {
+      resultado = licitaciones.filter(l => {
+        const matchTec = keywords.some(kw => matchKw(l.titulo, kw));
+        if (!matchTec) return false;
+        if (!servicios.length) return true;
+        return servicios.some(s => matchKw(l.titulo, s));
+      });
+    }
+
+    res.json({ total: resultado.length, resultados: resultado });
+  } catch(err) {
+    console.error("[buscar-minvu]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(PORT, () => console.log(`Backend licitaciones en puerto ${PORT} | Ticket: ${TICKET.substring(0,8)}...`));
