@@ -1297,21 +1297,30 @@ app.get("/buscar-efe", async (req, res) => {
     const items = data.data || [];
 
     // Paso 3: Parsear y normalizar
-    const cleanHtml  = s => (s || "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+    const cleanHtml  = s => (s || "")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">")
+      .replace(/&#8220;/g,'"').replace(/&#8221;/g,'"').replace(/&#8211;/g,"–")
+      .replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&nbsp;/g," ")
+      .replace(/\s+/g, " ").trim();
     const extractUrl = s => { const m = (s || "").match(/href=["']([^"']+)['"]/); return m ? m[1] : ""; };
     const extractDate= s => { const m = cleanHtml(s).match(/\d{2}\/\d{2}\/\d{4}/); return m ? m[0] : ""; };
 
+    // Estados activos de EFE (excluir ADJUDICADA, DESIERTO, etc.)
+    const ESTADOS_ACTIVOS = ["EN VENTA DE BASES","EN PERÍODO DE INSCRIPCIÓN","EN PERIODO DE INSCRIPCIÓN",
+      "CHARLA INFORMATIVA","CONSULTAS Y RESPUESTAS","EN RECEPCIÓN DE OFERTAS","EN EVALUACIÓN","EN EVALUACION"];
+
     const licitaciones = items.map(item => ({
-      titulo:          cleanHtml(item[1] || "").replace(/^Descripción/i, "").trim(),
-      estado:          cleanHtml(item[0] || "").replace(/^Estado/i, "").trim(),
+      titulo:           cleanHtml(item[1] || "").replace(/^Descripción/i, "").trim(),
+      estado:           cleanHtml(item[0] || "").replace(/^Estado/i, "").trim(),
       fechaPublicacion: extractDate(item[2]),
-      fechaCierre:     extractDate(item[3]),
-      url:             extractUrl(item[4] || ""),
-      organismo:       "EFE Trenes de Chile",
-      region:          null,
-      fuente:          "EFE",
-      codigo:          ""
-    })).filter(l => l.titulo);
+      fechaCierre:      extractDate(item[3]),
+      url:              extractUrl(item[4] || ""),
+      organismo:        "EFE Trenes de Chile",
+      region:           null,
+      fuente:           "EFE",
+      codigo:           ""
+    })).filter(l => l.titulo && ESTADOS_ACTIVOS.some(e => l.estado.toUpperCase().includes(e)));
 
     // Paso 4: Filtrar por keywords si se proporcionan
     const norm = s => (s || "").toLowerCase()
