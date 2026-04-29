@@ -1146,4 +1146,86 @@ Responde ÚNICAMENTE con JSON válido sin markdown.`;
   });
 });
 
+// ── Búsqueda EFE ─────────────────────────────────────────────────────────────
+app.get("/buscar-efe", async (req, res) => {
+  const keywords = (req.query.keywords || "").split(",").map(k => k.trim()).filter(Boolean);
+  const servicios = (req.query.servicios || "").split(",").map(k => k.trim()).filter(Boolean);
+  try {
+    // Paso 1: Obtener nonce fresco desde la página pública
+    const pageRes = await fetch("https://www.efe.cl/licitaciones/licitaciones-publicadas/", {
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" }
+    });
+    const html   = await pageRes.text();
+    const nonceM = html.match(/"nonce":"([a-f0-9]+)"/);
+    if (!nonceM) return res.status(502).json({ error: "No se pudo obtener nonce de EFE" });
+    const nonce  = nonceM[1];
+
+    // Paso 2: Obtener listado de licitaciones
+    const apiRes = await fetch("https://www.efe.cl/wp-json/licitaciones/listado", {
+      headers: {
+        "X-WP-Nonce": nonce,
+        "Referer":    "https://www.efe.cl/licitaciones/licitaciones-publicadas/",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept":     "application/json, */*"
+      }
+    });
+    if (!apiRes.ok) return res.status(502).json({ error: `EFE API respondió ${apiRes.status}` });
+
+    // Verificar que la respuesta es JSON antes de parsear
+    const contentType = apiRes.headers.get("content-type") || "";
+    const rawText = await apiRes.text();
+    if (!contentType.includes("json") && !rawText.trim().startsWith("{")) {
+      console.error("[buscar-efe] Respuesta no es JSON:", rawText.substring(0,100));
+      return res.status(502).json({ error: "EFE devolvió respuesta inesperada. Intenta de nuevo." });
+    }
+
+    let data;
+    try { data = JSON.parse(rawText); }
+    catch(e) { return res.status(502).json({ error: "Error al parsear respuesta de EFE" }); }
+    const items = data.data || [];
+
+    // Paso 3: Parsear y normalizar
+    const cleanHtml  = s => (s || "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+    const extractUrl = s => { const m = (s || "").match(/href=["']([^"']+)['"]/); return m ? m[1] : ""; };
+    const extractDate= s => { const m = cleanHtml(s).match(/\d{2}\/\d{2}\/\d{4}/); return m ? m[0] : ""; };
+
+    const licitaciones = items.map(item => ({
+      titulo:          cleanHtml(item[1] || "").replace(/^Descripción/i, "").trim(),
+      estado:          cleanHtml(item[0] || "").replace(/^Estado/i, "").trim(),
+      fechaPublicacion: extractDate(item[2]),
+      fechaCierre:     extractDate(item[3]),
+      url:             extractUrl(item[4] || ""),
+      organismo:       "EFE Trenes de Chile",
+      region:          null,
+      fuente:          "EFE",
+      codigo:          ""
+    })).filter(l => l.titulo);
+
+    // Paso 4: Filtrar por keywords si se proporcionan
+    const norm = s => (s || "").toLowerCase()
+      .replace(/[áàä]/g,"a").replace(/[éèë]/g,"e").replace(/[íìï]/g,"i")
+      .replace(/[óòö]/g,"o").replace(/[úùü]/g,"u").replace(/ñ/g,"n").trim();
+    const stem = t => t.length >= 6 ? t.slice(0,-2) : t;
+    const matchKw = (titulo, kw) => {
+      const tNorm = norm(titulo);
+      return norm(kw).split(/\s+/).filter(t=>t.length>=3).every(t=>tNorm.includes(stem(t)));
+    };
+
+    let resultado = licitaciones;
+    if (keywords.length > 0) {
+      resultado = licitaciones.filter(l => {
+        const matchTec = keywords.some(kw => matchKw(l.titulo, kw));
+        if (!matchTec) return false;
+        if (servicios.length === 0) return true;
+        return servicios.some(s => matchKw(l.titulo, s));
+      });
+    }
+
+    res.json({ total: resultado.length, resultados: resultado });
+  } catch(err) {
+    console.error("[buscar-efe]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(PORT, () => console.log(`Backend licitaciones en puerto ${PORT} | Ticket: ${TICKET.substring(0,8)}...`));
