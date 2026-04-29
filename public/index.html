@@ -809,6 +809,26 @@ function App() {
       else addProg("efe", `🚂 EFE — error: ${e.message}`, "error");
     }
 
+    // ── Paso 4: MINVU ─────────────────────────────────────────────────────────
+    await new Promise(r => setTimeout(r, 2000));
+    addProg("minvu", "🏗️ MINVU — buscando...", "wait");
+    try {
+      const tecnicasMinvu = minvuKw.filter(k => minvuActive.has(k));
+      const serviciosMinvu = minvuServ.filter(k => minvuServActive.has(k));
+      const params = new URLSearchParams();
+      if(tecnicasMinvu.length) params.set("keywords", tecnicasMinvu.join(","));
+      if(serviciosMinvu.length) params.set("servicios", serviciosMinvu.join(","));
+      const res = await fetch(`${BACKEND_URL}/buscar-minvu?${params}`, {signal: generalAbortRef.current.signal});
+      const data = await res.json();
+      const uniq = deduplicar(data.resultados || []);
+      nuevosResultados["minvu"] = uniq;
+      addProg("minvu", `🏗️ MINVU — ${uniq.length} resultado(s)`, uniq.length > 0 ? "ok" : "empty");
+      if(uniq.length) setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100));
+    } catch(e) {
+      if(e.name === "AbortError") addProg("minvu", "🏗️ MINVU — cancelado", "skip");
+      else addProg("minvu", `🏗️ MINVU — error: ${e.message}`, "error");
+    }
+
     setGeneralResults(nuevosResultados);
     setGeneralLoading(false);
   };
@@ -835,9 +855,9 @@ function App() {
             <div style={{color:"rgba(255,255,255,.6)",fontSize:11,marginTop:1}}>LEN Ingeniería · Chile · API Oficial</div>
           </div>
         </div>
-        <button onClick={activePortal==="mp" ? (generalLoading ? cancelarGeneral : buscarGeneral) : activePortal==="sectra" ? buscarSECTRA : buscarEFE}
+        <button onClick={activePortal==="mp" ? (generalLoading ? cancelarGeneral : buscarGeneral) : activePortal==="sectra" ? buscarSECTRA : activePortal==="efe" ? buscarEFE : buscarMINVU}
           style={{background:"#F5B731",color:"#1E2D5A",border:"none",padding:"10px 20px",borderRadius:10,fontSize:13,fontWeight:800,cursor:"pointer",transition:"all .15s",boxShadow:"0 2px 8px rgba(245,183,49,.4)"}}>
-          {activePortal==="mp" ? (generalLoading ? "✕ Cancelar" : "🔍 Búsqueda General") : activePortal==="sectra" ? (sectraLoading ? `⏳ ${sectraElapsed}s...` : "🔍 Buscar en SECTRA") : (efeLoading ? `⏳ ${efeElapsed}s...` : "🚂 Buscar en EFE")}
+          {activePortal==="mp" ? (generalLoading ? "✕ Cancelar" : "🔍 Búsqueda General") : activePortal==="sectra" ? (sectraLoading ? `⏳ ${sectraElapsed}s...` : "🔍 Buscar en SECTRA") : activePortal==="efe" ? (efeLoading ? `⏳ ${efeElapsed}s...` : "🚂 Buscar en EFE") : (minvuLoading ? `⏳ ${minvuElapsed}s...` : "🏗️ Buscar en MINVU")}
         </button>
       </div>
 
@@ -855,6 +875,10 @@ function App() {
         <button className={`portal-tab ${activePortal==="efe"?"active":""}`} onClick={() => setActivePortal("efe")}>
           🚂 EFE
           {efeResults.length > 0 && <span className="ptag">{efeResults.length}</span>}
+        </button>
+        <button className={`portal-tab ${activePortal==="minvu"?"active":""}`} onClick={() => setActivePortal("minvu")}>
+          🏗️ MINVU
+          {minvuResults.length > 0 && <span className="ptag">{minvuResults.length}</span>}
         </button>
       </div>
 
@@ -1557,6 +1581,105 @@ function App() {
                   <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                     <button onClick={()=>verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>🤖 Analizar con IA</button>
                     {r.url && <a href={r.url} target="_blank" rel="noreferrer" style={{background:"#f8fafc",color:"#475569",border:"1px solid #e2e8f0",padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600}}>🔗 Ver en EFE</a>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activePortal==="minvu" && (
+        <div style={{padding:"16px 0"}}>
+          <div style={{background:"white",borderRadius:12,padding:20,marginBottom:14,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+              <div>
+                <div style={{fontWeight:700,fontSize:14}}>🏗️ MINVU — Portal Proveedores Técnicos</div>
+                <div style={{fontSize:11,color:"#64748b",marginTop:2}}>Ministerio de Vivienda y Urbanismo · SERVIU regiones</div>
+              </div>
+              <div style={{fontSize:12,color:"#64748b"}}><b style={{color:"#7c3aed"}}>{[...minvuActive].filter(k=>minvuKw.includes(k)).length}</b> / {minvuKw.length} activas</div>
+            </div>
+
+            {/* Keywords MINVU */}
+            <div style={{marginBottom:16}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#7c3aed",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Términos Técnicos</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+                {minvuKw.map(kw => {
+                  const on = minvuActive.has(kw);
+                  return (
+                    <div key={kw} style={{display:"flex",alignItems:"center",borderRadius:20,border:`2px solid ${on?"#7c3aed":"#e2e8f0"}`,background:on?"#7c3aed18":"#f8fafc",overflow:"hidden"}}>
+                      <button onClick={() => { const n=new Set(minvuActive); n.has(kw)?n.delete(kw):n.add(kw); setMinvuActive(n); localStorage.setItem("minvu_active",JSON.stringify([...n])); }}
+                        style={{padding:"4px 10px",fontSize:12,cursor:"pointer",fontWeight:600,background:"transparent",border:"none",color:on?"#7c3aed":"#94a3b8"}}>
+                        {on?"✓ ":""}{kw}
+                      </button>
+                      <button onClick={() => { const nk=minvuKw.filter(k=>k!==kw); setMinvuKw(nk); localStorage.setItem("minvu_kw",JSON.stringify(nk)); const na=new Set(minvuActive); na.delete(kw); setMinvuActive(na); localStorage.setItem("minvu_active",JSON.stringify([...na])); }}
+                        style={{padding:"4px 7px 4px 2px",fontSize:11,cursor:"pointer",background:"transparent",border:"none",color:"#94a3b8"}}>✕</button>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{display:"flex",gap:6}}>
+                <input value={minvuNewKw} onChange={e=>setMinvuNewKw(e.target.value)}
+                  onKeyDown={e=>{if(e.key==="Enter"&&minvuNewKw.trim()){const k=minvuNewKw.trim();if(!minvuKw.includes(k)){const nk=[...minvuKw,k];setMinvuKw(nk);localStorage.setItem("minvu_kw",JSON.stringify(nk));const na=new Set([...minvuActive,k]);setMinvuActive(na);localStorage.setItem("minvu_active",JSON.stringify([...na]));}setMinvuNewKw("");}}}
+                  placeholder="Agregar keyword MINVU..." style={{flex:1,padding:"7px 12px",borderRadius:8,border:"1px dashed #cbd5e1",fontSize:12,outline:"none"}}/>
+                <button onClick={()=>{if(minvuNewKw.trim()){const k=minvuNewKw.trim();if(!minvuKw.includes(k)){const nk=[...minvuKw,k];setMinvuKw(nk);localStorage.setItem("minvu_kw",JSON.stringify(nk));const na=new Set([...minvuActive,k]);setMinvuActive(na);localStorage.setItem("minvu_active",JSON.stringify([...na]));}setMinvuNewKw("");}}}
+                  style={{padding:"7px 14px",borderRadius:8,background:"#f5f3ff",color:"#7c3aed",border:"1px solid #ddd6fe",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Agregar</button>
+              </div>
+            </div>
+
+            {/* Tipo de servicio */}
+            <div style={{marginBottom:16}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#16a34a",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Tipo de Servicio (opcional)</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+                {minvuServ.map(kw => {
+                  const on = minvuServActive.has(kw);
+                  return (
+                    <div key={kw} style={{display:"flex",alignItems:"center",borderRadius:20,border:`2px solid ${on?"#16a34a":"#e2e8f0"}`,background:on?"#16a34a18":"#f8fafc",overflow:"hidden"}}>
+                      <button onClick={() => { const n=new Set(minvuServActive); n.has(kw)?n.delete(kw):n.add(kw); setMinvuServActive(n); localStorage.setItem("minvu_serv_active",JSON.stringify([...n])); }}
+                        style={{padding:"4px 10px",fontSize:12,cursor:"pointer",fontWeight:600,background:"transparent",border:"none",color:on?"#16a34a":"#94a3b8"}}>
+                        {on?"✓ ":""}{kw}
+                      </button>
+                      <button onClick={() => { const nk=minvuServ.filter(k=>k!==kw); setMinvuServ(nk); localStorage.setItem("minvu_serv",JSON.stringify(nk)); const na=new Set(minvuServActive); na.delete(kw); setMinvuServActive(na); localStorage.setItem("minvu_serv_active",JSON.stringify([...na])); }}
+                        style={{padding:"4px 7px 4px 2px",fontSize:11,cursor:"pointer",background:"transparent",border:"none",color:"#94a3b8"}}>✕</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div style={{background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:8,padding:"8px 14px",fontSize:12,color:"#7c3aed",marginBottom:16}}>
+              🏗️ Solo muestra las últimas 100 licitaciones publicadas en el portal MINVU
+            </div>
+
+            <button onClick={buscarMINVU} disabled={minvuLoading}
+              style={{background:minvuLoading?"#94a3b8":"#7c3aed",color:"white",border:"none",padding:"12px 32px",borderRadius:8,fontSize:15,fontWeight:700,cursor:minvuLoading?"not-allowed":"pointer"}}>
+              {minvuLoading ? `⏳ Buscando... ${minvuElapsed}s` : "🏗️ Buscar en MINVU"}
+            </button>
+            {minvuError && <div style={{marginTop:12,background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",fontSize:13,color:"#dc2626"}}>⚠️ {minvuError}</div>}
+            {minvuSteps.map((s,i) => <div key={i} style={{marginTop:8,fontSize:12,color:s.state==="ok"?"#15803d":"#2563eb",display:"flex",gap:6}}><span>{s.state==="ok"?"✅":"⏳"}</span><span>{s.msg}</span></div>)}
+          </div>
+
+          {/* Resultados MINVU */}
+          {minvuResults.length > 0 && (
+            <div>
+              <div style={{fontSize:13,color:"#64748b",marginBottom:12,display:"flex",alignItems:"center",gap:8}}>
+                <span style={{background:"#7c3aed18",color:"#7c3aed",padding:"3px 10px",borderRadius:99,fontSize:11,fontWeight:700}}>🏗️ MINVU/SERVIU</span>
+                <span>{minvuResults.length} licitaciones encontradas</span>
+              </div>
+              {minvuResults.map((r,i) => (
+                <div key={i} style={{background:"white",border:"1px solid #e2e8f0",borderLeft:"4px solid #7c3aed",borderRadius:10,padding:16,marginBottom:10,boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}>
+                  <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
+                    <span style={{background:"#7c3aed18",color:"#7c3aed",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>🏗️ MINVU</span>
+                    {r.estado && <span style={{background:"#f0fdf4",color:"#15803d",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>● {r.estado}</span>}
+                    {r.fechaPublicacion && <span style={{background:"#f8fafc",color:"#64748b",fontSize:11,padding:"2px 8px",borderRadius:12}}>📅 {r.fechaPublicacion}</span>}
+                    {r.fechaCierre && <span style={{background:"#fef2f2",color:"#dc2626",fontSize:11,padding:"2px 8px",borderRadius:12}}>⏰ Cierre: {r.fechaCierre}</span>}
+                  </div>
+                  <div style={{fontWeight:700,fontSize:14,marginBottom:4,lineHeight:1.4}}>{r.titulo}</div>
+                  <div style={{fontSize:12,color:"#64748b",marginBottom:4}}>{r.organismo}</div>
+                  {r.codigo && <div style={{fontSize:11,color:"#94a3b8",marginBottom:8}}>Código: {r.codigo}</div>}
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                    <button onClick={()=>verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>🤖 Analizar con IA</button>
+                    {r.url && <a href={r.url} target="_blank" rel="noreferrer" style={{background:"#f8fafc",color:"#475569",border:"1px solid #e2e8f0",padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600}}>🔗 Ver en MINVU</a>}
                   </div>
                 </div>
               ))}
