@@ -400,6 +400,9 @@ async function buscarPorOrganismo(organismo, regionDesde, regionHasta, signal) {
 // ── Componente principal ──────────────────────────────────────────────────
 function App() {
   const [activePortal, setActivePortal]      = useState("mp");
+  const [soloVigentesGlobal, setSoloVigentesGlobal] = useState(() => {
+    try { const v = localStorage.getItem("global_solo_vigentes"); return v !== null ? JSON.parse(v) : true; } catch(e){ return true; }
+  });
   const [activeDivId, setActiveDivId]       = useState("zonasur");
   const [divStates, setDivStates]           = useState(() => {
     const s = {};
@@ -919,14 +922,18 @@ function App() {
 
       addProg("mp_general", `🏛️ Mercado Público — ${data.total||0} licitaciones activas descargadas`, "ok");
 
-      // Distribuir resultados por división
+      // Distribuir resultados por división — van directo a cada división
       DIVISIONS.forEach(div => {
         const ds = divStates[div.id];
         const results = data.resultados?.[div.id] || [];
-        const filtradas = filtrarPorFecha(results, ds.soloVigentes, ds.fechaInicio, ds.fechaFin);
+        const filtradas = filtrarPorFecha(results, soloVigentesGlobal, ds.fechaInicio, ds.fechaFin);
         nuevosResultados[div.id] = filtradas;
         addProg(div.id, `${div.icon} ${div.label} — ${filtradas.length} resultado(s)`, filtradas.length > 0 ? "ok" : "empty");
-        if(filtradas.length) setHistory(prev => deduplicar([...filtradas,...prev]).slice(0,100));
+        if(filtradas.length) {
+          setHistory(prev => deduplicar([...filtradas,...prev]).slice(0,100));
+          // Guardar resultados en la división correspondiente
+          updateDs(div.id, ds => ({...ds, results: filtradas}));
+        }
       });
 
     } catch(e) {
@@ -1048,10 +1055,32 @@ function App() {
             <div style={{color:"rgba(255,255,255,.55)",fontSize:11,marginTop:2,letterSpacing:.5}}>LEN INGENIERÍA · CHILE · API OFICIAL</div>
           </div>
         </div>
-        <button onClick={generalLoading ? cancelarGeneral : buscarGeneral}
-          style={{background:"#F5B731",color:"#1E2D5A",border:"none",padding:"10px 22px",borderRadius:10,fontSize:13,fontWeight:800,cursor:"pointer",transition:"all .15s",boxShadow:"0 2px 8px rgba(245,183,49,.4)",display:"flex",alignItems:"center",gap:8}}>
-          {generalLoading ? "✕ Cancelar búsqueda" : "🔍 Búsqueda General"}
-        </button>
+        <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+          {/* Toggle global vigentes */}
+          <div style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,.1)",borderRadius:8,padding:"6px 12px"}}>
+            <span style={{color:"rgba(255,255,255,.8)",fontSize:12,fontWeight:600}}>Solo vigentes</span>
+            <button onClick={() => {
+              const nuevo = !soloVigentesGlobal;
+              setSoloVigentesGlobal(nuevo);
+              localStorage.setItem("global_solo_vigentes", JSON.stringify(nuevo));
+            }} style={{
+              width:42, height:22, borderRadius:11, border:"none", cursor:"pointer",
+              background: soloVigentesGlobal ? "#F5B731" : "rgba(255,255,255,.3)",
+              position:"relative", transition:"background .2s"
+            }}>
+              <div style={{
+                width:16, height:16, borderRadius:"50%", background:"white",
+                position:"absolute", top:3,
+                left: soloVigentesGlobal ? 23 : 3,
+                transition:"left .2s", boxShadow:"0 1px 3px rgba(0,0,0,.3)"
+              }}/>
+            </button>
+          </div>
+          <button onClick={generalLoading ? cancelarGeneral : buscarGeneral}
+            style={{background:"#F5B731",color:"#1E2D5A",border:"none",padding:"10px 22px",borderRadius:10,fontSize:13,fontWeight:800,cursor:"pointer",transition:"all .15s",boxShadow:"0 2px 8px rgba(245,183,49,.4)",display:"flex",alignItems:"center",gap:8}}>
+            {generalLoading ? "✕ Cancelar búsqueda" : "🔍 Búsqueda General"}
+          </button>
+        </div>
       </div>
 
       {/* ── PORTAL NAVIGATION ── */}
@@ -1334,23 +1363,19 @@ function App() {
       {/* Tab: Búsqueda General */}
       {tab==="general" && (
         <div>
-          {/* Header con fecha y total */}
+          {/* Header */}
           <div style={{background:"white",borderRadius:12,padding:"16px 20px",marginBottom:16,boxShadow:"0 1px 4px rgba(0,0,0,.07)",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
             <div>
-              <div style={{fontWeight:700,fontSize:15}}>🔍 Búsqueda General — Todas las Divisiones</div>
-              <div style={{fontSize:12,color:"#64748b",marginTop:2}}>{new Date().toLocaleDateString("es-CL",{weekday:"long",year:"numeric",month:"long",day:"numeric"})}</div>
+              <div style={{fontWeight:700,fontSize:15}}>🔍 Búsqueda General — {new Date().toLocaleDateString("es-CL",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div>
+              <div style={{fontSize:12,color:"#64748b",marginTop:2}}>
+                {soloVigentesGlobal ? "✅ Solo licitaciones vigentes" : "📋 Todas las licitaciones"}
+              </div>
             </div>
-            <div style={{display:"flex",alignItems:"center",gap:12}}>
-              {Object.values(generalResults).some(r=>r.length>0) && (
-                <div style={{background:"#eff6ff",color:"#2563eb",padding:"6px 14px",borderRadius:99,fontSize:13,fontWeight:700}}>
-                  Total: {Object.values(generalResults).reduce((s,r)=>s+r.length,0)} licitaciones
-                </div>
-              )}
-              <button onClick={generalLoading ? cancelarGeneral : buscarGeneral}
-                style={{background:generalLoading?"#fee2e2":"#2563eb",color:generalLoading?"#dc2626":"white",border:"none",padding:"8px 18px",borderRadius:8,fontSize:13,fontWeight:600,cursor:"pointer"}}>
-                {generalLoading ? "✕ Cancelar" : "🔄 Nueva búsqueda"}
-              </button>
-            </div>
+            {Object.values(generalResults).some(r=>r.length>0) && (
+              <div style={{background:"#eff6ff",color:"#2563eb",padding:"6px 14px",borderRadius:99,fontSize:13,fontWeight:700}}>
+                Total: {Object.values(generalResults).reduce((s,r)=>s+r.length,0)} licitaciones
+              </div>
+            )}
           </div>
 
           {/* Progreso */}
@@ -1375,133 +1400,67 @@ function App() {
             <div style={{textAlign:"center",color:"#94a3b8",padding:64,background:"white",borderRadius:12}}>
               <div style={{fontSize:48,marginBottom:16}}>🔍</div>
               <div style={{fontSize:16,fontWeight:600,marginBottom:8}}>Búsqueda General</div>
-              <div style={{fontSize:13,marginBottom:24}}>Haz clic en "🔍 Búsqueda General" en el header para buscar en todas las divisiones simultáneamente</div>
+              <div style={{fontSize:13,marginBottom:24}}>Haz clic en "🔍 Búsqueda General" en el header para buscar en todas las divisiones y portales</div>
               <button onClick={buscarGeneral} style={{background:"#2563eb",color:"white",border:"none",padding:"12px 28px",borderRadius:8,fontSize:14,fontWeight:700,cursor:"pointer"}}>
                 🚀 Iniciar Búsqueda General
               </button>
             </div>
           )}
 
-          {/* Resultados agrupados por división */}
-          {Object.keys(generalResults).length > 0 && DIVISIONS.map(div => {
-            const results = generalResults[div.id] || [];
-            if(!results.length) return null;
-            return (
-              <div key={div.id} style={{marginBottom:20}}>
-                {/* Header de división */}
-                <div style={{background:div.bg,border:`2px solid ${div.color}22`,borderRadius:10,padding:"12px 16px",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{fontSize:18}}>{div.icon}</span>
-                    <span style={{fontWeight:700,fontSize:14,color:div.color}}>{div.label}</span>
-                    <span style={{background:div.color,color:"white",fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:99}}>{results.length}</span>
-                  </div>
-                  <button onClick={() => { setActiveDivId(div.id); updateDs(div.id, ds => ({...ds, results})); setTab("resultados"); }}
-                    style={{background:"white",color:div.color,border:`1px solid ${div.color}`,padding:"4px 12px",borderRadius:6,fontSize:11,fontWeight:600,cursor:"pointer"}}>
-                    Ver en división →
-                  </button>
-                </div>
-
-                {/* Tarjetas de resultados */}
-                {results.map((r,i) => (
-                  <div key={i} style={{background:"white",border:"1px solid #e2e8f0",borderLeft:`4px solid ${div.color}`,borderRadius:8,padding:14,marginBottom:8,boxShadow:"0 1px 3px rgba(0,0,0,.04)"}}>
-                    <div style={{display:"flex",gap:6,marginBottom:6,flexWrap:"wrap"}}>
-                      {r.estado && <span style={{background:"#f0fdf4",color:"#15803d",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>● {r.estado}</span>}
-                      <span style={{background:"#fefce8",color:"#854d0e",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>📍 {r.region||"Cargando..."}</span>
-                      {r.fechaCierre && <span style={{background:"#f8fafc",color:"#64748b",fontSize:11,padding:"2px 8px",borderRadius:12}}>⏰ {r.fechaCierre}</span>}
-                    </div>
-                    <div style={{fontWeight:700,fontSize:13,marginBottom:3,lineHeight:1.4}}>{r.titulo}</div>
-                    <div style={{fontSize:11,color:"#94a3b8",marginBottom:8}}>{r.organismo} {r.codigo ? `· ${r.codigo}` : ""}</div>
-                    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                      <button onClick={() => verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"5px 12px",borderRadius:6,fontSize:11,cursor:"pointer",fontWeight:600}}>🤖 Analizar con IA</button>
-                      {r.url && <a href={r.url} target="_blank" rel="noreferrer" style={{background:"#f8fafc",color:"#475569",border:"1px solid #e2e8f0",padding:"5px 12px",borderRadius:6,fontSize:11,fontWeight:600}}>🔗 Ver en MP</a>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            );
-          })}
-
-          {/* Resultados de organismos específicos */}
-          {Object.keys(generalResults).length > 0 && ORGANISMOS.some(org => (generalResults[`org_${org.id}`]||[]).length > 0) && (
-            <div style={{marginBottom:20}}>
-              <div style={{fontWeight:700,fontSize:13,color:"#475569",marginBottom:10,padding:"8px 0",borderBottom:"2px solid #e2e8f0"}}>
-                🏛️ Organismos Específicos
-              </div>
-              {ORGANISMOS.map(org => {
-                const results = generalResults[`org_${org.id}`] || [];
-                if(!results.length) return null;
-                return (
-                  <div key={org.id} style={{marginBottom:16}}>
-                    <div style={{background:"#f8fafc",border:"2px solid #e2e8f0",borderRadius:10,padding:"12px 16px",marginBottom:8,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                      <div style={{display:"flex",alignItems:"center",gap:8}}>
-                        <span style={{fontSize:18}}>{org.icon}</span>
-                        <div>
-                          <span style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>{org.nombre}</span>
-                          <span style={{fontSize:11,color:"#64748b",marginLeft:8}}>{org.desc}</span>
-                        </div>
-                        <span style={{background:"#1e293b",color:"white",fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:99}}>{results.length}</span>
-                      </div>
-                    </div>
-                    {results.map((r,i) => (
-                      <div key={i} style={{background:"white",border:"1px solid #e2e8f0",borderLeft:"4px solid #475569",borderRadius:8,padding:14,marginBottom:6,boxShadow:"0 1px 3px rgba(0,0,0,.04)"}}>
-                        <div style={{display:"flex",gap:6,marginBottom:6,flexWrap:"wrap"}}>
-                          <span style={{background:"#f1f5f9",color:"#475569",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>{org.icon} {org.nombre}</span>
-                          {r.estado && <span style={{background:"#f0fdf4",color:"#15803d",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>● {r.estado}</span>}
-                          {r.fechaCierre && <span style={{background:"#f8fafc",color:"#64748b",fontSize:11,padding:"2px 8px",borderRadius:12}}>⏰ {r.fechaCierre}</span>}
-                        </div>
-                        <div style={{fontWeight:700,fontSize:13,marginBottom:3,lineHeight:1.4}}>{r.titulo}</div>
-                        <div style={{fontSize:11,color:"#94a3b8",marginBottom:8}}>{r.codigo}</div>
-                        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                          <button onClick={() => verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"5px 12px",borderRadius:6,fontSize:11,cursor:"pointer",fontWeight:600}}>🤖 Analizar con IA</button>
-                          {r.url && <a href={r.url} target="_blank" rel="noreferrer" style={{background:"#f8fafc",color:"#475569",border:"1px solid #e2e8f0",padding:"5px 12px",borderRadius:6,fontSize:11,fontWeight:600}}>🔗 Ver en MP</a>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Resultados EFE en General */}
-          {(generalResults["efe"]||[]).length > 0 && (
-            <div style={{marginBottom:20}}>
-              <div style={{fontWeight:700,fontSize:13,color:"#475569",marginBottom:10,padding:"8px 0",borderBottom:"2px solid #e2e8f0"}}>
-                🚂 EFE Trenes de Chile
-              </div>
-              <div style={{background:"#1E2D5A0A",border:"2px solid #1E2D5A22",borderRadius:10,padding:"12px 16px",marginBottom:8,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <span style={{fontSize:18}}>🚂</span>
-                  <span style={{fontWeight:700,fontSize:14,color:"#1E2D5A"}}>EFE Trenes de Chile</span>
-                  <span style={{background:"#1E2D5A",color:"white",fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:99}}>{(generalResults["efe"]||[]).length}</span>
-                </div>
-                <button onClick={() => setActivePortal("efe")} style={{background:"white",color:"#1E2D5A",border:"1px solid #1E2D5A33",padding:"4px 12px",borderRadius:6,fontSize:11,fontWeight:600,cursor:"pointer"}}>Ver en EFE →</button>
-              </div>
-              {(generalResults["efe"]||[]).map((r,i) => (
-                <div key={i} style={{background:"white",border:"1px solid #e2e8f0",borderLeft:"4px solid #1E2D5A",borderRadius:8,padding:14,marginBottom:6}}>
-                  <div style={{display:"flex",gap:6,marginBottom:6,flexWrap:"wrap"}}>
-                    <span style={{background:"#1E2D5A18",color:"#1E2D5A",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>🚂 EFE</span>
-                    {r.estado && <span style={{background:"#f0fdf4",color:"#15803d",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>● {r.estado}</span>}
-                    {r.fechaPublicacion && <span style={{background:"#f8fafc",color:"#64748b",fontSize:11,padding:"2px 8px",borderRadius:12}}>📅 {r.fechaPublicacion}</span>}
-                  </div>
-                  <div style={{fontWeight:700,fontSize:13,marginBottom:8,lineHeight:1.4}}>{r.titulo}</div>
-                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                    <button onClick={() => verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"5px 12px",borderRadius:6,fontSize:11,cursor:"pointer",fontWeight:600}}>🤖 Analizar con IA</button>
-                    {r.url && <a href={r.url} target="_blank" rel="noreferrer" style={{background:"#f8fafc",color:"#475569",border:"1px solid #e2e8f0",padding:"5px 12px",borderRadius:6,fontSize:11,fontWeight:600}}>🔗 Ver en EFE</a>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Divisiones sin resultados */}
+          {/* Resumen por divisiones LEN-MP */}
           {Object.keys(generalResults).length > 0 && (
-            <div style={{background:"white",borderRadius:10,padding:"12px 16px",marginTop:8}}>
-              <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Sin resultados</div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                {DIVISIONS.filter(div => !(generalResults[div.id]||[]).length).map(div => (
-                  <span key={div.id} style={{background:"#f1f5f9",color:"#94a3b8",fontSize:11,padding:"3px 10px",borderRadius:99}}>{div.icon} {div.label}</span>
-                ))}
+            <div>
+              <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>
+                🏛️ LEN — Mercado Público
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:10,marginBottom:20}}>
+                {DIVISIONS.map(div => {
+                  const count = (generalResults[div.id]||[]).length;
+                  return (
+                    <button key={div.id} onClick={() => { setActiveDivId(div.id); setTab("resultados"); }}
+                      style={{background:count>0?div.bg:"#f8fafc",border:`2px solid ${count>0?div.color:"#e2e8f0"}`,borderRadius:10,padding:"14px 16px",cursor:"pointer",textAlign:"left",transition:"all .15s"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                        <span style={{fontSize:20}}>{div.icon}</span>
+                        <span style={{fontWeight:700,fontSize:13,color:count>0?div.color:"#94a3b8"}}>{div.label}</span>
+                        <span style={{marginLeft:"auto",background:count>0?div.color:"#e2e8f0",color:count>0?"white":"#94a3b8",fontSize:12,fontWeight:700,padding:"2px 8px",borderRadius:99}}>{count}</span>
+                      </div>
+                      {count>0
+                        ? <div style={{fontSize:11,color:"#64748b"}}>Ver resultados en la pestaña →</div>
+                        : <div style={{fontSize:11,color:"#94a3b8"}}>Sin resultados</div>
+                      }
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Portales externos */}
+              <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>
+                Portales Externos
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:10}}>
+                {[
+                  {key:`org_sectra`, label:"SECTRA", icon:"🚦", portal:"sectra", color:"#1E2D5A"},
+                  {key:"efe",        label:"EFE",    icon:"🚂", portal:"efe",    color:"#1E2D5A"},
+                  {key:"minvu",      label:"MINVU",  icon:"🏗️", portal:"minvu",  color:"#7c3aed"},
+                  {key:"econssa",    label:"ECONSSA",icon:"💧", portal:"econssa",color:"#0891b2"},
+                  {key:"psa",        label:"Puerto San Antonio",icon:"⚓",portal:"psa",color:"#334155"},
+                ].map(p => {
+                  const count = (generalResults[p.key]||[]).length;
+                  return (
+                    <button key={p.key} onClick={() => setActivePortal(p.portal)}
+                      style={{background:count>0?"white":"#f8fafc",border:`2px solid ${count>0?p.color:"#e2e8f0"}`,borderRadius:10,padding:"14px 16px",cursor:"pointer",textAlign:"left",transition:"all .15s"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                        <span style={{fontSize:20}}>{p.icon}</span>
+                        <span style={{fontWeight:700,fontSize:13,color:count>0?p.color:"#94a3b8"}}>{p.label}</span>
+                        <span style={{marginLeft:"auto",background:count>0?p.color:"#e2e8f0",color:count>0?"white":"#94a3b8",fontSize:12,fontWeight:700,padding:"2px 8px",borderRadius:99}}>{count}</span>
+                      </div>
+                      {count>0
+                        ? <div style={{fontSize:11,color:"#64748b"}}>Ver en pestaña →</div>
+                        : <div style={{fontSize:11,color:"#94a3b8"}}>Sin resultados</div>
+                      }
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
