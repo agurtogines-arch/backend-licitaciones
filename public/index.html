@@ -13,8 +13,8 @@ body{font-family:system-ui,sans-serif;background:#f0f4f8;color:#1e293b;min-heigh
 a{text-decoration:none}
 
 /* ── PORTAL STYLES ── */
-.portal-nav { background:#1E2D5A; padding:0; display:flex; overflow-x:auto; }
-.portal-tab { padding:14px 24px; color:rgba(255,255,255,.6); font-size:13px; font-weight:600; cursor:pointer; border:none; background:none; white-space:nowrap; border-bottom:3px solid transparent; transition:all .2s; font-family:inherit; }
+.portal-nav { background:#1E2D5A; padding:0; display:flex; flex-wrap:wrap; }
+.portal-tab { padding:11px 16px; color:rgba(255,255,255,.6); font-size:12px; font-weight:600; cursor:pointer; border:none; background:none; white-space:nowrap; border-bottom:3px solid transparent; transition:all .2s; font-family:inherit; flex:1 1 auto; text-align:center; }
 .portal-tab:hover { color:white; background:rgba(255,255,255,.08); }
 .portal-tab.active { color:white; border-bottom-color:#F5B731; background:rgba(255,255,255,.1); }
 .portal-tab .ptag { font-size:10px; background:#F5B731; color:#1E2D5A; padding:2px 6px; border-radius:99px; margin-left:6px; font-weight:700; }
@@ -950,8 +950,8 @@ function App() {
         const found = await buscarPorOrganismo(org, "todas", "todas", generalAbortRef.current.signal);
         const uniq = deduplicar(found);
         nuevosResultados[`org_${org.id}`] = uniq;
+        if(uniq.length) { setSectraResults(uniq); setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100)); }
         addProg(`org_${org.id}`, `${org.icon} ${org.nombre} — ${uniq.length} resultado(s)`, uniq.length > 0 ? "ok" : "empty");
-        if(uniq.length) setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100));
       } catch(e) {
         if(e.name === "AbortError") { addProg(`org_${org.id}`, `${org.icon} ${org.nombre} — cancelado`, "skip"); break; }
         addProg(`org_${org.id}`, `${org.icon} ${org.nombre} — error`, "error");
@@ -971,8 +971,8 @@ function App() {
       const data = await res.json();
       const uniq = deduplicar(data.resultados || []);
       nuevosResultados["efe"] = uniq;
+      if(uniq.length) { setEfeResults(uniq); setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100)); }
       addProg("efe", `🚂 EFE — ${uniq.length} resultado(s)`, uniq.length > 0 ? "ok" : "empty");
-      if(uniq.length) setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100));
     } catch(e) {
       if(e.name === "AbortError") addProg("efe", "🚂 EFE — cancelado", "skip");
       else addProg("efe", `🚂 EFE — error: ${e.message}`, "error");
@@ -991,8 +991,8 @@ function App() {
       const data = await res.json();
       const uniq = deduplicar(data.resultados || []);
       nuevosResultados["minvu"] = uniq;
+      if(uniq.length) { setMinvuResults(uniq); setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100)); }
       addProg("minvu", `🏗️ MINVU — ${uniq.length} resultado(s)`, uniq.length > 0 ? "ok" : "empty");
-      if(uniq.length) setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100));
     } catch(e) {
       if(e.name === "AbortError") addProg("minvu", "🏗️ MINVU — cancelado", "skip");
       else addProg("minvu", `🏗️ MINVU — error: ${e.message}`, "error");
@@ -1006,8 +1006,8 @@ function App() {
       const data = await res.json();
       const uniq = deduplicar(data.resultados||[]);
       nuevosResultados["econssa"] = uniq;
+      if(uniq.length) { setEconssaResults(uniq); setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100)); }
       addProg("econssa", `💧 ECONSSA — ${uniq.length} resultado(s)`, uniq.length>0?"ok":"empty");
-      if(uniq.length) setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100));
     } catch(e) {
       if(e.name==="AbortError") addProg("econssa","💧 ECONSSA — cancelado","skip");
       else addProg("econssa",`💧 ECONSSA — error: ${e.message}`,"error");
@@ -1021,8 +1021,8 @@ function App() {
       const data = await res.json();
       const uniq = deduplicar(data.resultados||[]);
       nuevosResultados["psa"] = uniq;
+      if(uniq.length) { setPsaResults(uniq); setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100)); }
       addProg("psa", `⚓ Puerto San Antonio — ${uniq.length} resultado(s)`, uniq.length>0?"ok":"empty");
-      if(uniq.length) setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100));
     } catch(e) {
       if(e.name==="AbortError") addProg("psa","⚓ Puerto San Antonio — cancelado","skip");
       else addProg("psa",`⚓ Puerto San Antonio — error: ${e.message}`,"error");
