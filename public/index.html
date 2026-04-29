@@ -482,7 +482,7 @@ function App() {
       const res = await fetch(`${BACKEND_URL}/buscar-efe?${params}`, {signal: efeAbortRef.current.signal});
       const data = await res.json();
       clearInterval(efeTimerRef.current);
-      if(!res.ok) { setEfeError(data.error||"Error al consultar EFE"); setEfeLoading(false); return; }
+      if(!res.ok) { setEfeError((data.error||"Error al consultar EFE") + " — Intenta de nuevo."); setEfeLoading(false); return; }
       const uniq = deduplicar(data.resultados||[]);
       if(uniq.length) {
         setEfeResults(uniq);
