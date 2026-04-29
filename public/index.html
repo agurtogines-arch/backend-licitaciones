@@ -874,6 +874,7 @@ function App() {
     setGeneralLoading(true);
     setGeneralProgress([]);
     setGeneralResults({});
+    setActivePortal("mp");  // siempre ir a MP para ver el progreso
     setTab("general");
     if(generalAbortRef.current) generalAbortRef.current.abort();
     generalAbortRef.current = new AbortController();
@@ -908,7 +909,13 @@ function App() {
         body: JSON.stringify({ divisiones: payload }),
         signal: generalAbortRef.current.signal
       });
-      const data = await res.json();
+      const rawTextMP = await res.text();
+      if(!res.ok || rawTextMP.trim().startsWith("<")) {
+        addProg("mp_general", `❌ MP — Error de conexión. Reintenta.`, "error");
+        DIVISIONS.forEach(div => addProg(div.id, `${div.icon} ${div.label} — error`, "error"));
+        throw new Error("Respuesta inválida del backend MP");
+      }
+      const data = JSON.parse(rawTextMP);
 
       addProg("mp_general", `🏛️ Mercado Público — ${data.total||0} licitaciones activas descargadas`, "ok");
 
