@@ -338,7 +338,8 @@ const PORTAL_DIVISIONS_MAP = {
   psa:     ["infra", "ito"],
   sectra: ["zonasur", "infra"],
   efe:    ["infra", "ito"],
-  minvu:  ["civil", "ito"]
+  minvu:  ["civil", "ito"],
+  metro:  ["infra", "ito"]
 };
 
 // Obtener keywords combinadas de las divisiones mapeadas a un portal
@@ -660,6 +661,44 @@ function App() {
       if(e.name!=="AbortError") setPsaError(`Error: ${e.message}`);
     }
     setPsaLoading(false);
+  };
+
+
+  // ── Estado Metro ─────────────────────────────────────────────────────────
+  const [metroResults, setMetroResults] = useState([]);
+  const [metroLoading, setMetroLoading] = useState(false);
+  const [metroSteps, setMetroSteps]     = useState([]);
+  const [metroError, setMetroError]     = useState("");
+  const [metroElapsed, setMetroElapsed] = useState(0);
+  const metroAbortRef = useRef(null);
+  const metroTimerRef = useRef(null);
+
+  const buscarMetro = async () => {
+    setMetroLoading(true); setMetroError(""); setMetroSteps([]); setMetroResults([]); setMetroElapsed(0);
+    if(metroAbortRef.current) metroAbortRef.current.abort();
+    metroAbortRef.current = new AbortController();
+    metroTimerRef.current = setInterval(() => setMetroElapsed(e => e+1), 1000);
+    try {
+      setMetroSteps([{msg:"🚇 Conectando con Metro de Santiago...", state:"wait"}]);
+      const res = await fetch(`${BACKEND_URL}/buscar-metro`, {signal: metroAbortRef.current.signal});
+      clearInterval(metroTimerRef.current);
+      const rawText = await res.text();
+      if(!res.ok || rawText.trim().startsWith("<")) {
+        setMetroError("Error al conectar con Metro — verifica que el backend esté actualizado.");
+        setMetroLoading(false); return;
+      }
+      const data = JSON.parse(rawText);
+      const uniq = deduplicar(data.resultados||[]);
+      if(uniq.length) {
+        setMetroResults(uniq);
+        setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100));
+        setMetroSteps([{msg:`✅ ${uniq.length} próximas licitaciones encontradas en Metro`, state:"ok"}]);
+      } else { setMetroError("Sin resultados."); }
+    } catch(e) {
+      clearInterval(metroTimerRef.current);
+      if(e.name!=="AbortError") setMetroError(`Error: ${e.message}`);
+    }
+    setMetroLoading(false);
   };
 
   const updateDs = useCallback((divId, updater) => {
@@ -1028,6 +1067,21 @@ function App() {
       else addProg("psa",`⚓ Puerto San Antonio — error: ${e.message}`,"error");
     }
 
+    // ── Paso 7: Metro ─────────────────────────────────────────────────────────
+    await new Promise(r => setTimeout(r, 1500));
+    addProg("metro", "🚇 Metro — buscando...", "wait");
+    try {
+      const res = await fetch(`${BACKEND_URL}/buscar-metro`, {signal: generalAbortRef.current.signal});
+      const data = await res.json();
+      const uniq = deduplicar(data.resultados||[]);
+      nuevosResultados["metro"] = uniq;
+      if(uniq.length) { setMetroResults(uniq); setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100)); }
+      addProg("metro", `🚇 Metro — ${uniq.length} resultado(s)`, uniq.length>0?"ok":"empty");
+    } catch(e) {
+      if(e.name==="AbortError") addProg("metro","🚇 Metro — cancelado","skip");
+      else addProg("metro",`🚇 Metro — error: ${e.message}`,"error");
+    }
+
     setGeneralResults(nuevosResultados);
     setGeneralLoading(false);
   };
@@ -1111,6 +1165,10 @@ function App() {
         <button className={`portal-tab ${activePortal==="psa"?"active":""}`} onClick={() => setActivePortal("psa")}>
           ⚓ Pto. San Antonio
           {psaResults.length > 0 && <span className="ptag">{psaResults.length}</span>}
+        </button>
+        <button className={`portal-tab ${activePortal==="metro"?"active":""}`} onClick={() => setActivePortal("metro")}>
+          🚇 Metro
+          {metroResults.length > 0 && <span className="ptag">{metroResults.length}</span>}
         </button>
       </div>
 
@@ -1217,6 +1275,7 @@ function App() {
                     {key:"minvu",      label:"MINVU/SERVIU",      icon:"🏗️", portal:"minvu",  color:"#7c3aed"},
                     {key:"econssa",    label:"ECONSSA",           icon:"💧", portal:"econssa",color:"#0891b2"},
                     {key:"psa",        label:"Pto. San Antonio",  icon:"⚓", portal:"psa",    color:"#334155"},
+                  {key:"metro",      label:"Metro Santiago",    icon:"🚇", portal:"metro",  color:"#e11d48"},
                   ].map(p => {
                     const count = (generalResults[p.key]||[]).length;
                     return (
@@ -1754,6 +1813,47 @@ function App() {
                   <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                     <button onClick={()=>verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>🤖 Analizar con IA</button>
                     {r.url && <a href={r.url} target="_blank" rel="noreferrer" style={{background:"#f8fafc",color:"#475569",border:"1px solid #e2e8f0",padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600}}>🔗 Ver en PSA</a>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activePortal==="metro" && (
+        <div style={{padding:"16px 0"}}>
+          <div style={{background:"white",borderRadius:12,padding:20,marginBottom:14,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
+            <div style={{fontWeight:700,fontSize:14,marginBottom:8}}>🚇 Metro de Santiago — Próximas Licitaciones</div>
+            <div style={{background:"#fff1f2",border:"1px solid #fecdd3",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#e11d48",marginBottom:16}}>
+              🚇 Metro publica un <b>plan anticipado de licitaciones</b> — son proyectos planificados con fecha estimada, no licitaciones activas aún.<br/>
+              <span style={{color:"#64748b",marginTop:4,display:"block"}}>Relevante para Infraestructura (L7, L9) e Inspección Técnica de Obras. Región Metropolitana.</span>
+            </div>
+            <button onClick={buscarMetro} disabled={metroLoading}
+              style={{background:metroLoading?"#94a3b8":"#e11d48",color:"white",border:"none",padding:"12px 32px",borderRadius:8,fontSize:15,fontWeight:700,cursor:metroLoading?"not-allowed":"pointer"}}>
+              {metroLoading ? `⏳ Buscando... ${metroElapsed}s` : "🚇 Buscar en Metro"}
+            </button>
+            {metroError && <div style={{marginTop:12,background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",fontSize:13,color:"#dc2626"}}>⚠️ {metroError}</div>}
+            {metroSteps.map((s,i) => <div key={i} style={{marginTop:8,fontSize:12,color:s.state==="ok"?"#15803d":"#2563eb",display:"flex",gap:6}}><span>{s.state==="ok"?"✅":"⏳"}</span><span>{s.msg}</span></div>)}
+          </div>
+
+          {metroResults.length > 0 && (
+            <div>
+              <div style={{fontSize:13,color:"#64748b",marginBottom:12,display:"flex",alignItems:"center",gap:8}}>
+                <span style={{background:"#fff1f2",color:"#e11d48",padding:"3px 10px",borderRadius:99,fontSize:11,fontWeight:700}}>🚇 Metro</span>
+                <span>{metroResults.length} próximas licitaciones</span>
+              </div>
+              {metroResults.map((r,i) => (
+                <div key={i} style={{background:"white",border:"1px solid #e2e8f0",borderLeft:"4px solid #e11d48",borderRadius:10,padding:16,marginBottom:10,boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}>
+                  <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
+                    <span style={{background:"#fff1f2",color:"#e11d48",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>🚇 {r.tipo||"Metro"}</span>
+                    <span style={{background:"#fefce8",color:"#854d0e",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>📍 RM</span>
+                    {r.fechaCierre && <span style={{background:"#f0fdf4",color:"#15803d",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>📅 Est. {r.fechaCierre}</span>}
+                  </div>
+                  <div style={{fontWeight:700,fontSize:14,marginBottom:8,lineHeight:1.4}}>{r.titulo}</div>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                    <button onClick={()=>verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>🤖 Analizar con IA</button>
+                    <a href={r.url} target="_blank" rel="noreferrer" style={{background:"#fff1f2",color:"#e11d48",border:"1px solid #fecdd3",padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600}}>🔗 Ver en Metro</a>
                   </div>
                 </div>
               ))}
