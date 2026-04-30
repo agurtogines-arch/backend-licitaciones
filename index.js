@@ -145,11 +145,36 @@ app.get("/buscar", async (req, res) => {
       return terms.every(t => tNorm.includes(stem(t)));
     };
 
+    // ── Palabras de exclusión — licitaciones de obras/suministros ─────────────
+    const EXCLUSION = [
+      "construccion de ","construcción de ","ejecucion de obras","ejecución de obras",
+      "suministro de materiales","suministro e instalacion","suministro e instalación",
+      "obra de construccion","obra de construcción","licitacion de obras","licitación de obras",
+      "contrato de obras","compra de ","adquisicion de ","adquisición de ",
+      "arriendo de ","arriendo de maquinaria","provision de ","provisión de "
+    ];
+    // Palabras que salvan de la exclusión (son consultoría aunque digan "construcción")
+    const SALVAVIDAS = [
+      "inspeccion","inspección","supervision","supervisión","asesoria","asesoría",
+      "estudio","consultoria","consultoría","contraparte","auditoria","auditoría",
+      "diseño","proyecto de ingenieria","proyecto de ingeniería","ito"
+    ];
+
+    const esBloqueada = (titulo) => {
+      const t = norm(titulo);
+      const tieneExclusion = EXCLUSION.some(ex => t.includes(ex));
+      if (!tieneExclusion) return false;
+      // Si tiene palabra de exclusión pero también de consultoría → no bloquear
+      return !SALVAVIDAS.some(sv => t.includes(sv));
+    };
+
     // ── Filtro principal sobre título completo ─────────────────────────────
     // Condición: AL MENOS UNA keyword técnica
     //            Y AL MENOS UN tipo de servicio (si hay activos)
+    //            Y NO es licitación de obra/suministro puro
     const filtradas = licitaciones.filter(l => {
       const titulo = `${l.Nombre || ""} ${l.Descripcion || ""}`;
+      if (esBloqueada(titulo)) return false;
       const matchesTecnica = keywords.some(kw => matchesKeyword(titulo, kw));
       if (!matchesTecnica) return false;
       if (servicios.length === 0) return true;
@@ -236,6 +261,26 @@ app.post("/buscar-general", async (req, res) => {
       return terms.every(t => tNorm.includes(stem(t)));
     };
 
+    // ── Exclusión obras/suministros ───────────────────────────────────────
+    const EXCLUSION = [
+      "construccion de ","construcción de ","ejecucion de obras","ejecución de obras",
+      "suministro de materiales","suministro e instalacion","suministro e instalación",
+      "obra de construccion","obra de construcción","licitacion de obras","licitación de obras",
+      "contrato de obras","compra de ","adquisicion de ","adquisición de ",
+      "arriendo de ","provision de ","provisión de "
+    ];
+    const SALVAVIDAS = [
+      "inspeccion","inspección","supervision","supervisión","asesoria","asesoría",
+      "estudio","consultoria","consultoría","contraparte","auditoria","auditoría",
+      "diseño","proyecto de ingenieria","proyecto de ingeniería","ito"
+    ];
+    const esBloqueada = (titulo) => {
+      const t = norm(titulo);
+      const tieneExclusion = EXCLUSION.some(ex => t.includes(ex));
+      if (!tieneExclusion) return false;
+      return !SALVAVIDAS.some(sv => t.includes(sv));
+    };
+
     const mapItem = l => {
       const textoCompleto  = `${l.Nombre || ""} ${l.Descripcion || ""}`;
       const regionExtraida = extraerRegionDeTexto(textoCompleto);
@@ -271,9 +316,10 @@ app.post("/buscar-general", async (req, res) => {
         codigosValidos = new Set(REGIONES.slice(s,e+1).map(r => r.codigo));
       }
 
-      // Filtro keywords
+      // Filtro keywords + exclusión
       const filtradas = pool.filter(l => {
         const titulo = `${l.Nombre || ""} ${l.Descripcion || ""}`;
+        if (esBloqueada(titulo)) return false;
         const matchTec = keywords.some(kw => matchKw(titulo, kw));
         if (!matchTec) return false;
         if (!servicios?.length) return true;
