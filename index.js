@@ -1558,4 +1558,67 @@ app.get("/buscar-psa", async (req, res) => {
   }
 });
 
+// ── Búsqueda Metro ───────────────────────────────────────────────────────────
+app.get("/buscar-metro", async (req, res) => {
+  const keywords = (req.query.keywords || "").split(",").map(k => k.trim()).filter(Boolean);
+  const servicios = (req.query.servicios || "").split(",").map(k => k.trim()).filter(Boolean);
+
+  try {
+    const pageRes = await fetch("https://www.metro.cl/licitaciones/proximas-licitaciones", {
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" }
+    });
+    if (!pageRes.ok) return res.status(502).json({ error: `Metro respondió ${pageRes.status}` });
+    const html = await pageRes.text();
+
+    const cleanHtml = s => (s||"").replace(/<[^>]+>/g,"").replace(/\s+/g," ").trim();
+
+    const rows = [...html.matchAll(/<tr[^>]*>(.*?)<\/tr>/gis)];
+    const licitaciones = [];
+
+    for (const row of rows) {
+      const cells = [...row[1].matchAll(/<td[^>]*>(.*?)<\/td>/gis)].map(c => cleanHtml(c[1]));
+      if (cells.length < 3) continue;
+      const tipo  = cells[0];
+      const titulo = cells[1];
+      const fecha = cells[2];
+      if (!titulo || titulo.length < 5) continue;
+
+      licitaciones.push({
+        titulo,
+        codigo:          "",
+        organismo:       `Metro de Santiago — ${tipo}`,
+        region:          "Metropolitana",
+        estado:          "Próxima licitación",
+        fechaPublicacion: "",
+        fechaCierre:     fecha,
+        monto:           null,
+        descripcion:     `Línea/Tipo: ${tipo} | Fecha estimada: ${fecha}`,
+        url:             "https://www.metro.cl/licitaciones/proximas-licitaciones",
+        fuente:          "Metro",
+        tipo
+      });
+    }
+
+    // Filtrar por keywords
+    const norm = s => (s||"").toLowerCase().replace(/[áàä]/g,"a").replace(/[éèë]/g,"e").replace(/[íìï]/g,"i").replace(/[óòö]/g,"o").replace(/[úùü]/g,"u").replace(/ñ/g,"n").trim();
+    const stem = t => t.length >= 6 ? t.slice(0,-2) : t;
+    const matchKw = (titulo, kw) => norm(kw).split(/\s+/).filter(t=>t.length>=3).every(t=>norm(titulo).includes(stem(t)));
+
+    let resultado = licitaciones;
+    if (keywords.length > 0) {
+      resultado = licitaciones.filter(l => {
+        const matchTec = keywords.some(kw => matchKw(l.titulo, kw));
+        if (!matchTec) return false;
+        if (!servicios.length) return true;
+        return servicios.some(s => matchKw(l.titulo, s));
+      });
+    }
+
+    res.json({ total: resultado.length, resultados: resultado });
+  } catch(err) {
+    console.error("[buscar-metro]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(PORT, () => console.log(`Backend licitaciones en puerto ${PORT} | Ticket: ${TICKET.substring(0,8)}...`));
