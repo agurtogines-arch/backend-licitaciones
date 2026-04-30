@@ -102,7 +102,7 @@ const DIVISIONS = [
         color: "#7c3aed",
         bg: "#f5f3ff",
         border: "#ddd6fe",
-        defaults: ["Ingeniería de Detalle","Ingeniería Básica","Estudio de Factibilidad","Anteproyecto","Preinversión","Iluminación Vial","Conservación Vial","Infraestructura Vial","Ingeniería Vial","Estudio de Transporte"]
+        defaults: ["Ingeniería de Detalle","Ingeniería Básica","Estudio de Factibilidad","Anteproyecto","Preinversión","Iluminación Vial","Conservación Vial","Infraestructura Vial","Ingeniería Vial","Transporte Vial"]
       }
     ],
     servicios: {
@@ -129,7 +129,7 @@ const DIVISIONS = [
         color: "#15803d",
         bg: "#f0fdf4",
         border: "#86efac",
-        defaults: ["Ambiental","SEIA","Impacto Ambiental","Pertinencia Ambiental","Línea de Base","Monitoreo Ambiental","Seguimiento Ambiental","DIA","EIA","Flora","Fauna"]
+        defaults: ["Ambiental","SEIA","Impacto Ambiental","Pertinencia Ambiental","Línea de Base","Monitoreo Ambiental","Seguimiento Ambiental","Declaración de Impacto"]
       }
     ],
     servicios: {
@@ -137,7 +137,7 @@ const DIVISIONS = [
       color: "#16a34a",
       bg: "#f0fdf4",
       border: "#bbf7d0",
-      defaults: ["Estudio","Consultoría","Diagnóstico","Monitoreo","Asesoría","Análisis","Levantamiento"]
+      defaults: ["Estudio","Consultoría","Monitoreo","Asesoría","Levantamiento","Análisis Ambiental"]
     }
   },
   {
@@ -281,7 +281,7 @@ function migrarZonaSur() {
 migrarZonaSur();
 
 // ── Limpiar localStorage de divisiones con keywords actualizadas ──────────
-const VERSION_KW = "3.2";
+const VERSION_KW = "3.4";
 if (localStorage.getItem("kw_version") !== VERSION_KW) {
   const keysToClean = [
     "kw_vial_zonasur","kw_vial_zonasur_active",
