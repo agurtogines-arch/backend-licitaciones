@@ -526,7 +526,7 @@ function App() {
       const data = await res.json();
       clearInterval(efeTimerRef.current);
       if(!res.ok) { setEfeError((data.error||"Error al consultar EFE") + " — Intenta de nuevo."); setEfeLoading(false); return; }
-      const ESTADOS_ACTIVOS = ["EN VENTA DE BASES","EN PERÍODO","EN PERIODO","CHARLA","CONSULTAS","EN RECEPCIÓN","EN RECEPCION","EN EVALUACIÓN","EN EVALUACION"];
+      const ESTADOS_ACTIVOS = ["EN VENTA DE BASES","EN PERÍODO","EN PERIODO","CHARLA INFORMATIVA","CONSULTAS Y RESPUESTAS","EN RECEPCIÓN","EN RECEPCION DE OFERTAS"];
       const filtrados = efeSoloVigentes ? (data.resultados||[]).filter(r => ESTADOS_ACTIVOS.some(e => (r.estado||"").toUpperCase().includes(e))) : (data.resultados||[]);
       const uniq = deduplicar(filtrados);
       if(uniq.length) {
