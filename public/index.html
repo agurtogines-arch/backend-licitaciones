@@ -67,7 +67,7 @@ const DIVISIONS = [
         color: "#2563eb",
         bg: "#eff6ff",
         border: "#bfdbfe",
-        defaults: ["Vial","Diseño Geométrico","Seguridad Vial","Tránsito","Prefactibilidad","Factibilidad","Paviment","Caminos","Puentes"]
+        defaults: ["Diseño Vial","Seguridad Vial","Ingeniería Vial","Estudio de Tránsito","Prefactibilidad Vial","Factibilidad Vial","Diseño de Puentes","Diseño de Caminos"]
       },
       {
         label: "Hidráulica / Hidrología",
@@ -75,7 +75,7 @@ const DIVISIONS = [
         color: "#0891b2",
         bg: "#ecfeff",
         border: "#a5f3fc",
-        defaults: ["Hidráulic","Hidrológ","Drenaje","Aguas Lluvias","Cauces","Inundacion","Cuencas","APR","Hidrogeológ","Saneamiento"]
+        defaults: ["Hidráulica","Hidrología","Aguas Lluvias","Modificación de Cauces","APR","Saneamiento Rural","Alcantarillado","Planta de Tratamiento","Planta Elevadora","Catastro de Redes","Conducciones Sanitarias","Ingeniería Hidráulica"]
       }
     ],
     servicios: {
@@ -83,7 +83,7 @@ const DIVISIONS = [
       color: "#16a34a",
       bg: "#f0fdf4",
       border: "#bbf7d0",
-      defaults: ["Estudio","Consultoría","Asesoría","Diagnóstico","Diseño","Inspección","Levantamiento","Catastro"]
+      defaults: ["Estudio","Consultoría","Asesoría","Diseño","Inspección","Prefactibilidad","Factibilidad","Levantamiento"]
     }
   },
   {
@@ -97,12 +97,12 @@ const DIVISIONS = [
     defaultRegionHasta: "todas",
     grupos: [
       {
-        label: "Infraestructura Vial",
+        label: "Infraestructura y Proyectos",
         lsKey: "kw_tec_infra",
         color: "#7c3aed",
         bg: "#f5f3ff",
         border: "#ddd6fe",
-        defaults: ["Vial","Puentes","Caminos","Pavimento","Conservación Vial","Mejoramiento Vial","Señalización","Túnel","Bypass","Acceso Vial"]
+        defaults: ["Ingeniería de Detalle","Ingeniería Básica","Estudio de Factibilidad","Estudio Integral","Anteproyecto de Ingeniería","Preinversión","Iluminación Vial","Conservación de Infraestructura","Infraestructura Vial","Ingeniería de Transporte"]
       }
     ],
     servicios: {
@@ -110,7 +110,7 @@ const DIVISIONS = [
       color: "#16a34a",
       bg: "#f0fdf4",
       border: "#bbf7d0",
-      defaults: ["Estudio","Consultoría","Diseño","Prefactibilidad","Factibilidad","Diagnóstico","Inspección","Asesoría"]
+      defaults: ["Estudio","Consultoría","Diseño","Prefactibilidad","Factibilidad","Asesoría","Anteproyecto"]
     }
   },
   {
@@ -129,7 +129,7 @@ const DIVISIONS = [
         color: "#15803d",
         bg: "#f0fdf4",
         border: "#86efac",
-        defaults: ["Ambiental","Flora","Fauna","SEIA","Línea Base","Glaciar","Humedal","Biodiversidad","Ecosistema","DGA","CONAF","Impacto Ambiental"]
+        defaults: ["Estudio de Impacto Ambiental","Declaración de Impacto Ambiental","Pertinencia Ambiental","Línea de Base Ambiental","Monitoreo Ambiental","Seguimiento Ambiental","Prefactibilidad Ambiental","SEIA"]
       }
     ],
     servicios: {
@@ -137,7 +137,7 @@ const DIVISIONS = [
       color: "#16a34a",
       bg: "#f0fdf4",
       border: "#bbf7d0",
-      defaults: ["Estudio","Consultoría","Diagnóstico","Levantamiento","Catastro","Monitoreo","Asesoría"]
+      defaults: ["Estudio","Consultoría","Diagnóstico","Monitoreo","Asesoría","Análisis Ambiental"]
     }
   },
   {
@@ -151,12 +151,12 @@ const DIVISIONS = [
     defaultRegionHasta: "todas",
     grupos: [
       {
-        label: "Energía y Electricidad",
+        label: "Energía Renovable y Eficiencia",
         lsKey: "kw_tec_energia",
         color: "#b45309",
         bg: "#fffbeb",
         border: "#fde68a",
-        defaults: ["Energía","Eléctric","Transmisión","ERNC","Solar","Eólic","Subestación","Fotovoltaic","Generación","Eficiencia Energética","Red Eléctrica"]
+        defaults: ["Energía Renovable","Fotovoltaico","Energía Eólica","Hidrógeno Verde","Sistema de Almacenamiento de Energía","BESS","Eficiencia Energética","Diagnóstico Energético","Electromovilidad","Sistema de Autogeneración","Plan de Descarbonización","Asesoría de Propietario"]
       }
     ],
     servicios: {
@@ -164,7 +164,7 @@ const DIVISIONS = [
       color: "#16a34a",
       bg: "#f0fdf4",
       border: "#bbf7d0",
-      defaults: ["Estudio","Consultoría","Diseño","Inspección","Evaluación","Asesoría","Diagnóstico"]
+      defaults: ["Estudio","Consultoría","Diseño","Asesoría","Diagnóstico","Prefactibilidad","Factibilidad"]
     }
   },
   {
@@ -183,7 +183,7 @@ const DIVISIONS = [
         color: "#dc2626",
         bg: "#fef2f2",
         border: "#fecaca",
-        defaults: ["Inspección Técnica de Obras","ITO Vial","ITO Hidráulico","ITO Sanitario","Supervisión de Obras","Fiscalización de Obras","Control de Obras","Administración de Contratos de Obras","Inspector Técnico de Obras"]
+        defaults: ["Inspección Técnica de Obras","Supervisión de Obras","Contraparte Técnica","Control Documental","Supervisión de Calidad","Auditoría Técnica","Ensayos no Destructivos","Acompañamiento a la Construcción","Geomensura","Programación y Control","Auditoría Técnico Financiera"]
       }
     ],
     servicios: {
@@ -205,12 +205,12 @@ const DIVISIONS = [
     defaultRegionHasta: "todas",
     grupos: [
       {
-        label: "Ingeniería Civil",
+        label: "Ingeniería Civil y Obras",
         lsKey: "kw_tec_civil",
         color: "#475569",
         bg: "#f8fafc",
         border: "#cbd5e1",
-        defaults: ["Edificación","Estructural","Civil","Geotecnia","Fundación","Arquitectura","Sondaje","Mecánica de Suelos","Topografía","Cubicación"]
+        defaults: ["Paralelismo","Atraviesos","Movimiento de Tierras","Diseño de Caminos","Pavimentación Urbana","Gestión de Permisos DGA","Estudios Hidrogeológicos","Permisos de Edificación","Ingeniería Estructural"]
       }
     ],
     servicios: {
@@ -218,7 +218,34 @@ const DIVISIONS = [
       color: "#16a34a",
       bg: "#f0fdf4",
       border: "#bbf7d0",
-      defaults: ["Estudio","Diseño","Consultoría","Inspección","Cálculo","Diagnóstico","Asesoría"]
+      defaults: ["Estudio","Diseño","Consultoría","Inspección","Asesoría","Ingeniería"]
+    }
+  },
+  {
+    id: "mineria",
+    label: "Minería",
+    icon: "⛏️",
+    color: "#92400e",
+    bg: "#fef3c7",
+    border: "#92400e",
+    defaultRegionDesde: "todas",
+    defaultRegionHasta: "todas",
+    grupos: [
+      {
+        label: "Ingeniería Minera",
+        lsKey: "kw_tec_mineria",
+        color: "#92400e",
+        bg: "#fef3c7",
+        border: "#fcd34d",
+        defaults: ["Minería","Minera","Infraestructura Minera","Movimiento de Tierras","Expropiaciones","Plan de Descarbonización","Hoja de Ruta Energética","Obras Civiles Mina"]
+      }
+    ],
+    servicios: {
+      lsKey: "kw_serv_mineria",
+      color: "#16a34a",
+      bg: "#f0fdf4",
+      border: "#bbf7d0",
+      defaults: ["Estudio","Consultoría","Ingeniería","Asesoría","Diseño","Inspección"]
     }
   }
 ];
@@ -252,6 +279,29 @@ function migrarZonaSur() {
   }
 }
 migrarZonaSur();
+
+// ── Limpiar localStorage de divisiones con keywords actualizadas ──────────
+const VERSION_KW = "3.0";
+if (localStorage.getItem("kw_version") !== VERSION_KW) {
+  const keysToClean = [
+    "kw_vial_zonasur","kw_vial_zonasur_active",
+    "kw_hidro_zonasur","kw_hidro_zonasur_active",
+    "kw_servicio_zonasur","kw_servicio_zonasur_active",
+    "kw_tec_infra","kw_tec_infra_active",
+    "kw_serv_infra","kw_serv_infra_active",
+    "kw_tec_ma","kw_tec_ma_active",
+    "kw_serv_ma","kw_serv_ma_active",
+    "kw_tec_energia","kw_tec_energia_active",
+    "kw_serv_energia","kw_serv_energia_active",
+    "kw_tec_ito","kw_tec_ito_active",
+    "kw_serv_ito","kw_serv_ito_active",
+    "kw_tec_civil","kw_tec_civil_active",
+    "kw_serv_civil","kw_serv_civil_active",
+  ];
+  keysToClean.forEach(k => localStorage.removeItem(k));
+  localStorage.setItem("kw_version", VERSION_KW);
+  console.log("[LEN] Keywords actualizadas a v3.0 — localStorage limpiado");
+}
 
 // ── Inicializar estado de cada división ───────────────────────────────────
 function initDivState(div) {
