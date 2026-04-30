@@ -510,19 +510,13 @@ function App() {
   const efeTimerRef = useRef(null);
 
   const buscarEFE = async () => {
-    const { keywords, servicios } = getPortalKeywords("efe", divStates);
-    const searches = getPortalSearches("efe", divStates);
     setEfeLoading(true); setEfeError(""); setEfeSteps([]); setEfeResults([]); setEfeElapsed(0);
     if(efeAbortRef.current) efeAbortRef.current.abort();
     efeAbortRef.current = new AbortController();
     efeTimerRef.current = setInterval(() => setEfeElapsed(e => e+1), 1000);
     try {
-      const divLabels = searches.length ? searches.map(s=>s.divLabel).join(" + ") : "sin filtro";
-      setEfeSteps([{msg:`🚂 Buscando en EFE con keywords de ${divLabels}...`, state:"wait"}]);
-      const params = new URLSearchParams();
-      if(keywords.length) params.set("keywords", keywords.join(","));
-      if(servicios.length) params.set("servicios", servicios.join(","));
-      const res = await fetch(`${BACKEND_URL}/buscar-efe?${params}`, {signal: efeAbortRef.current.signal});
+      setEfeSteps([{msg:"🚂 Conectando con EFE Trenes de Chile...", state:"wait"}]);
+      const res = await fetch(`${BACKEND_URL}/buscar-efe`, {signal: efeAbortRef.current.signal});
       const data = await res.json();
       clearInterval(efeTimerRef.current);
       if(!res.ok) { setEfeError((data.error||"Error al consultar EFE") + " — Intenta de nuevo."); setEfeLoading(false); return; }
@@ -533,7 +527,7 @@ function App() {
         setEfeResults(uniq);
         setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100));
         setEfeSteps([{msg:`✅ ${uniq.length} licitaciones encontradas en EFE`, state:"ok"}]);
-      } else { setEfeError("Sin resultados. Activa keywords en Infraestructura o ITO."); }
+      } else { setEfeError("Sin resultados vigentes en EFE."); }
     } catch(e) {
       clearInterval(efeTimerRef.current);
       if(e.name!=="AbortError") setEfeError(`Error: ${e.message}`);
@@ -1001,14 +995,11 @@ function App() {
     await new Promise(r => setTimeout(r, 2000));
     addProg("efe", "🚂 EFE — buscando...", "wait");
     try {
-      const tecnicasEfe = efeKw.filter(k => efeActive.has(k));
-      const serviciosEfe = efeServ.filter(k => efeServActive.has(k));
-      const params = new URLSearchParams();
-      if(tecnicasEfe.length) params.set("keywords", tecnicasEfe.join(","));
-      if(serviciosEfe.length) params.set("servicios", serviciosEfe.join(","));
-      const res = await fetch(`${BACKEND_URL}/buscar-efe?${params}`, {signal: generalAbortRef.current.signal});
+      const res = await fetch(`${BACKEND_URL}/buscar-efe`, {signal: generalAbortRef.current.signal});
       const data = await res.json();
-      const uniq = deduplicar(data.resultados || []);
+      const ESTADOS_ACTIVOS_EFE = ["EN VENTA DE BASES","EN PERÍODO","EN PERIODO","CHARLA INFORMATIVA","CONSULTAS Y RESPUESTAS","EN RECEPCIÓN","EN RECEPCION DE OFERTAS"];
+      const filtrados = soloVigentesGlobal ? (data.resultados||[]).filter(r => ESTADOS_ACTIVOS_EFE.some(e => (r.estado||"").toUpperCase().includes(e))) : (data.resultados||[]);
+      const uniq = deduplicar(filtrados);
       nuevosResultados["efe"] = uniq;
       if(uniq.length) { setEfeResults(uniq); setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100)); }
       addProg("efe", `🚂 EFE — ${uniq.length} resultado(s)`, uniq.length > 0 ? "ok" : "empty");
@@ -1646,7 +1637,7 @@ function App() {
           <div style={{background:"white",borderRadius:12,padding:20,marginBottom:14,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
             <div style={{fontWeight:700,fontSize:14,marginBottom:8}}>🚂 EFE — Empresa de Ferrocarriles del Estado</div>
             <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#15803d",marginBottom:16}}>
-              🚂 EFE usa las keywords activas de <b>Infraestructura</b> e <b>Inspección Técnica</b> — configúralas desde esas divisiones en LEN-MP.
+              🚂 EFE muestra todas sus licitaciones activas sin filtro — son todas del rubro ferroviario. Usa el toggle de vigentes para filtrar por estado.
             </div>
 
             {/* Filtro vigentes */}
