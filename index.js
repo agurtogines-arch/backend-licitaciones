@@ -42,6 +42,78 @@ function extraerRegionDeTexto(texto) {
   return null;
 }
 
+// ── Clasificador de divisiones LEN ────────────────────────────────────────
+const DIVISIONES_LEN = [
+  {
+    id: "zonasur", label: "Zona Sur", icon: "🌊", color: "#0369a1",
+    keywords: ["vial","seguridad vial","puentes","caminos","transito","pavimento","diseño geometrico","prefactibilidad","factibilidad","hidraulica","hidrologia","aguas lluvias","cauces","apr","saneamiento","alcantarillado","planta de tratamiento","planta elevadora","conducciones","inundaciones","drenaje","cuencas"],
+    servicios: ["estudio","consultoria","asesoria","diseno","inspeccion","levantamiento"],
+    regiones: ["7","16","8","9","14","10","11","12"] // Maule → Magallanes
+  },
+  {
+    id: "infra", label: "Infraestructura", icon: "🛣️", color: "#7c3aed",
+    keywords: ["ingenieria de detalle","ingenieria basica","estudio de factibilidad","anteproyecto","preinversion","iluminacion vial","conservacion vial","infraestructura vial","ingenieria vial","transporte vial"],
+    servicios: ["estudio","consultoria","diseno","prefactibilidad","factibilidad","asesoria","anteproyecto","inspeccion"]
+  },
+  {
+    id: "medioambiente", label: "Medio Ambiente", icon: "🌿", color: "#15803d",
+    keywords: ["ambiental","seia","impacto ambiental","pertinencia ambiental","linea de base","monitoreo ambiental","seguimiento ambiental","declaracion de impacto"],
+    servicios: ["estudio","consultoria","monitoreo","asesoria","levantamiento"]
+  },
+  {
+    id: "energia", label: "Energía", icon: "⚡", color: "#b45309",
+    keywords: ["fotovoltaico","eolico","solar","ernc","bess","eficiencia energetica","hidrogeno verde","electromovilidad","energia renovable","descarbonizacion","autogeneracion","energetico"],
+    servicios: ["estudio","consultoria","diseno","asesoria","diagnostico","prefactibilidad","factibilidad","ingenieria"]
+  },
+  {
+    id: "ito", label: "Inspección Técnica", icon: "🔍", color: "#dc2626",
+    keywords: ["inspeccion tecnica","supervision de obras","contraparte tecnica","ito","fiscalizacion de obras","control de obras","auditoria tecnica","geomensura","supervision tecnica","acompanamiento","inspeccion fiscal"],
+    servicios: ["inspeccion","supervision","fiscalizacion","control","auditoria","asesoria"]
+  },
+  {
+    id: "civil", label: "Proyectos Civiles", icon: "🏗️", color: "#475569",
+    keywords: ["paralelismo","atraviesos","movimiento de tierras","pavimentacion","permisos dga","hidrogeologia","obras tempranas","ingenieria estructural","obras civiles","urbanizacion"],
+    servicios: ["estudio","diseno","consultoria","inspeccion","asesoria","ingenieria"]
+  },
+  {
+    id: "mineria", label: "Minería", icon: "⛏️", color: "#92400e",
+    keywords: ["mineria","minera","minero","mina","expropiaciones","descarbonizacion","hoja de ruta","faena"],
+    servicios: ["estudio","consultoria","ingenieria","asesoria","diseno","inspeccion"]
+  }
+];
+
+const CODIGOS_ZONA_SUR = new Set(["7","16","8","9","14","10","11","12"]);
+
+function normDiv(s) {
+  return (s||"").toLowerCase()
+    .replace(/[áàä]/g,"a").replace(/[éèë]/g,"e").replace(/[íìï]/g,"i")
+    .replace(/[óòö]/g,"o").replace(/[úùü]/g,"u").replace(/ñ/g,"n")
+    .replace(/['''`´]/g,"").trim();
+}
+
+function stemDiv(t) { return t.length >= 6 ? t.slice(0,-2) : t; }
+
+function matchDivKw(titulo, kw) {
+  const tNorm = normDiv(titulo);
+  return normDiv(kw).split(/\s+/).filter(t=>t.length>=3).every(t=>tNorm.includes(stemDiv(t)));
+}
+
+function clasificarDivisiones(titulo, codigoRegion) {
+  const divisiones = [];
+  for (const div of DIVISIONES_LEN) {
+    const matchTec = div.keywords.some(kw => matchDivKw(titulo, kw));
+    if (!matchTec) continue;
+    const matchServ = div.servicios.length === 0 || div.servicios.some(s => matchDivKw(titulo, s));
+    if (!matchServ) continue;
+    // Para Zona Sur verificar región si está disponible
+    if (div.id === "zonasur" && codigoRegion && !CODIGOS_ZONA_SUR.has(codigoRegion)) continue;
+    divisiones.push({ id: div.id, label: div.label, icon: div.icon, color: div.color });
+  }
+  return divisiones;
+}
+
+
+
 function estadoTexto(codigo) {
   const m = { "5":"Publicada","6":"Cerrada","7":"Desierta","8":"Adjudicada",
               "9":"Revocada","10":"Suspendida","15":"Publicada","18":"Adjudicada" };
@@ -197,7 +269,8 @@ app.get("/buscar", async (req, res) => {
         monto:            null,
         descripcion:      "",
         url:              `https://www.mercadopublico.cl/Procurement/Modules/RFB/DetailsAcquisition.aspx?idlicitacion=${l.CodigoExterno}`,
-        fuente:           "Mercado Público"
+        fuente:           "Mercado Público",
+        divisiones:       clasificarDivisiones(titulo, regionExtraida?.codigo || null)
       };
     });
 
@@ -284,8 +357,9 @@ app.post("/buscar-general", async (req, res) => {
     const mapItem = l => {
       const textoCompleto  = `${l.Nombre || ""} ${l.Descripcion || ""}`;
       const regionExtraida = extraerRegionDeTexto(textoCompleto);
+      const titulo = l.Nombre || "Sin título";
       return {
-        titulo:          l.Nombre || "Sin título",
+        titulo,
         codigo:          l.CodigoExterno || "",
         organismo:       "–",
         region:          regionExtraida?.nombre || null,
@@ -296,7 +370,8 @@ app.post("/buscar-general", async (req, res) => {
         monto:           null,
         descripcion:     "",
         url:             `https://www.mercadopublico.cl/Procurement/Modules/RFB/DetailsAcquisition.aspx?idlicitacion=${l.CodigoExterno}`,
-        fuente:          "Mercado Público"
+        fuente:          "Mercado Público",
+        divisiones:      clasificarDivisiones(titulo, regionExtraida?.codigo || null)
       };
     };
 
@@ -421,7 +496,8 @@ app.get("/buscar-organismo", async (req, res) => {
         monto:            null,
         descripcion:      "",
         url:              `https://www.mercadopublico.cl/Procurement/Modules/RFB/DetailsAcquisition.aspx?idlicitacion=${l.CodigoExterno}`,
-        fuente:           "Mercado Público"
+        fuente:           "Mercado Público",
+        divisiones:       clasificarDivisiones(titulo, regionExtraida?.codigo || null)
       };
     });
 
@@ -1356,17 +1432,21 @@ app.get("/buscar-efe", async (req, res) => {
     const ESTADOS_ACTIVOS = ["EN VENTA DE BASES","EN PERÍODO DE INSCRIPCIÓN","EN PERIODO DE INSCRIPCIÓN",
       "CHARLA INFORMATIVA","CONSULTAS Y RESPUESTAS","EN RECEPCIÓN DE OFERTAS","EN RECEPCION DE OFERTAS"];
 
-    const licitaciones = items.map(item => ({
-      titulo:           cleanHtml(item[1] || "").replace(/^Descripción/i, "").trim(),
-      estado:           cleanHtml(item[0] || "").replace(/^Estado/i, "").trim(),
-      fechaPublicacion: extractDate(item[2]),
-      fechaCierre:      extractDate(item[3]),
-      url:              extractUrl(item[4] || ""),
-      organismo:        "EFE Trenes de Chile",
-      region:           null,
-      fuente:           "EFE",
-      codigo:           ""
-    })).filter(l => l.titulo && ESTADOS_ACTIVOS.some(e => l.estado.toUpperCase().includes(e)));
+    const licitaciones = items.map(item => {
+      const titulo = cleanHtml(item[1] || "").replace(/^Descripción/i, "").trim();
+      return {
+        titulo,
+        estado:           cleanHtml(item[0] || "").replace(/^Estado/i, "").trim(),
+        fechaPublicacion: extractDate(item[2]),
+        fechaCierre:      extractDate(item[3]),
+        url:              extractUrl(item[4] || ""),
+        organismo:        "EFE Trenes de Chile",
+        region:           null,
+        fuente:           "EFE",
+        codigo:           "",
+        divisiones:       clasificarDivisiones(titulo, null)
+      };
+    }).filter(l => l.titulo && ESTADOS_ACTIVOS.some(e => l.estado.toUpperCase().includes(e)));
 
     // Paso 4: Filtrar por keywords si se proporcionan
     const norm = s => (s || "").toLowerCase()
@@ -1430,7 +1510,8 @@ app.get("/buscar-minvu", async (req, res) => {
         descripcion:     "",
         url:             p.link || "",
         fuente:          "MINVU",
-        codigo_fuente:   "minvu"
+        codigo_fuente:   "minvu",
+        divisiones:      clasificarDivisiones(titulo, null)
       };
     }).filter(l => l.titulo);
 
@@ -1579,6 +1660,7 @@ app.get("/buscar-psa", async (req, res) => {
         descripcion: "",
         url,
         fuente: "Puerto San Antonio",
+        divisiones: clasificarDivisiones(titulo, "5")
       });
     }
 
@@ -1641,7 +1723,8 @@ app.get("/buscar-metro", async (req, res) => {
         descripcion:     `Línea/Tipo: ${tipo} | Fecha estimada: ${fecha}`,
         url:             "https://www.metro.cl/licitaciones/proximas-licitaciones",
         fuente:          "Metro",
-        tipo
+        tipo,
+        divisiones:      clasificarDivisiones(titulo, "13")
       });
     }
 
