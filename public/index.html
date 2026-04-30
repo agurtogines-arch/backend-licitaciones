@@ -67,7 +67,7 @@ const DIVISIONS = [
         color: "#2563eb",
         bg: "#eff6ff",
         border: "#bfdbfe",
-        defaults: ["Vial","Seguridad Vial","Prefactibilidad Vial","Factibilidad Vial","Puentes","Caminos","Diseño Geométrico","Tránsito"]
+        defaults: ["Vial","Seguridad Vial","Puentes","Caminos","Tránsito","Pavimento","Diseño Geométrico","Prefactibilidad","Factibilidad"]
       },
       {
         label: "Hidráulica / Hidrología",
@@ -75,7 +75,7 @@ const DIVISIONS = [
         color: "#0891b2",
         bg: "#ecfeff",
         border: "#a5f3fc",
-        defaults: ["Hidráulica","Hidrología","Aguas Lluvias","Modificación de Cauces","APR","Saneamiento","Alcantarillado","Planta de Tratamiento","Planta Elevadora","Catastro de Redes","Conducciones","Inundaciones"]
+        defaults: ["Hidráulica","Hidrología","Aguas Lluvias","Cauces","APR","Saneamiento","Alcantarillado","Planta de Tratamiento","Planta Elevadora","Conducciones","Inundaciones","Drenaje","Cuencas"]
       }
     ],
     servicios: {
@@ -102,7 +102,7 @@ const DIVISIONS = [
         color: "#7c3aed",
         bg: "#f5f3ff",
         border: "#ddd6fe",
-        defaults: ["Ingeniería de Detalle","Ingeniería Básica","Estudio de Factibilidad","Estudio Integral","Anteproyecto","Preinversión","Iluminación Vial","Conservación Vial","Infraestructura Vial","Transporte"]
+        defaults: ["Ingeniería de Detalle","Ingeniería Básica","Estudio de Factibilidad","Anteproyecto","Preinversión","Iluminación Vial","Conservación Vial","Infraestructura Vial","Ingeniería Vial","Estudio de Transporte"]
       }
     ],
     servicios: {
@@ -110,7 +110,7 @@ const DIVISIONS = [
       color: "#16a34a",
       bg: "#f0fdf4",
       border: "#bbf7d0",
-      defaults: ["Estudio","Consultoría","Diseño","Prefactibilidad","Factibilidad","Asesoría","Anteproyecto"]
+      defaults: ["Estudio","Consultoría","Diseño","Prefactibilidad","Factibilidad","Asesoría","Anteproyecto","Inspección"]
     }
   },
   {
@@ -129,7 +129,7 @@ const DIVISIONS = [
         color: "#15803d",
         bg: "#f0fdf4",
         border: "#86efac",
-        defaults: ["Impacto Ambiental","SEIA","Pertinencia Ambiental","Línea de Base","Monitoreo Ambiental","Seguimiento Ambiental","Declaración de Impacto","Ambiental"]
+        defaults: ["Ambiental","SEIA","Impacto Ambiental","Pertinencia Ambiental","Línea de Base","Monitoreo Ambiental","Seguimiento Ambiental","DIA","EIA","Flora","Fauna"]
       }
     ],
     servicios: {
@@ -137,7 +137,7 @@ const DIVISIONS = [
       color: "#16a34a",
       bg: "#f0fdf4",
       border: "#bbf7d0",
-      defaults: ["Estudio","Consultoría","Diagnóstico","Monitoreo","Asesoría","Análisis"]
+      defaults: ["Estudio","Consultoría","Diagnóstico","Monitoreo","Asesoría","Análisis","Levantamiento"]
     }
   },
   {
@@ -156,7 +156,7 @@ const DIVISIONS = [
         color: "#b45309",
         bg: "#fffbeb",
         border: "#fde68a",
-        defaults: ["Energía Renovable","Fotovoltaico","Eólico","Hidrógeno Verde","BESS","Eficiencia Energética","Diagnóstico Energético","Electromovilidad","Autogeneración","Descarbonización","Energía Solar"]
+        defaults: ["Fotovoltaico","Eólico","Solar","ERNC","BESS","Eficiencia Energética","Hidrógeno Verde","Electromovilidad","Energía Renovable","Descarbonización","Autogeneración","Energético"]
       }
     ],
     servicios: {
@@ -164,7 +164,7 @@ const DIVISIONS = [
       color: "#16a34a",
       bg: "#f0fdf4",
       border: "#bbf7d0",
-      defaults: ["Estudio","Consultoría","Diseño","Asesoría","Diagnóstico","Prefactibilidad","Factibilidad"]
+      defaults: ["Estudio","Consultoría","Diseño","Asesoría","Diagnóstico","Prefactibilidad","Factibilidad","Ingeniería"]
     }
   },
   {
@@ -183,7 +183,7 @@ const DIVISIONS = [
         color: "#dc2626",
         bg: "#fef2f2",
         border: "#fecaca",
-        defaults: ["Inspección Técnica de Obras","Supervisión de Obras","Contraparte Técnica","Control Documental","Supervisión de Calidad","Auditoría Técnica","Ensayos no Destructivos","Geomensura","Programación y Control","Auditoría Técnico Financiera"]
+        defaults: ["Inspección Técnica","Supervisión de Obras","Contraparte Técnica","ITO","Fiscalización de Obras","Control de Obras","Auditoría Técnica","Geomensura","Supervisión Técnica","Acompañamiento","Inspección Fiscal"]
       }
     ],
     servicios: {
@@ -191,7 +191,7 @@ const DIVISIONS = [
       color: "#16a34a",
       bg: "#f0fdf4",
       border: "#bbf7d0",
-      defaults: []
+      defaults: ["Inspección","Supervisión","Fiscalización","Control","Auditoría","Asesoría"]
     }
   },
   {
@@ -210,7 +210,7 @@ const DIVISIONS = [
         color: "#475569",
         bg: "#f8fafc",
         border: "#cbd5e1",
-        defaults: ["Paralelismo","Atraviesos","Movimiento de Tierras","Pavimentación","Permisos DGA","Hidrogeología","Permisos Vialidad","Obras Tempranas","Ingeniería Estructural"]
+        defaults: ["Paralelismo","Atraviesos","Movimiento de Tierras","Pavimentación","Permisos DGA","Hidrogeología","Obras Tempranas","Ingeniería Estructural","Obras Civiles","Urbanización"]
       }
     ],
     servicios: {
@@ -237,7 +237,7 @@ const DIVISIONS = [
         color: "#92400e",
         bg: "#fef3c7",
         border: "#fcd34d",
-        defaults: ["Minería","Minera","Minero","Expropiaciones","Descarbonización","Hoja de Ruta"]
+        defaults: ["Minería","Minera","Minero","Mina","Expropiaciones","Descarbonización","Hoja de Ruta","Faena"]
       }
     ],
     servicios: {
@@ -281,7 +281,7 @@ function migrarZonaSur() {
 migrarZonaSur();
 
 // ── Limpiar localStorage de divisiones con keywords actualizadas ──────────
-const VERSION_KW = "3.1";
+const VERSION_KW = "3.2";
 if (localStorage.getItem("kw_version") !== VERSION_KW) {
   const keysToClean = [
     "kw_vial_zonasur","kw_vial_zonasur_active",
