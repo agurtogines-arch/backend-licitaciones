@@ -1308,7 +1308,7 @@ app.get("/buscar-efe", async (req, res) => {
 
     // Estados activos de EFE (excluir ADJUDICADA, DESIERTO, etc.)
     const ESTADOS_ACTIVOS = ["EN VENTA DE BASES","EN PERÍODO DE INSCRIPCIÓN","EN PERIODO DE INSCRIPCIÓN",
-      "CHARLA INFORMATIVA","CONSULTAS Y RESPUESTAS","EN RECEPCIÓN DE OFERTAS","EN EVALUACIÓN","EN EVALUACION"];
+      "CHARLA INFORMATIVA","CONSULTAS Y RESPUESTAS","EN RECEPCIÓN DE OFERTAS","EN RECEPCION DE OFERTAS"];
 
     const licitaciones = items.map(item => ({
       titulo:           cleanHtml(item[1] || "").replace(/^Descripción/i, "").trim(),
