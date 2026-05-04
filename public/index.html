@@ -1575,7 +1575,6 @@ function App() {
                       <span style={{background:"#fefce8",color:"#854d0e",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>📍 {r.region||"Cargando región..."}</span>
                     </div>
                     {r.divisiones && r.divisiones.length > 0 && <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:4}}>{r.divisiones.map((d,i)=><span key={i} style={{background:d.color+"18",color:d.color,border:`1px solid ${d.color}44`,fontSize:10,padding:"1px 7px",borderRadius:99,fontWeight:700}}>{d.icon} {d.label}</span>)}</div>}
-                    {r.divisiones&&r.divisiones.length>0&&<div style={{display:'flex',gap:4,flexWrap:'wrap',marginBottom:4}}>{r.divisiones.map((d,i)=><span key={i} style={{background:d.color+'18',color:d.color,fontSize:10,padding:'1px 7px',borderRadius:99,fontWeight:700,border:'1px solid '+d.color+'44'}}>{d.icon} {d.label}</span>)}</div>}
                     <div style={{fontWeight:700,fontSize:14,marginBottom:4,lineHeight:1.4}}>{r.titulo||"Sin título"}</div>
                     <div style={{fontSize:12,color:"#64748b",marginBottom:4}}>{r.organismo}</div>
                     {r.codigo && <div style={{fontSize:11,color:"#94a3b8",marginBottom:4}}>Código: {r.codigo}</div>}
@@ -1688,7 +1687,6 @@ function App() {
                     <span style={{background:"#fefce8",color:"#854d0e",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>📍 {r.region||"Cargando..."}</span>
                   </div>
                   {r.divisiones && r.divisiones.length > 0 && <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:4}}>{r.divisiones.map((d,i)=><span key={i} style={{background:d.color+"18",color:d.color,border:`1px solid ${d.color}44`,fontSize:10,padding:"1px 7px",borderRadius:99,fontWeight:700}}>{d.icon} {d.label}</span>)}</div>}
-                  {r.divisiones&&r.divisiones.length>0&&<div style={{display:'flex',gap:4,flexWrap:'wrap',marginBottom:4}}>{r.divisiones.map((d,i)=><span key={i} style={{background:d.color+'18',color:d.color,fontSize:10,padding:'1px 7px',borderRadius:99,fontWeight:700,border:'1px solid '+d.color+'44'}}>{d.icon} {d.label}</span>)}</div>}
                   <div style={{fontWeight:700,fontSize:14,marginBottom:4,lineHeight:1.4}}>{r.titulo}</div>
                   <div style={{fontSize:12,color:"#64748b",marginBottom:4}}>{r.organismo}</div>
                   {r.codigo && <div style={{fontSize:11,color:"#94a3b8",marginBottom:4}}>Código: {r.codigo}</div>}
@@ -1751,7 +1749,6 @@ function App() {
                     {r.fechaCierre && <span style={{background:"#fef2f2",color:"#dc2626",fontSize:11,padding:"2px 8px",borderRadius:12}}>⏰ Fin venta: {r.fechaCierre}</span>}
                   </div>
                   {r.divisiones && r.divisiones.length > 0 && <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:4}}>{r.divisiones.map((d,i)=><span key={i} style={{background:d.color+"18",color:d.color,border:`1px solid ${d.color}44`,fontSize:10,padding:"1px 7px",borderRadius:99,fontWeight:700}}>{d.icon} {d.label}</span>)}</div>}
-                  {r.divisiones&&r.divisiones.length>0&&<div style={{display:'flex',gap:4,flexWrap:'wrap',marginBottom:4}}>{r.divisiones.map((d,i)=><span key={i} style={{background:d.color+'18',color:d.color,fontSize:10,padding:'1px 7px',borderRadius:99,fontWeight:700,border:'1px solid '+d.color+'44'}}>{d.icon} {d.label}</span>)}</div>}
                   <div style={{fontWeight:700,fontSize:14,marginBottom:4,lineHeight:1.4}}>{r.titulo}</div>
                   <div style={{fontSize:12,color:"#64748b",marginBottom:8}}>EFE Trenes de Chile</div>
                   <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -1797,7 +1794,6 @@ function App() {
                     {r.fechaCierre && <span style={{background:"#fef2f2",color:"#dc2626",fontSize:11,padding:"2px 8px",borderRadius:12}}>⏰ Cierre: {r.fechaCierre}</span>}
                   </div>
                   {r.divisiones && r.divisiones.length > 0 && <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:4}}>{r.divisiones.map((d,i)=><span key={i} style={{background:d.color+"18",color:d.color,border:`1px solid ${d.color}44`,fontSize:10,padding:"1px 7px",borderRadius:99,fontWeight:700}}>{d.icon} {d.label}</span>)}</div>}
-                  {r.divisiones&&r.divisiones.length>0&&<div style={{display:'flex',gap:4,flexWrap:'wrap',marginBottom:4}}>{r.divisiones.map((d,i)=><span key={i} style={{background:d.color+'18',color:d.color,fontSize:10,padding:'1px 7px',borderRadius:99,fontWeight:700,border:'1px solid '+d.color+'44'}}>{d.icon} {d.label}</span>)}</div>}
                   <div style={{fontWeight:700,fontSize:14,marginBottom:4,lineHeight:1.4}}>{r.titulo}</div>
                   <div style={{fontSize:12,color:"#64748b",marginBottom:4}}>{r.organismo}</div>
                   {r.codigo && <div style={{fontSize:11,color:"#94a3b8",marginBottom:8}}>Código: {r.codigo}</div>}
@@ -1840,7 +1836,6 @@ function App() {
                     <span style={{background:"#fefce8",color:"#854d0e",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>📍 {r.region||"Norte"}</span>
                   </div>
                   {r.divisiones && r.divisiones.length > 0 && <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:4}}>{r.divisiones.map((d,i)=><span key={i} style={{background:d.color+"18",color:d.color,border:`1px solid ${d.color}44`,fontSize:10,padding:"1px 7px",borderRadius:99,fontWeight:700}}>{d.icon} {d.label}</span>)}</div>}
-                  {r.divisiones&&r.divisiones.length>0&&<div style={{display:'flex',gap:4,flexWrap:'wrap',marginBottom:4}}>{r.divisiones.map((d,i)=><span key={i} style={{background:d.color+'18',color:d.color,fontSize:10,padding:'1px 7px',borderRadius:99,fontWeight:700,border:'1px solid '+d.color+'44'}}>{d.icon} {d.label}</span>)}</div>}
                   <div style={{fontWeight:700,fontSize:14,marginBottom:8,lineHeight:1.4}}>{r.titulo}</div>
                   <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                     <button onClick={()=>verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>🤖 Analizar con IA</button>
@@ -1882,7 +1877,6 @@ function App() {
                     {r.codigo && <span style={{background:"#f0fdf4",color:"#15803d",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>{r.codigo}</span>}
                   </div>
                   {r.divisiones && r.divisiones.length > 0 && <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:4}}>{r.divisiones.map((d,i)=><span key={i} style={{background:d.color+"18",color:d.color,border:`1px solid ${d.color}44`,fontSize:10,padding:"1px 7px",borderRadius:99,fontWeight:700}}>{d.icon} {d.label}</span>)}</div>}
-                  {r.divisiones&&r.divisiones.length>0&&<div style={{display:'flex',gap:4,flexWrap:'wrap',marginBottom:4}}>{r.divisiones.map((d,i)=><span key={i} style={{background:d.color+'18',color:d.color,fontSize:10,padding:'1px 7px',borderRadius:99,fontWeight:700,border:'1px solid '+d.color+'44'}}>{d.icon} {d.label}</span>)}</div>}
                   <div style={{fontWeight:700,fontSize:14,marginBottom:8,lineHeight:1.4}}>{r.titulo}</div>
                   <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                     <button onClick={()=>verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>🤖 Analizar con IA</button>
@@ -1925,7 +1919,6 @@ function App() {
                     {r.fechaCierre && <span style={{background:"#f0fdf4",color:"#15803d",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>📅 Est. {r.fechaCierre}</span>}
                   </div>
                   {r.divisiones && r.divisiones.length > 0 && <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:4}}>{r.divisiones.map((d,i)=><span key={i} style={{background:d.color+"18",color:d.color,border:`1px solid ${d.color}44`,fontSize:10,padding:"1px 7px",borderRadius:99,fontWeight:700}}>{d.icon} {d.label}</span>)}</div>}
-                  {r.divisiones&&r.divisiones.length>0&&<div style={{display:'flex',gap:4,flexWrap:'wrap',marginBottom:4}}>{r.divisiones.map((d,i)=><span key={i} style={{background:d.color+'18',color:d.color,fontSize:10,padding:'1px 7px',borderRadius:99,fontWeight:700,border:'1px solid '+d.color+'44'}}>{d.icon} {d.label}</span>)}</div>}
                   <div style={{fontWeight:700,fontSize:14,marginBottom:8,lineHeight:1.4}}>{r.titulo}</div>
                   <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                     <button onClick={()=>verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>🤖 Analizar con IA</button>
