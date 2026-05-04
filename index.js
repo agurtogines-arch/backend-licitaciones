@@ -257,8 +257,9 @@ app.get("/buscar", async (req, res) => {
     let resultado = filtradas.map(l => {
       const textoCompleto  = `${l.Nombre || ""} ${l.Descripcion || ""}`;
       const regionExtraida = extraerRegionDeTexto(textoCompleto);
+      const titulo         = l.Nombre || "Sin título";
       return {
-        titulo:           l.Nombre || "Sin título",
+        titulo,
         codigo:           l.CodigoExterno || "",
         organismo:        "–",
         region:           regionExtraida?.nombre || null,
@@ -484,8 +485,9 @@ app.get("/buscar-organismo", async (req, res) => {
     let resultado = filtradas.map(l => {
       const textoCompleto  = `${l.Nombre || ""} ${l.Descripcion || ""}`;
       const regionExtraida = extraerRegionDeTexto(textoCompleto);
+      const titulo         = l.Nombre || "Sin título";
       return {
-        titulo:           l.Nombre || "Sin título",
+        titulo,
         codigo:           l.CodigoExterno || "",
         organismo:        "–",
         region:           regionExtraida?.nombre || null,
