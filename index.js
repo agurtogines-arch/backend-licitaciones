@@ -68,7 +68,7 @@ const DIVISIONES_LEN = [
   {
     id: "ito", label: "Inspección Técnica", icon: "🔍", color: "#dc2626",
     keywords: ["inspeccion tecnica","supervision de obras","contraparte tecnica","ito","fiscalizacion de obras","control de obras","auditoria tecnica","geomensura","supervision tecnica","acompanamiento","inspeccion fiscal"],
-    servicios: ["inspeccion tecnica","supervision de obras","fiscalizacion","auditoria","contraparte"]
+    servicios: [] // ITO se identifica por keywords técnicas, no necesita servicios
   },
   {
     id: "civil", label: "Proyectos Civiles", icon: "🏗️", color: "#475569",
