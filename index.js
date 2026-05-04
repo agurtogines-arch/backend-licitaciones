@@ -68,17 +68,17 @@ const DIVISIONES_LEN = [
   {
     id: "ito", label: "Inspección Técnica", icon: "🔍", color: "#dc2626",
     keywords: ["inspeccion tecnica","supervision de obras","contraparte tecnica","ito","fiscalizacion de obras","control de obras","auditoria tecnica","geomensura","supervision tecnica","acompanamiento","inspeccion fiscal"],
-    servicios: ["inspeccion","supervision","fiscalizacion","control","auditoria","asesoria"]
+    servicios: ["inspeccion tecnica","supervision de obras","fiscalizacion","auditoria","contraparte"]
   },
   {
     id: "civil", label: "Proyectos Civiles", icon: "🏗️", color: "#475569",
     keywords: ["paralelismo","atraviesos","movimiento de tierras","pavimentacion","permisos dga","hidrogeologia","obras tempranas","ingenieria estructural","obras civiles","urbanizacion"],
-    servicios: ["estudio","diseno","consultoria","inspeccion","asesoria","ingenieria"]
+    servicios: ["estudio","diseno","consultoria","ingenieria civil","asesoria"]
   },
   {
     id: "mineria", label: "Minería", icon: "⛏️", color: "#92400e",
     keywords: ["mineria","minera","minero","mina","expropiaciones","descarbonizacion","hoja de ruta","faena"],
-    servicios: ["estudio","consultoria","ingenieria","asesoria","diseno","inspeccion"]
+    servicios: ["estudio","consultoria","ingenieria","asesoria","diseno"]
   }
 ];
 
