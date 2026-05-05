@@ -4,10 +4,27 @@ const fetch   = require("node-fetch");
 const path    = require("path");
 const multer  = require("multer");
 const AdmZip  = require("adm-zip");
+const ExcelJS = require("exceljs");
 
 const app  = express();
 const PORT = process.env.PORT || 8080;
 const TICKET = process.env.MP_TICKET || "1FC8A3E9-5D72-495C-8340-83E5B1749B79";
+
+// ── Configuración Supabase (centralizada) ────────────────────────────────────
+const SUPABASE_URL = "https://veuzudobuiwtrigdxqjt.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZldXp1ZG9idWl3dHJpZ2R4cWp0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxODM2NTIsImV4cCI6MjA5MTc1OTY1Mn0.mb6Vo3-PmXKezJmSrLYbpCloEu8DPJglrBgkho63wYM";
+const SUPABASE_HEADERS = {
+  "apikey":        SUPABASE_KEY,
+  "Authorization": `Bearer ${SUPABASE_KEY}`,
+  "Content-Type":  "application/json"
+};
+
+// ── Identidad de LEN para detección de adjudicaciones ─────────────────────────
+const LEN_RUT = "83.665.200-2";
+function normalizarRut(rut) {
+  return (rut || "").toString().replace(/[.\-\s]/g, "").toLowerCase();
+}
+const LEN_RUT_NORMALIZADO = normalizarRut(LEN_RUT);
 
 app.use(cors({ origin: "*" }));
 app.options("*", cors());
@@ -113,6 +130,55 @@ function clasificarDivisiones(titulo, codigoRegion) {
     divisiones.push({ id: div.id, label: div.label, icon: div.icon, color: div.color });
   }
   return divisiones;
+}
+
+// ── Mapeo MOP → División sugerida ─────────────────────────────────────────────
+// Para cada especialidad MOP que LEN puede tomar, define la división interna
+// más probable. La función sugerirDivision combina esto con el clasificador
+// por keywords del título, para mayor robustez.
+const MOP_A_DIVISION = {
+  "1.1": "civil",        "1.2": "civil",        "1.3": "civil",
+  "2.2": "civil",
+  "3.1": "ito",          "3.2": "ito",          "3.3": "ito",   "3.6": "ito",
+  "3.7": "zonasur",      // Estudios Hidrológicos
+  "4.1": "civil",        "4.2": "civil",
+  "4.3": "zonasur",      // Obras Hidráulicas y Riego
+  "4.4": "energia",      // Obras Eléctricas
+  "4.5": "civil",        "4.6": "civil",
+  "4.7": "energia",      // Obras Térmicas
+  "4.8": "zonasur",      // Obras Sanitarias
+  // 4.9 Vial → depende de región (zonasur si sur, infra si centro/norte)
+  "4.10": "infra",       // Vialidad Urbana
+  "7.1": "ito",          "7.4": "ito",          "7.8": "ito",
+  "8.3": "ito",          "8.5": "ito",          "8.6": "ito",
+  "9.1": "medioambiente" // Estudios de Impacto Ambiental
+};
+
+// Sugiere división combinando especialidades MOP + clasificador por título.
+// Devuelve el id de la división (string) o null si no se pudo sugerir.
+function sugerirDivision(titulo, especialidadesMOP, codigoRegion) {
+  // Señal A: divisiones según keywords del título (ya existe)
+  const porKeywords = clasificarDivisiones(titulo || "", codigoRegion);
+
+  // Señal B: divisiones según especialidades MOP requeridas
+  const conteoMOP = {};
+  for (const esp of (especialidadesMOP || [])) {
+    let div = MOP_A_DIVISION[esp.codigo];
+    // Caso especial: 4.9 Vial depende de región
+    if (esp.codigo === "4.9") {
+      div = CODIGOS_ZONA_SUR.has(String(codigoRegion)) ? "zonasur" : "infra";
+    }
+    if (div) conteoMOP[div] = (conteoMOP[div] || 0) + 1;
+  }
+  const divPorMOP = Object.entries(conteoMOP).sort((a,b) => b[1]-a[1])[0]?.[0] || null;
+
+  // Combinar: si hay coincidencia entre MOP y keywords → doble confirmación
+  if (divPorMOP && porKeywords.some(d => d.id === divPorMOP)) return divPorMOP;
+  // Si solo hay MOP, usar MOP
+  if (divPorMOP) return divPorMOP;
+  // Si solo hay keywords, usar la primera
+  if (porKeywords.length > 0) return porKeywords[0].id;
+  return null;
 }
 
 // ── Registro Consultores MOP de LEN (Cert. N° 264614) ─────────────────────
@@ -1252,14 +1318,16 @@ Si no hay alertas relevantes, indica "Sin alertas críticas".`
 });
 
 // ── Guardar licitación en Gestor (Supabase) ───────────────────────────────────
+// ── Guardar licitación en Gestor (Supabase) ───────────────────────────────────
+// Enriquece automáticamente los datos consultando la API de MP para obtener
+// fechas, monto estimado, región. Sugiere división LEN basándose en título +
+// especialidades MOP (cuando aplica). Captura especialidades MOP via WebMethod
+// para guardarlas como JSON en la columna especialidades_mop_json.
 app.post("/mp/guardar-gestor", async (req, res) => {
-  const SUPABASE_URL  = "https://veuzudobuiwtrigdxqjt.supabase.co";
-  const SUPABASE_KEY  = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZldXp1ZG9idWl3dHJpZ2R4cWp0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxODM2NTIsImV4cCI6MjA5MTc1OTY1Mn0.mb6Vo3-PmXKezJmSrLYbpCloEu8DPJglrBgkho63wYM";
-
   const { item } = req.body;
   if (!item) return res.status(400).json({ error: "item requerido" });
 
-  // Parsear fecha de cierre al formato YYYY-MM-DD que espera Supabase
+  // ── Helpers locales ──────────────────────────────────────────────────────
   const parsearFecha = (str) => {
     if (!str || str === "–") return null;
     const p = str.split(/[-\/]/);
@@ -1267,32 +1335,93 @@ app.post("/mp/guardar-gestor", async (req, res) => {
     if (p.length === 3 && p[0].length === 4) return str.substring(0, 10);
     return null;
   };
-
-  // Steps inicializados en cero (14 pasos)
   const stepsInit = {};
   for (let i = 0; i < 14; i++) {
     stepsInit[i] = { done: false, notes: "", days: [1,2,2,2,1,1,1,2,2,1,2,5,2,1][i] };
   }
-
-  // Generar id único igual que el gestor frontend
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
 
+  // ── Enriquecimiento desde API de MP (fecha estimada, monto, región) ────
+  const datosExtra = {};
+  if (item.codigo) {
+    try {
+      const apiUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?codigo=${item.codigo}&ticket=${TICKET}`;
+      const apiRes = await fetch(apiUrl, { signal: AbortSignal.timeout(10000) });
+      if (apiRes.ok) {
+        const data = await apiRes.json();
+        const lic = data.Listado?.[0];
+        if (lic) {
+          datosExtra.fecha_publicacion           = (lic.Fechas?.FechaPublicacion || "").substring(0, 10) || null;
+          datosExtra.fecha_adjudicacion_estimada = lic.Fechas?.FechaEstimadaAdjudicacion || null;
+          datosExtra.monto_estimado              = parseFloat(lic.MontoEstimado) || null;
+          datosExtra.region                      = lic.Comprador?.RegionUnidad || null;
+        }
+      }
+    } catch (e) {
+      console.warn("[guardar-gestor] No se pudo enriquecer desde API:", e.message);
+    }
+  }
+
+  // ── Capturar especialidades MOP via WebMethod (ya tenemos la función) ──
+  let especialidadesMOP = Array.isArray(item.especialidadesMOP) ? item.especialidadesMOP : [];
+  if (especialidadesMOP.length === 0 && item.url && item.codigo) {
+    try {
+      const mpPage = await fetch(item.url, {
+        signal: AbortSignal.timeout(10000),
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+      });
+      if (mpPage.ok) {
+        const setCookies = mpPage.headers.raw ? mpPage.headers.raw()["set-cookie"] : null;
+        const cookieHeader = setCookies ? setCookies.map(c => c.split(";")[0]).join("; ") : "";
+        if (cookieHeader) {
+          especialidadesMOP = await obtenerEspecialidadesMOPviaAjax(item.codigo, cookieHeader);
+        }
+      }
+    } catch (e) {
+      console.warn("[guardar-gestor] No se pudieron extraer especialidades MOP:", e.message);
+    }
+  }
+
+  // ── Sugerir división LEN ─────────────────────────────────────────────────
+  // Determinar codigoRegion para resolver el caso 4.9 Vial
+  let codigoRegion = item.codigoRegion || null;
+  if (!codigoRegion && datosExtra.region) {
+    const r = REGIONES.find(reg => datosExtra.region.toLowerCase().includes(reg.oficial));
+    if (r) codigoRegion = r.codigo;
+  }
+  const divisionSugerida = sugerirDivision(item.titulo, especialidadesMOP, codigoRegion);
+
+  // ── Payload completo ──────────────────────────────────────────────────────
   const payload = {
-    id:          uid(),
-    nombre:      item.titulo || "Sin título",
-    codigo:      item.codigo || "No Indica",
-    mandante:    item.organismo || "–",
+    id:           uid(),
+    nombre:       item.titulo || "Sin título",
+    codigo:       item.codigo || "No Indica",
+    mandante:     item.organismo || "–",
     fecha_cierre: parsearFecha(item.fechaCierre),
-    responsable: "Ginés Agurto / Karina Montecinos",
-    steps_json:  stepsInit
+    responsable:  "Ginés Agurto / Karina Montecinos",
+    steps_json:   stepsInit,
+    // Nuevos campos
+    division_sugerida:        divisionSugerida,
+    division_len:             divisionSugerida, // pre-llenar con sugerencia (editable)
+    estado_proceso:           "Detectada",
+    especialidades_mop_json:  especialidadesMOP,
+    descripcion:              item.descripcion || null,
+    objetivos:                item.objetivos || null,
+    url:                      item.url || null,
+    fecha_publicacion:        datosExtra.fecha_publicacion || null,
+    fecha_adjudicacion_estimada: datosExtra.fecha_adjudicacion_estimada || null,
+    monto_estimado:           datosExtra.monto_estimado || null,
+    region:                   datosExtra.region || null
   };
 
   try {
-    // Verificar si ya existe la licitación por código para no duplicar
+    // Verificar duplicados por código
     if (item.codigo) {
       const checkRes = await fetch(
         `${SUPABASE_URL}/rest/v1/licitaciones?codigo=eq.${encodeURIComponent(item.codigo)}&select=id`,
-        { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } }
+        { headers: SUPABASE_HEADERS }
       );
       const existing = await checkRes.json();
       if (existing.length > 0) {
@@ -1302,22 +1431,23 @@ app.post("/mp/guardar-gestor", async (req, res) => {
 
     const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/licitaciones`, {
       method: "POST",
-      headers: {
-        "apikey":        SUPABASE_KEY,
-        "Authorization": `Bearer ${SUPABASE_KEY}`,
-        "Content-Type":  "application/json",
-        "Prefer":        "return=representation"
-      },
+      headers: { ...SUPABASE_HEADERS, "Prefer": "return=representation" },
       body: JSON.stringify(payload)
     });
 
     if (!insertRes.ok) {
       const err = await insertRes.text();
-      return res.status(502).json({ error: `Supabase respondió ${insertRes.status}: ${err.substring(0, 200)}` });
+      return res.status(502).json({ error: `Supabase respondió ${insertRes.status}: ${err.substring(0, 300)}` });
     }
 
     const data = await insertRes.json();
-    res.json({ ok: true, mensaje: "Licitación guardada en el gestor", id: data[0]?.id });
+    res.json({
+      ok: true,
+      mensaje: "Licitación guardada en el gestor",
+      id: data[0]?.id,
+      division_sugerida: divisionSugerida,
+      especialidades_mop: especialidadesMOP
+    });
 
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1797,6 +1927,343 @@ Responde ÚNICAMENTE con JSON válido sin markdown.`;
       res.status(500).json({ error: err.message });
     }
   });
+});
+
+// ── PATCH /mp/actualizar-licitacion/:id — edición desde el gestor ─────────────
+// Permite al frontend editar campos editables (whitelist) de una licitación.
+app.patch("/mp/actualizar-licitacion/:id", async (req, res) => {
+  const id = req.params.id;
+  const allowedFields = [
+    "division_len", "estado_proceso", "monto_ofertado_len",
+    "monto_estimado", "razon_resultado", "notas_internas",
+    "responsable", "steps_json"
+  ];
+  const updates = {};
+  for (const k of allowedFields) {
+    if (k in req.body) updates[k] = req.body[k];
+  }
+  if (Object.keys(updates).length === 0) {
+    return res.status(400).json({ error: "Sin campos válidos para actualizar" });
+  }
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/licitaciones?id=eq.${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { ...SUPABASE_HEADERS, "Prefer": "return=representation" },
+      body: JSON.stringify(updates)
+    });
+    if (!r.ok) {
+      const err = await r.text();
+      return res.status(502).json({ error: err.substring(0, 300) });
+    }
+    const data = await r.json();
+    if (!data || data.length === 0) {
+      return res.status(404).json({ error: "Licitación no encontrada" });
+    }
+    res.json({ ok: true, licitacion: data[0] });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Polling automático de adjudicaciones ──────────────────────────────────────
+// Cada 12 horas consulta la API de ChileCompra para licitaciones que están en
+// estados no-terminales (Detectada, En análisis, Postulada). Si MP las marca
+// como adjudicadas/desiertas/revocadas, actualiza Supabase. Cuando una se
+// adjudica, compara RUT del adjudicatario contra LEN_RUT para distinguir
+// "Adjudicada" (LEN ganó) vs "Perdida" (otro consultor).
+//
+// Optimización: solo polea licitaciones cuya fecha_adjudicacion_estimada ya
+// pasó (o que no tienen fecha estimada). Antes de esa fecha, MP no tiene
+// resultado y consultar es desperdicio.
+
+let pollingState = {
+  ultimo_inicio:    null,
+  ultimo_fin:       null,
+  ultimo_total:     0,
+  ultimo_actualizadas: 0,
+  ultimo_error:     null
+};
+
+async function pollingAdjudicaciones() {
+  pollingState.ultimo_inicio = new Date().toISOString();
+  pollingState.ultimo_error  = null;
+
+  try {
+    // Listar licitaciones aún en proceso (estados no-terminales)
+    const estadosActivos = ["Detectada", "En análisis", "Postulada"];
+    const filtroEstados = `estado_proceso=in.(${estadosActivos.map(e => `"${e}"`).join(",")})`;
+    const url = `${SUPABASE_URL}/rest/v1/licitaciones?${filtroEstados}&select=*`;
+
+    const r = await fetch(url, { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(20000) });
+    if (!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`);
+    const licitaciones = await r.json();
+
+    const ahora = new Date();
+    let totalRevisadas = 0;
+    let totalActualizadas = 0;
+
+    for (const lic of licitaciones) {
+      // Optimización: si tiene fecha estimada y aún falta más de 1 día, saltar
+      if (lic.fecha_adjudicacion_estimada) {
+        const estim = new Date(lic.fecha_adjudicacion_estimada);
+        const diffMs = estim - ahora;
+        const unDiaMs = 24 * 60 * 60 * 1000;
+        if (diffMs > unDiaMs) {
+          continue; // aún muy temprano para que MP tenga resultado
+        }
+      }
+
+      totalRevisadas++;
+
+      try {
+        const apiUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?codigo=${lic.codigo}&ticket=${TICKET}`;
+        const apiRes = await fetch(apiUrl, { signal: AbortSignal.timeout(15000) });
+        if (!apiRes.ok) continue;
+        const data = await apiRes.json();
+        const licData = data.Listado?.[0];
+        if (!licData) continue;
+
+        const updates = { ultimo_polling_at: new Date().toISOString() };
+        const estadoMP = (licData.Estado || "").trim();
+
+        // Detectar adjudicación
+        if (estadoMP === "Adjudicada") {
+          const items = licData.Items?.Listado || [];
+          let rutAdj = null;
+          let nombreAdj = null;
+          let montoAdj = 0;
+
+          for (const item of items) {
+            const adj = item.Adjudicacion;
+            if (!adj) continue;
+            rutAdj    = rutAdj    || adj.RutProveedor    || adj.RutOferente   || null;
+            nombreAdj = nombreAdj || adj.NombreProveedor || adj.NombreOferente|| null;
+            const unitario = parseFloat(adj.MontoUnitario || adj.Monto || 0);
+            const cantidad = parseFloat(adj.Cantidad || 1);
+            if (!isNaN(unitario)) montoAdj += unitario * cantidad;
+          }
+
+          updates.adjudicatario          = nombreAdj;
+          updates.adjudicatario_rut      = rutAdj;
+          updates.monto_adjudicado       = montoAdj > 0 ? montoAdj : null;
+          updates.fecha_adjudicacion_real = licData.Fechas?.FechaAdjudicacion || new Date().toISOString();
+
+          // Comparar RUT con LEN
+          if (rutAdj && normalizarRut(rutAdj) === LEN_RUT_NORMALIZADO) {
+            updates.estado_proceso = "Adjudicada";
+          } else {
+            updates.estado_proceso = "Perdida";
+          }
+        }
+        // Otros estados terminales
+        else if (estadoMP === "Desierta") {
+          updates.estado_proceso = "Desierta";
+        }
+        else if (estadoMP === "Revocada") {
+          updates.estado_proceso = "Revocada";
+        }
+
+        // Solo actualizar si hubo cambio relevante
+        if (updates.estado_proceso) {
+          const patchRes = await fetch(
+            `${SUPABASE_URL}/rest/v1/licitaciones?id=eq.${encodeURIComponent(lic.id)}`,
+            {
+              method: "PATCH",
+              headers: SUPABASE_HEADERS,
+              body: JSON.stringify(updates),
+              signal: AbortSignal.timeout(10000)
+            }
+          );
+          if (patchRes.ok) {
+            totalActualizadas++;
+            console.log(`[polling] ${lic.codigo} → ${updates.estado_proceso}`);
+          }
+        }
+      } catch (e) {
+        console.warn(`[polling] Error con ${lic.codigo}: ${e.message}`);
+      }
+    }
+
+    pollingState.ultimo_total        = totalRevisadas;
+    pollingState.ultimo_actualizadas = totalActualizadas;
+    pollingState.ultimo_fin          = new Date().toISOString();
+    console.log(`[polling] Revisadas=${totalRevisadas} actualizadas=${totalActualizadas}`);
+  } catch (e) {
+    pollingState.ultimo_error = e.message;
+    pollingState.ultimo_fin   = new Date().toISOString();
+    console.error("[polling] Error general:", e.message);
+  }
+}
+
+// Disparar cada 12 horas + 1 minuto después del arranque (para no esperar 12h)
+const POLLING_INTERVAL_MS = 12 * 60 * 60 * 1000;
+setInterval(pollingAdjudicaciones, POLLING_INTERVAL_MS);
+setTimeout(pollingAdjudicaciones, 60 * 1000);
+
+// Endpoint manual para disparar el polling (también usable por cron externo
+// tipo UptimeRobot para mantener el servidor despierto en Render Free)
+app.get("/mp/polling-adjudicaciones", (req, res) => {
+  pollingAdjudicaciones();
+  res.json({ ok: true, mensaje: "Polling iniciado en background", state: pollingState });
+});
+
+// Endpoint para ver estado del último polling
+app.get("/mp/polling-status", (req, res) => res.json(pollingState));
+
+// ── Exportar a Excel ─────────────────────────────────────────────────────────
+// Genera archivo .xlsx con todas las licitaciones del gestor + hoja de KPIs.
+// Devuelve el archivo como descarga.
+app.get("/mp/exportar-excel", async (req, res) => {
+  try {
+    // Obtener todas las licitaciones del gestor
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/licitaciones?select=*&order=fecha_deteccion.desc.nullslast`,
+      { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(30000) }
+    );
+    if (!r.ok) {
+      return res.status(502).json({ error: `Supabase ${r.status}` });
+    }
+    const licitaciones = await r.json();
+
+    // Mapa de divisiones para mostrar nombres legibles en lugar de IDs
+    const labelDivision = {};
+    for (const d of DIVISIONES_LEN) labelDivision[d.id] = `${d.icon} ${d.label}`;
+    const formatDiv = (id) => id ? (labelDivision[id] || id) : "Sin asignar";
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = "LEN Ingeniería - Agente de Licitaciones";
+    workbook.created = new Date();
+
+    // ── Hoja 1: Licitaciones ──────────────────────────────────────────────
+    const sheet = workbook.addWorksheet("Licitaciones", {
+      views: [{ state: "frozen", ySplit: 1 }]
+    });
+    sheet.columns = [
+      { header: "Código MP",         key: "codigo",                       width: 18 },
+      { header: "Nombre",            key: "nombre",                       width: 50 },
+      { header: "Mandante",          key: "mandante",                     width: 35 },
+      { header: "Región",            key: "region",                       width: 22 },
+      { header: "División LEN",      key: "division_label",               width: 22 },
+      { header: "Estado",            key: "estado_proceso",               width: 14 },
+      { header: "F. Detección",      key: "fecha_deteccion",              width: 14 },
+      { header: "F. Publicación",    key: "fecha_publicacion",            width: 14 },
+      { header: "F. Cierre",         key: "fecha_cierre",                 width: 14 },
+      { header: "F. Adjud. Estim.",  key: "fecha_adjudicacion_estimada",  width: 16 },
+      { header: "F. Adjud. Real",    key: "fecha_adjudicacion_real",      width: 14 },
+      { header: "Monto Estimado",    key: "monto_estimado",               width: 18, style: { numFmt: '"$"#,##0' } },
+      { header: "Monto LEN Ofertó",  key: "monto_ofertado_len",           width: 18, style: { numFmt: '"$"#,##0' } },
+      { header: "Monto Adjudicado",  key: "monto_adjudicado",             width: 18, style: { numFmt: '"$"#,##0' } },
+      { header: "Δ LEN vs Ganador",  key: "delta_pct",                    width: 18, style: { numFmt: '0.0%' } },
+      { header: "Adjudicatario",     key: "adjudicatario",                width: 35 },
+      { header: "RUT Adjud.",        key: "adjudicatario_rut",            width: 16 },
+      { header: "Razón Resultado",   key: "razon_resultado",              width: 40 },
+      { header: "Especialidades MOP",key: "especialidades_str",           width: 40 },
+      { header: "Descripción",       key: "descripcion",                  width: 60 },
+      { header: "Objetivos",         key: "objetivos",                    width: 60 },
+      { header: "URL",               key: "url",                          width: 30 },
+      { header: "Notas Internas",    key: "notas_internas",               width: 40 }
+    ];
+    sheet.getRow(1).font      = { bold: true, color: { argb: "FFFFFFFF" } };
+    sheet.getRow(1).fill      = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E40AF" } };
+    sheet.getRow(1).alignment = { vertical: "middle", horizontal: "center" };
+    sheet.getRow(1).height    = 28;
+
+    for (const lic of licitaciones) {
+      const delta = (lic.monto_ofertado_len && lic.monto_adjudicado && lic.monto_adjudicado !== 0)
+        ? (lic.monto_ofertado_len - lic.monto_adjudicado) / lic.monto_adjudicado
+        : null;
+      const espStr = Array.isArray(lic.especialidades_mop_json)
+        ? lic.especialidades_mop_json.map(e => `${e.codigo} ${e.descripcion} (${e.categoria})`).join(" | ")
+        : "";
+      sheet.addRow({
+        ...lic,
+        division_label:    formatDiv(lic.division_len),
+        delta_pct:         delta,
+        especialidades_str: espStr
+      });
+    }
+    sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: sheet.columns.length } };
+
+    // ── Hoja 2: KPIs ──────────────────────────────────────────────────────
+    const kpiSheet = workbook.addWorksheet("KPIs");
+    kpiSheet.columns = [
+      { header: "Indicador", key: "name",  width: 50 },
+      { header: "Valor",     key: "value", width: 22 }
+    ];
+    kpiSheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+    kpiSheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E40AF" } };
+
+    const total       = licitaciones.length;
+    const postuladas  = licitaciones.filter(l => ["Postulada","Adjudicada","Perdida"].includes(l.estado_proceso)).length;
+    const adjudicadas = licitaciones.filter(l => l.estado_proceso === "Adjudicada").length;
+    const perdidas    = licitaciones.filter(l => l.estado_proceso === "Perdida").length;
+    const desiertas   = licitaciones.filter(l => l.estado_proceso === "Desierta").length;
+    const tasaAdj     = postuladas > 0 ? (adjudicadas / postuladas) : 0;
+    const totalAdj    = licitaciones.filter(l => l.estado_proceso === "Adjudicada")
+                                    .reduce((s, l) => s + (l.monto_adjudicado || 0), 0);
+    const totalLENOferta = licitaciones.filter(l => l.monto_ofertado_len)
+                                       .reduce((s, l) => s + (l.monto_ofertado_len || 0), 0);
+
+    kpiSheet.addRow({ name: "RESUMEN GENERAL", value: "" }).font = { bold: true };
+    kpiSheet.addRow({ name: "Total licitaciones detectadas",       value: total });
+    kpiSheet.addRow({ name: "Postuladas (en proceso o cerradas)",  value: postuladas });
+    kpiSheet.addRow({ name: "Adjudicadas a LEN",                   value: adjudicadas });
+    kpiSheet.addRow({ name: "Perdidas",                            value: perdidas });
+    kpiSheet.addRow({ name: "Desiertas",                           value: desiertas });
+    const fila = kpiSheet.addRow({ name: "Tasa de adjudicación",   value: tasaAdj });
+    fila.getCell(2).numFmt = "0.0%";
+    const filaMonto = kpiSheet.addRow({ name: "Monto total adjudicado a LEN", value: totalAdj });
+    filaMonto.getCell(2).numFmt = '"$"#,##0';
+    const filaOferta = kpiSheet.addRow({ name: "Monto total ofertado por LEN (suma)", value: totalLENOferta });
+    filaOferta.getCell(2).numFmt = '"$"#,##0';
+
+    kpiSheet.addRow({});
+    kpiSheet.addRow({ name: "DETECTADAS POR DIVISIÓN", value: "" }).font = { bold: true };
+    const porDiv = {};
+    for (const lic of licitaciones) {
+      const d = formatDiv(lic.division_len);
+      porDiv[d] = (porDiv[d] || 0) + 1;
+    }
+    Object.entries(porDiv).sort((a,b) => b[1]-a[1]).forEach(([d,c]) => {
+      kpiSheet.addRow({ name: `   ${d}`, value: c });
+    });
+
+    kpiSheet.addRow({});
+    kpiSheet.addRow({ name: "ADJUDICADAS POR DIVISIÓN", value: "" }).font = { bold: true };
+    const adjPorDiv = {};
+    for (const lic of licitaciones.filter(l => l.estado_proceso === "Adjudicada")) {
+      const d = formatDiv(lic.division_len);
+      adjPorDiv[d] = (adjPorDiv[d] || 0) + 1;
+    }
+    Object.entries(adjPorDiv).sort((a,b) => b[1]-a[1]).forEach(([d,c]) => {
+      kpiSheet.addRow({ name: `   ${d}`, value: c });
+    });
+
+    // ── Generar y enviar ──────────────────────────────────────────────────
+    const filename = `licitaciones_LEN_${new Date().toISOString().slice(0,10)}.xlsx`;
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (e) {
+    console.error("[exportar-excel]", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Listar licitaciones del gestor (frontend) ────────────────────────────────
+app.get("/mp/listar-gestor", async (req, res) => {
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/licitaciones?select=*&order=fecha_deteccion.desc.nullslast`,
+      { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(15000) }
+    );
+    if (!r.ok) return res.status(502).json({ error: `Supabase ${r.status}` });
+    const data = await r.json();
+    res.json({ ok: true, total: data.length, licitaciones: data });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.listen(PORT, () => console.log(`Backend licitaciones en puerto ${PORT} | Ticket: ${TICKET.substring(0,8)}...`));
