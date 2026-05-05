@@ -6,110 +6,111 @@
 <title>Gestor de Licitaciones — LEN Ingeniería</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0efea; color: #1e1e1c; font-size: 14px; line-height: 1.55; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; font-size: 14px; line-height: 1.55; }
 
 /* ── SETUP SCREEN ── */
 #view-setup { display:none; min-height:100vh; align-items:center; justify-content:center; padding:24px; }
 .setup-card { background:#fff; border-radius:16px; padding:36px; max-width:500px; width:100%; box-shadow:0 8px 40px rgba(0,0,0,.12); }
 .setup-card h1 { font-size:20px; font-weight:700; margin-bottom:6px; }
-.setup-card .sub { font-size:13px; color:#6b6a64; margin-bottom:28px; line-height:1.6; }
-.setup-steps { background:#f5f4f0; border-radius:10px; padding:16px; margin-bottom:24px; font-size:12.5px; color:#3d3d3a; line-height:1.8; }
-.setup-steps strong { color:#1e1e1c; }
-.setup-steps a { color:#534ab7; }
+.setup-card .sub { font-size:13px; color:#475569; margin-bottom:28px; line-height:1.6; }
+.setup-steps { background:#f1f5f9; border-radius:10px; padding:16px; margin-bottom:24px; font-size:12.5px; color:#334155; line-height:1.8; }
+.setup-steps strong { color:#1e293b; }
+.setup-steps a { color:#1E2D5A; }
 .ff { display:flex; flex-direction:column; gap:4px; margin-bottom:14px; }
-.ff label { font-size:10px; font-weight:700; color:#6b6a64; text-transform:uppercase; letter-spacing:.05em; }
-.ff input { border:1px solid #dddbd2; border-radius:7px; padding:9px 12px; font-size:13px; font-family:inherit; transition:border-color .15s; }
-.ff input:focus { outline:none; border-color:#7f77dd; }
-.ff .hint { font-size:11px; color:#aaa9a2; margin-top:2px; }
-.btn-setup { width:100%; padding:11px; background:#534ab7; color:#fff; border:none; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; margin-top:8px; }
+.ff label { font-size:10px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:.05em; }
+.ff input { border:1px solid #e2e8f0; border-radius:7px; padding:9px 12px; font-size:13px; font-family:inherit; transition:border-color .15s; }
+.ff input:focus { outline:none; border-color:#2d4a8a; }
+.ff .hint { font-size:11px; color:#94a3b8; margin-top:2px; }
+.btn-setup { width:100%; padding:11px; background:#1E2D5A; color:#fff; border:none; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; margin-top:8px; }
 .btn-setup:hover { background:#3c3489; }
-.err-msg { background:#fcebeb; color:#a32d2d; border-radius:6px; padding:9px 12px; font-size:12px; margin-top:12px; display:none; }
+.err-msg { background:#fef2f2; color:#dc2626; border-radius:6px; padding:9px 12px; font-size:12px; margin-top:12px; display:none; }
 
 /* ── SHARED ── */
 .btn { padding:7px 16px; border-radius:6px; font-size:13px; font-weight:500; cursor:pointer; border:1px solid; transition:all .15s; font-family:inherit; }
 .btn:hover { filter:brightness(.93); }
-.btn-ghost  { background:#fff; color:#1e1e1c; border-color:#ccc9bf; }
-.btn-purple { background:#534ab7; color:#fff; border-color:#534ab7; }
-.btn-teal   { background:#0f6e56; color:#fff; border-color:#0f6e56; }
-.btn-red    { background:#a32d2d; color:#fff; border-color:#a32d2d; font-size:12px; padding:5px 12px; }
-.btn-amber  { background:#ef9f27; color:#fff; border-color:#ef9f27; font-size:12px; padding:5px 12px; }
-.btn-gray   { background:#888780; color:#fff; border-color:#888780; font-size:12px; padding:5px 12px; }
+.btn-ghost  { background:#fff; color:#1e293b; border-color:#cbd5e1; }
+.btn-purple { background:#F5B731; color:#1E2D5A; border-color:#F5B731; font-weight:700; }
+.btn-purple:hover { background:#e0a420; }
+.btn-teal   { background:#15803d; color:#fff; border-color:#15803d; }
+.btn-red    { background:#dc2626; color:#fff; border-color:#dc2626; font-size:12px; padding:5px 12px; }
+.btn-amber  { background:#F5B731; color:#fff; border-color:#F5B731; font-size:12px; padding:5px 12px; }
+.btn-gray   { background:#64748b; color:#fff; border-color:#64748b; font-size:12px; padding:5px 12px; }
 
 /* ── LOADING ── */
-.spinner { display:inline-block; width:16px; height:16px; border:2px solid #dddbd2; border-top-color:#534ab7; border-radius:50%; animation:spin .7s linear infinite; vertical-align:middle; margin-right:6px; }
+.spinner { display:inline-block; width:16px; height:16px; border:2px solid #e2e8f0; border-top-color:#1E2D5A; border-radius:50%; animation:spin .7s linear infinite; vertical-align:middle; margin-right:6px; }
 @keyframes spin { to { transform:rotate(360deg); } }
-.loading-bar { height:3px; background:#ecebfd; overflow:hidden; position:fixed; top:0; left:0; right:0; z-index:999; }
-.loading-bar .lb-fill { height:3px; background:#7f77dd; width:0%; transition:width .3s; }
+.loading-bar { height:3px; background:#dbeafe; overflow:hidden; position:fixed; top:0; left:0; right:0; z-index:999; }
+.loading-bar .lb-fill { height:3px; background:#2d4a8a; width:0%; transition:width .3s; }
 
 /* ── LIVE BADGE ── */
-.live-dot { display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600; color:#1d9e75; background:#e1f5ee; padding:4px 10px; border-radius:99px; }
-.live-dot::before { content:''; width:7px; height:7px; background:#1d9e75; border-radius:50%; display:inline-block; animation:pulse 2s ease-in-out infinite; }
+.live-dot { display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600; color:#16a34a; background:#dcfce7; padding:4px 10px; border-radius:99px; }
+.live-dot::before { content:''; width:7px; height:7px; background:#16a34a; border-radius:50%; display:inline-block; animation:pulse 2s ease-in-out infinite; }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
-.offline-dot { color:#a32d2d; background:#fcebeb; }
-.offline-dot::before { background:#a32d2d; animation:none; }
+.offline-dot { color:#dc2626; background:#fef2f2; }
+.offline-dot::before { background:#dc2626; animation:none; }
 
 /* ── DASH HEADER ── */
-.dash-header { background:#fff; border-bottom:1px solid #dddbd2; padding:16px 32px; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; }
-.dash-header h1 { font-size:18px; font-weight:700; }
-.dash-header p  { font-size:12px; color:#6b6a64; margin-top:2px; }
+.dash-header { background:#1E2D5A; border-bottom:3px solid #F5B731; padding:14px 32px; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; color:white; }
+.dash-header h1 { font-size:18px; font-weight:700; color:white; letter-spacing:.3px; }
+.dash-header p  { font-size:12px; color:rgba(255,255,255,.65); margin-top:2px; letter-spacing:.4px; }
 .header-right { display:flex; align-items:center; gap:10px; }
 
-.stats-bar { background:#fff; border-bottom:1px solid #dddbd2; padding:10px 32px; display:flex; gap:28px; flex-wrap:wrap; }
+.stats-bar { background:#fff; border-bottom:1px solid #e2e8f0; padding:10px 32px; display:flex; gap:28px; flex-wrap:wrap; }
 .stat { display:flex; flex-direction:column; gap:1px; }
 .stat-num   { font-size:22px; font-weight:800; color:#3c3489; line-height:1; }
-.stat-label { font-size:10px; font-weight:600; color:#888780; text-transform:uppercase; letter-spacing:.05em; }
+.stat-label { font-size:10px; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:.05em; }
 
 /* ── TABS ── */
-.tabs-bar { background:#fff; border-bottom:2px solid #dddbd2; padding:0 32px; display:flex; gap:0; }
-.tab-btn { padding:12px 20px; font-size:13px; font-weight:600; cursor:pointer; border:none; background:none; color:#888780; border-bottom:3px solid transparent; margin-bottom:-2px; transition:all .15s; font-family:inherit; display:flex; align-items:center; gap:6px; }
-.tab-btn:hover { color:#534ab7; }
-.tab-btn.active { color:#534ab7; border-bottom-color:#534ab7; }
+.tabs-bar { background:#fff; border-bottom:2px solid #e2e8f0; padding:0 32px; display:flex; gap:0; }
+.tab-btn { padding:12px 20px; font-size:13px; font-weight:600; cursor:pointer; border:none; background:none; color:#64748b; border-bottom:3px solid transparent; margin-bottom:-2px; transition:all .15s; font-family:inherit; display:flex; align-items:center; gap:6px; }
+.tab-btn:hover { color:#1E2D5A; }
+.tab-btn.active { color:#1E2D5A; border-bottom-color:#1E2D5A; }
 
 /* Tabs de división (nivel 1, arriba) */
-.div-tabs-bar { background:#fff; padding:10px 32px; display:flex; gap:6px; flex-wrap:wrap; border-bottom:1px solid #ecebe4; }
-.div-tab { padding:6px 14px; font-size:12.5px; font-weight:600; cursor:pointer; border:1.5px solid transparent; background:#f5f4f0; color:#3d3d3a; border-radius:99px; font-family:inherit; transition:all .15s; display:inline-flex; align-items:center; gap:5px; }
-.div-tab:hover { background:#ecebe4; }
+.div-tabs-bar { background:#fff; padding:10px 32px; display:flex; gap:6px; flex-wrap:wrap; border-bottom:1px solid #e2e8f0; }
+.div-tab { padding:6px 14px; font-size:12.5px; font-weight:600; cursor:pointer; border:1.5px solid transparent; background:#f1f5f9; color:#334155; border-radius:99px; font-family:inherit; transition:all .15s; display:inline-flex; align-items:center; gap:5px; }
+.div-tab:hover { background:#e2e8f0; }
 .div-tab.active { color:#fff; }
 .div-tab .div-tab-count { background:rgba(0,0,0,.12); padding:1px 7px; border-radius:99px; font-size:11px; font-weight:700; }
 .div-tab.active .div-tab-count { background:rgba(255,255,255,.22); color:#fff; }
-.tab-count { font-size:10px; font-weight:700; background:#ecebfd; color:#534ab7; padding:2px 7px; border-radius:99px; }
-.tab-btn.active .tab-count { background:#534ab7; color:#fff; }
+.tab-count { font-size:10px; font-weight:700; background:#dbeafe; color:#1E2D5A; padding:2px 7px; border-radius:99px; }
+.tab-btn.active .tab-count { background:#1E2D5A; color:#fff; }
 
 /* ── CARDS ── */
 .cards-container { max-width:1100px; margin:0 auto; padding:24px; }
 .cards-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px,1fr)); gap:16px; }
-.card { background:#fff; border:1px solid #dddbd2; border-radius:12px; padding:18px; cursor:pointer; transition:box-shadow .15s, transform .1s; }
+.card { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:18px; cursor:pointer; transition:box-shadow .15s, transform .1s; }
 .card:hover { box-shadow:0 4px 16px rgba(0,0,0,.1); transform:translateY(-1px); }
 .card.card-descartada { opacity:.7; border-style:dashed; }
 .card-top  { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:10px; }
 .card-name { font-size:14px; font-weight:700; line-height:1.3; }
-.card-code { font-size:11px; color:#888780; margin-top:2px; }
-.card-meta { font-size:12px; color:#6b6a64; margin-bottom:14px; display:flex; flex-direction:column; gap:3px; }
+.card-code { font-size:11px; color:#64748b; margin-top:2px; }
+.card-meta { font-size:12px; color:#475569; margin-bottom:14px; display:flex; flex-direction:column; gap:3px; }
 
 .status-badge { font-size:10px; font-weight:700; padding:3px 8px; border-radius:99px; white-space:nowrap; flex-shrink:0; text-transform:uppercase; letter-spacing:.04em; }
 .st-teal   { background:#9fe1cb; color:#04342c; }
 .st-amber  { background:#fac775; color:#412402; }
 .st-red    { background:#f7c1c1; color:#501313; }
 .st-green  { background:#c0dd97; color:#173404; }
-.st-gray   { background:#d3d1c7; color:#3d3d3a; }
+.st-gray   { background:#d3d1c7; color:#334155; }
 .st-purple { background:#cecbf6; color:#26215c; }
 .st-blue   { background:#b5d4f4; color:#042c53; }
 
 .prog-bg   { background:#e8e7e0; border-radius:99px; height:6px; overflow:hidden; }
 .prog-fill { height:6px; border-radius:99px; transition:width .4s; }
-.pf-teal   { background:#1d9e75; }
-.pf-amber  { background:#ef9f27; }
-.pf-red    { background:#e24b4a; }
-.pf-purple { background:#7f77dd; }
-.pf-gray   { background:#888780; }
+.pf-teal   { background:#16a34a; }
+.pf-amber  { background:#F5B731; }
+.pf-red    { background:#dc2626; }
+.pf-purple { background:#2d4a8a; }
+.pf-gray   { background:#64748b; }
 
 .days-chip { display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:600; padding:3px 8px; border-radius:99px; margin-top:10px; }
-.dc-ok     { background:#e1f5ee; color:#085041; }
+.dc-ok     { background:#dcfce7; color:#085041; }
 .dc-warn   { background:#faeeda; color:#633806; }
-.dc-urgent { background:#fcebeb; color:#501313; }
+.dc-urgent { background:#fef2f2; color:#501313; }
 .dc-gray   { background:#f1efe8; color:#5f5e5a; }
 
-.card-footer { display:flex; justify-content:flex-end; gap:6px; margin-top:12px; padding-top:12px; border-top:1px solid #f0efea; flex-wrap:wrap; }
+.card-footer { display:flex; justify-content:flex-end; gap:6px; margin-top:12px; padding-top:12px; border-top:1px solid #f8fafc; flex-wrap:wrap; }
 
 /* ── RESULTADO BADGE ── */
 .resultado-badge { font-size:11px; font-weight:700; padding:4px 10px; border-radius:99px; display:inline-flex; align-items:center; gap:4px; margin-top:8px; }
@@ -121,58 +122,58 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .empty-state { text-align:center; padding:64px 24px; }
 .empty-ico { font-size:48px; margin-bottom:16px; }
 .empty-state h2 { font-size:18px; font-weight:600; margin-bottom:8px; }
-.empty-state p  { font-size:13px; color:#6b6a64; margin-bottom:24px; }
+.empty-state p  { font-size:13px; color:#475569; margin-bottom:24px; }
 
 /* ── MODAL ── */
 .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; z-index:200; padding:24px; }
 .modal { background:#fff; border-radius:14px; padding:28px; width:100%; max-width:480px; box-shadow:0 20px 60px rgba(0,0,0,.2); }
 .modal h2 { font-size:17px; font-weight:700; margin-bottom:20px; }
 .form-field { display:flex; flex-direction:column; gap:4px; margin-bottom:14px; }
-.form-field label { font-size:11px; font-weight:600; color:#6b6a64; text-transform:uppercase; letter-spacing:.05em; }
-.form-field input, .form-field select { border:1px solid #dddbd2; border-radius:7px; padding:8px 12px; font-size:13px; font-family:inherit; transition:border-color .15s; background:#fff; }
-.form-field input:focus, .form-field select:focus { outline:none; border-color:#7f77dd; }
+.form-field label { font-size:11px; font-weight:600; color:#475569; text-transform:uppercase; letter-spacing:.05em; }
+.form-field input, .form-field select { border:1px solid #e2e8f0; border-radius:7px; padding:8px 12px; font-size:13px; font-family:inherit; transition:border-color .15s; background:#fff; }
+.form-field input:focus, .form-field select:focus { outline:none; border-color:#2d4a8a; }
 .modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:20px; }
 
 /* ── HISTÓRICO / MÉTRICAS ── */
 .metrics-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px,1fr)); gap:16px; margin-bottom:28px; }
-.metric-card { background:#fff; border:1px solid #dddbd2; border-radius:12px; padding:20px; text-align:center; }
+.metric-card { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:20px; text-align:center; }
 .metric-num  { font-size:36px; font-weight:800; line-height:1; margin-bottom:4px; }
-.metric-lbl  { font-size:11px; font-weight:600; color:#888780; text-transform:uppercase; letter-spacing:.05em; }
-.mn-total    { color:#534ab7; }
-.mn-ganada   { color:#1d9e75; }
-.mn-perdida  { color:#e24b4a; }
-.mn-descartada { color:#888780; }
-.mn-enviada  { color:#185fa5; }
-.win-rate    { font-size:13px; color:#6b6a64; margin-top:8px; }
+.metric-lbl  { font-size:11px; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:.05em; }
+.mn-total    { color:#1E2D5A; }
+.mn-ganada   { color:#16a34a; }
+.mn-perdida  { color:#dc2626; }
+.mn-descartada { color:#64748b; }
+.mn-enviada  { color:#2563eb; }
+.win-rate    { font-size:13px; color:#475569; margin-top:8px; }
 .win-bar-wrap { background:#e8e7e0; border-radius:99px; height:8px; margin-top:6px; overflow:hidden; }
-.win-bar     { height:8px; border-radius:99px; background:linear-gradient(90deg,#1d9e75,#2dd4a0); transition:width .6s; }
+.win-bar     { height:8px; border-radius:99px; background:linear-gradient(90deg,#16a34a,#2dd4a0); transition:width .6s; }
 
 /* ── DETAIL ── */
 #view-detail { display:none; }
-.det-header { background:#fff; border-bottom:1px solid #dddbd2; padding:14px 32px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
-.back-btn { display:flex; align-items:center; gap:6px; font-size:13px; font-weight:500; color:#534ab7; cursor:pointer; background:none; border:none; padding:4px 8px; border-radius:5px; font-family:inherit; }
-.back-btn:hover { background:#ecebfd; }
+.det-header { background:#fff; border-bottom:1px solid #e2e8f0; padding:14px 32px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+.back-btn { display:flex; align-items:center; gap:6px; font-size:13px; font-weight:500; color:#1E2D5A; cursor:pointer; background:none; border:none; padding:4px 8px; border-radius:5px; font-family:inherit; }
+.back-btn:hover { background:#dbeafe; }
 .det-title { font-size:15px; font-weight:700; }
-.det-sub   { font-size:12px; color:#6b6a64; margin-top:1px; }
+.det-sub   { font-size:12px; color:#475569; margin-top:1px; }
 .det-right { margin-left:auto; display:flex; align-items:center; gap:10px; }
-.total-pill { background:#ecebfd; border:1.5px solid #7f77dd; border-radius:8px; padding:8px 16px; text-align:center; }
+.total-pill { background:#dbeafe; border:1.5px solid #2d4a8a; border-radius:8px; padding:8px 16px; text-align:center; }
 .total-num  { font-size:24px; font-weight:800; color:#3c3489; line-height:1; }
-.total-lbl  { font-size:9px; font-weight:600; color:#7f77dd; text-transform:uppercase; letter-spacing:.06em; }
+.total-lbl  { font-size:9px; font-weight:600; color:#2d4a8a; text-transform:uppercase; letter-spacing:.06em; }
 
-.det-toolbar { display:flex; gap:8px; padding:12px 32px; background:#fafaf7; border-bottom:1px solid #dddbd2; flex-wrap:wrap; }
+.det-toolbar { display:flex; gap:8px; padding:12px 32px; background:#fafaf7; border-bottom:1px solid #e2e8f0; flex-wrap:wrap; }
 .spacer { flex:1; }
 .det-container { max-width:820px; margin:0 auto; padding:24px 24px 60px; }
 
-.prog-wrap2 { background:#dddbd2; border-radius:99px; height:5px; margin-bottom:8px; overflow:hidden; }
-.prog-bar2  { background:#1d9e75; height:5px; border-radius:99px; transition:width .4s; }
-.prog-lbl2  { font-size:11px; color:#6b6a64; margin-bottom:20px; }
+.prog-wrap2 { background:#e2e8f0; border-radius:99px; height:5px; margin-bottom:8px; overflow:hidden; }
+.prog-bar2  { background:#16a34a; height:5px; border-radius:99px; transition:width .4s; }
+.prog-lbl2  { font-size:11px; color:#475569; margin-bottom:20px; }
 
 /* ── PHASE / STEP ── */
 .phase-hdr  { display:flex; align-items:center; gap:10px; margin:18px 0 8px; }
 .phase-badge { font-size:10px; font-weight:700; padding:3px 10px; border-radius:99px; text-transform:uppercase; letter-spacing:.06em; white-space:nowrap; }
 .phase-rule  { flex:1; height:1px; background:#d0cec5; }
 
-.ph-gray   .phase-badge { background:#d3d1c7; color:#3d3d3a; }
+.ph-gray   .phase-badge { background:#d3d1c7; color:#334155; }
 .ph-teal   .phase-badge { background:#9fe1cb; color:#04342c; }
 .ph-blue   .phase-badge { background:#b5d4f4; color:#042c53; }
 .ph-amber  .phase-badge { background:#fac775; color:#412402; }
@@ -180,75 +181,75 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .ph-green  .phase-badge { background:#c0dd97; color:#173404; }
 .ph-purple .phase-badge { background:#cecbf6; color:#26215c; }
 
-.ph-gray   .sc { border-left:3px solid #888780; }
-.ph-teal   .sc { border-left:3px solid #1d9e75; }
-.ph-blue   .sc { border-left:3px solid #185fa5; }
-.ph-amber  .sc { border-left:3px solid #ef9f27; }
+.ph-gray   .sc { border-left:3px solid #64748b; }
+.ph-teal   .sc { border-left:3px solid #16a34a; }
+.ph-blue   .sc { border-left:3px solid #2563eb; }
+.ph-amber  .sc { border-left:3px solid #F5B731; }
 .ph-coral  .sc { border-left:3px solid #d85a30; }
 .ph-green  .sc { border-left:3px solid #639922; }
-.ph-purple .sc { border-left:3px solid #7f77dd; }
+.ph-purple .sc { border-left:3px solid #2d4a8a; }
 
-.sc { background:#fff; border:1px solid #dddbd2; border-radius:10px; margin-bottom:4px; overflow:hidden; transition:box-shadow .15s; }
+.sc { background:#fff; border:1px solid #e2e8f0; border-radius:10px; margin-bottom:4px; overflow:hidden; transition:box-shadow .15s; }
 .sc:hover { box-shadow:0 2px 10px rgba(0,0,0,.07); }
 .sc.done { background:#f6fdf8; border-color:#9fe1cb; opacity:.85; }
-.sc.done .s-title { text-decoration:line-through; color:#888780; }
-.sc.done .s-num   { color:#1d9e75; }
+.sc.done .s-title { text-decoration:line-through; color:#64748b; }
+.sc.done .s-num   { color:#16a34a; }
 
 .s-hdr  { display:flex; align-items:center; gap:10px; padding:13px 16px; cursor:pointer; user-select:none; }
-.s-chk  { width:18px; height:18px; border:1.5px solid #ccc9bf; border-radius:4px; display:flex; align-items:center; justify-content:center; flex-shrink:0; cursor:pointer; font-size:11px; background:#fff; transition:all .15s; }
-.s-chk:hover { border-color:#1d9e75; }
-.sc.done .s-chk { background:#1d9e75; border-color:#1d9e75; color:#fff; }
-.s-num  { font-size:10px; font-weight:700; color:#aaa9a2; min-width:22px; }
+.s-chk  { width:18px; height:18px; border:1.5px solid #cbd5e1; border-radius:4px; display:flex; align-items:center; justify-content:center; flex-shrink:0; cursor:pointer; font-size:11px; background:#fff; transition:all .15s; }
+.s-chk:hover { border-color:#16a34a; }
+.sc.done .s-chk { background:#16a34a; border-color:#16a34a; color:#fff; }
+.s-num  { font-size:10px; font-weight:700; color:#94a3b8; min-width:22px; }
 .s-ico  { font-size:17px; min-width:22px; }
 .s-meta { flex:1; min-width:0; }
-.s-title { font-size:13.5px; font-weight:600; color:#1e1e1c; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.s-brief { font-size:11.5px; color:#6b6a64; margin-top:1px; }
+.s-title { font-size:13.5px; font-weight:600; color:#1e293b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.s-brief { font-size:11.5px; color:#475569; margin-top:1px; }
 .s-right { display:flex; align-items:center; gap:8px; margin-left:auto; flex-shrink:0; }
 .d-wrap  { display:flex; align-items:center; gap:5px; }
-.d-lbl   { font-size:10px; color:#aaa9a2; font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
-.d-inp   { width:48px; padding:4px 6px; border:1px solid #dddbd2; border-radius:5px; font-size:13px; font-weight:700; text-align:center; background:#f5f4f0; font-family:inherit; }
-.d-inp:focus { outline:none; border-color:#7f77dd; background:#fff; }
-.exp-ico { font-size:12px; color:#aaa9a2; transition:transform .2s; min-width:14px; text-align:center; }
+.d-lbl   { font-size:10px; color:#94a3b8; font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
+.d-inp   { width:48px; padding:4px 6px; border:1px solid #e2e8f0; border-radius:5px; font-size:13px; font-weight:700; text-align:center; background:#f1f5f9; font-family:inherit; }
+.d-inp:focus { outline:none; border-color:#2d4a8a; background:#fff; }
+.exp-ico { font-size:12px; color:#94a3b8; transition:transform .2s; min-width:14px; text-align:center; }
 .sc.open .exp-ico { transform:rotate(180deg); }
-.s-det  { display:none; padding:4px 16px 16px 66px; border-top:1px solid #f0efea; }
+.s-det  { display:none; padding:4px 16px 16px 66px; border-top:1px solid #f8fafc; }
 .sc.open .s-det { display:block; }
 
 .ds { margin-top:12px; }
-.ds h4 { font-size:10px; font-weight:700; color:#aaa9a2; text-transform:uppercase; letter-spacing:.07em; margin-bottom:7px; }
+.ds h4 { font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase; letter-spacing:.07em; margin-bottom:7px; }
 .ds ul { list-style:none; }
-.ds li { font-size:12.5px; color:#3d3d3a; padding:3px 0 3px 14px; position:relative; line-height:1.5; }
+.ds li { font-size:12.5px; color:#334155; padding:3px 0 3px 14px; position:relative; line-height:1.5; }
 .ds li::before { content:'–'; position:absolute; left:0; color:#c8c6be; }
-.ds li strong { font-weight:600; color:#1e1e1c; }
+.ds li strong { font-weight:600; color:#1e293b; }
 .callout { padding:9px 12px; border-radius:0 6px 6px 0; margin-top:10px; font-size:12px; line-height:1.5; }
-.ct { background:#ecebfd; border-left:3px solid #7f77dd; color:#3c3489; }
-.cw { background:#faeeda; border-left:3px solid #ef9f27; color:#633806; }
+.ct { background:#dbeafe; border-left:3px solid #2d4a8a; color:#3c3489; }
+.cw { background:#faeeda; border-left:3px solid #F5B731; color:#633806; }
 .nb { margin-top:12px; }
-.nb label { font-size:10px; font-weight:700; color:#aaa9a2; text-transform:uppercase; letter-spacing:.07em; display:block; margin-bottom:5px; }
-.nb textarea { width:100%; border:1px solid #dddbd2; border-radius:6px; padding:8px 10px; font-size:12px; font-family:inherit; color:#1e1e1c; background:#fafaf7; resize:vertical; min-height:52px; line-height:1.5; }
-.nb textarea:focus { outline:none; border-color:#7f77dd; background:#fff; }
+.nb label { font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase; letter-spacing:.07em; display:block; margin-bottom:5px; }
+.nb textarea { width:100%; border:1px solid #e2e8f0; border-radius:6px; padding:8px 10px; font-size:12px; font-family:inherit; color:#1e293b; background:#fafaf7; resize:vertical; min-height:52px; line-height:1.5; }
+.nb textarea:focus { outline:none; border-color:#2d4a8a; background:#fff; }
 .nb textarea::placeholder { color:#c0bdb5; }
 
-@keyframes flashUpd { 0%{background:#ecebfd} 100%{background:inherit} }
+@keyframes flashUpd { 0%{background:#dbeafe} 100%{background:inherit} }
 .sc.updated { animation:flashUpd 1.2s ease-out; }
 
 .conn { display:flex; flex-direction:column; align-items:center; margin:1px 0; }
-.con-line { width:1.5px; height:14px; background:#ccc9bf; }
-.con-arr  { border-left:4px solid transparent; border-right:4px solid transparent; border-top:6px solid #ccc9bf; }
+.con-line { width:1.5px; height:14px; background:#cbd5e1; }
+.con-arr  { border-left:4px solid transparent; border-right:4px solid transparent; border-top:6px solid #cbd5e1; }
 
-.toast { position:fixed; bottom:24px; right:24px; background:#1e1e1c; color:#fff; padding:10px 16px; border-radius:8px; font-size:13px; z-index:999; opacity:0; transform:translateY(8px); transition:all .25s; pointer-events:none; }
+.toast { position:fixed; bottom:24px; right:24px; background:#1e293b; color:#fff; padding:10px 16px; border-radius:8px; font-size:13px; z-index:999; opacity:0; transform:translateY(8px); transition:all .25s; pointer-events:none; }
 .toast.show { opacity:1; transform:translateY(0); }
 
 /* ── MODAL RESULTADO ── */
 .resultado-modal { background:#fff; border-radius:14px; padding:24px; width:100%; max-width:380px; box-shadow:0 20px 60px rgba(0,0,0,.2); }
 .resultado-modal h2 { font-size:16px; font-weight:700; margin-bottom:6px; }
-.resultado-modal p { font-size:12px; color:#6b6a64; margin-bottom:20px; }
+.resultado-modal p { font-size:12px; color:#475569; margin-bottom:20px; }
 .resultado-btns { display:flex; flex-direction:column; gap:8px; }
 .rb-btn { padding:12px 16px; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; border:2px solid; font-family:inherit; display:flex; align-items:center; gap:8px; transition:all .15s; }
 .rb-btn:hover { filter:brightness(.95); transform:translateX(2px); }
-.rb-ganada-btn   { background:#f0fdf4; border-color:#1d9e75; color:#0f6e56; }
-.rb-perdida-btn  { background:#fef2f2; border-color:#e24b4a; color:#a32d2d; }
-.rb-pendiente-btn { background:#fefce8; border-color:#ef9f27; color:#633806; }
-.rb-cancel-btn   { background:#f5f4f0; border-color:#dddbd2; color:#6b6a64; font-size:13px; padding:9px 16px; }
+.rb-ganada-btn   { background:#f0fdf4; border-color:#16a34a; color:#15803d; }
+.rb-perdida-btn  { background:#fef2f2; border-color:#dc2626; color:#dc2626; }
+.rb-pendiente-btn { background:#fef9c3; border-color:#F5B731; color:#633806; }
+.rb-cancel-btn   { background:#f1f5f9; border-color:#e2e8f0; color:#475569; font-size:13px; padding:9px 16px; }
 
 @media print {
   #view-dashboard, .det-toolbar, .back-btn, .s-chk, .nb, .exp-ico, .loading-bar { display:none !important; }
@@ -320,7 +321,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   </div>
 
   <div class="cards-container">
-    <div id="loadingCards" style="text-align:center;padding:48px;color:#888780"><span class="spinner"></span> Cargando licitaciones...</div>
+    <div id="loadingCards" style="text-align:center;padding:48px;color:#64748b"><span class="spinner"></span> Cargando licitaciones...</div>
 
     <!-- Vista: En Proceso, Enviadas, Descartadas -->
     <div id="view-cards">
@@ -479,10 +480,10 @@ function renderDivTabs() {
   const bar = document.getElementById('divTabsBar');
   if (!bar) return;
   const tabs = [
-    { id:'all', label:'🌐 Todas', color:'#534ab7' },
+    { id:'all', label:'🌐 Todas', color:'#1E2D5A' },
     ...DIVISIONES_LEN.map(d => ({ id:d.id, label:`${d.icon} ${d.label}`, color:d.color }))
   ];
-  if (conteo['sin-clasificar'] > 0) tabs.push({ id:'sin-clasificar', label:'❓ Sin clasificar', color:'#888780' });
+  if (conteo['sin-clasificar'] > 0) tabs.push({ id:'sin-clasificar', label:'❓ Sin clasificar', color:'#64748b' });
 
   bar.innerHTML = tabs.map(t => {
     const active = t.id === currentDivision;
@@ -546,7 +547,7 @@ function divLabel(id) {
   return d ? `${d.icon} ${d.label}` : 'Sin asignar';
 }
 function divColor(id) {
-  return DIV_BY_ID[id]?.color || '#888780';
+  return DIV_BY_ID[id]?.color || '#64748b';
 }
 function divIcon(id) {
   return DIV_BY_ID[id]?.icon || '❓';
@@ -593,14 +594,14 @@ function getDivisionEfectiva(lic) {
 
 // ── Estados de proceso (deben coincidir con backend) ──
 const ESTADO_BADGE = {
-  'Detectada':   { color:'#888780', bg:'#f0efea',  icon:'📋', label:'Detectada' },
-  'En análisis': { color:'#185fa5', bg:'#dde8f5',  icon:'🔍', label:'En análisis' },
-  'Postulada':   { color:'#534ab7', bg:'#ecebfd',  icon:'📤', label:'Postulada' },
-  'Adjudicada':  { color:'#1d9e75', bg:'#e1f5ee',  icon:'🏆', label:'Adjudicada' },
-  'Perdida':     { color:'#a32d2d', bg:'#fcebeb',  icon:'📉', label:'Perdida' },
-  'Desierta':    { color:'#888780', bg:'#f0efea',  icon:'🚫', label:'Desierta' },
-  'Revocada':    { color:'#888780', bg:'#f0efea',  icon:'⏹️', label:'Revocada' },
-  'Descartada':  { color:'#ef9f27', bg:'#fff4e0',  icon:'🚫', label:'Descartada' }
+  'Detectada':   { color:'#64748b', bg:'#f8fafc',  icon:'📋', label:'Detectada' },
+  'En análisis': { color:'#2563eb', bg:'#dbeafe',  icon:'🔍', label:'En análisis' },
+  'Postulada':   { color:'#1E2D5A', bg:'#dbeafe',  icon:'📤', label:'Postulada' },
+  'Adjudicada':  { color:'#16a34a', bg:'#dcfce7',  icon:'🏆', label:'Adjudicada' },
+  'Perdida':     { color:'#dc2626', bg:'#fef2f2',  icon:'📉', label:'Perdida' },
+  'Desierta':    { color:'#64748b', bg:'#f8fafc',  icon:'🚫', label:'Desierta' },
+  'Revocada':    { color:'#64748b', bg:'#f8fafc',  icon:'⏹️', label:'Revocada' },
+  'Descartada':  { color:'#F5B731', bg:'#fef3c7',  icon:'🚫', label:'Descartada' }
 };
 function getEstadoProceso(lic) {
   if (lic.estado_proceso) return lic.estado_proceso;
@@ -974,9 +975,9 @@ function renderDash() {
   document.getElementById('statsBar').innerHTML = `
     <div class="stat"><div class="stat-num">${lics.length}</div><div class="stat-label">Total</div></div>
     <div class="stat"><div class="stat-num">${enProceso.length}</div><div class="stat-label">En proceso</div></div>
-    <div class="stat"><div class="stat-num" style="color:#1d9e75">${enviadas.length}</div><div class="stat-label">Enviadas</div></div>
-    <div class="stat"><div class="stat-num" style="color:#e24b4a">${urgentes.length}</div><div class="stat-label">Urgentes</div></div>
-    <div class="stat"><div class="stat-num" style="color:#888780">${descartadas.length}</div><div class="stat-label">Descartadas</div></div>`;
+    <div class="stat"><div class="stat-num" style="color:#16a34a">${enviadas.length}</div><div class="stat-label">Enviadas</div></div>
+    <div class="stat"><div class="stat-num" style="color:#dc2626">${urgentes.length}</div><div class="stat-label">Urgentes</div></div>
+    <div class="stat"><div class="stat-num" style="color:#64748b">${descartadas.length}</div><div class="stat-label">Descartadas</div></div>`;
 
   // Renderizar pestañas de división con conteos actualizados
   renderDivTabs();
@@ -1039,7 +1040,7 @@ function renderCard(lic) {
     ? `<button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="event.stopPropagation();restaurarLic('${lic.id}')">↩ Restaurar</button>
        <button class="btn btn-red del-lic-btn" data-del-id="${lic.id}">🗑 Eliminar</button>`
     : env
-    ? `<button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:#185fa5;border-color:#185fa5" onclick="event.stopPropagation();openModalResultado('${lic.id}')">🏆 Resultado</button>
+    ? `<button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:#2563eb;border-color:#2563eb" onclick="event.stopPropagation();openModalResultado('${lic.id}')">🏆 Resultado</button>
        <button class="btn btn-red del-lic-btn" data-del-id="${lic.id}">🗑 Eliminar</button>`
     : `<button class="btn btn-amber" style="font-size:11px;padding:4px 10px" onclick="event.stopPropagation();descartarLicCard('${lic.id}')">🚫 Descartar</button>
        <button class="btn btn-red del-lic-btn" data-del-id="${lic.id}">🗑 Eliminar</button>`;
@@ -1048,7 +1049,7 @@ function renderCard(lic) {
   const divId = getDivisionEfectiva(lic);
   const divBadge = divId
     ? `<span class="div-badge" style="background:${divColor(divId)}1a;color:${divColor(divId)};border:1px solid ${divColor(divId)}40;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600">${divLabel(divId)}</span>`
-    : `<span class="div-badge" style="background:#f0efea;color:#888780;border:1px dashed #ccc9bf;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:500">❓ Sin clasificar</span>`;
+    : `<span class="div-badge" style="background:#f8fafc;color:#64748b;border:1px dashed #cbd5e1;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:500">❓ Sin clasificar</span>`;
 
   // Badge de estado_proceso (más rico que el viejo "status")
   const ep = getEstadoProceso(lic);
@@ -1059,8 +1060,8 @@ function renderCard(lic) {
   const mop = Array.isArray(lic.especialidades_mop_json) ? lic.especialidades_mop_json : [];
   const mopChips = mop.length
     ? `<div class="mop-chips" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">
-         ${mop.slice(0, 3).map(m => `<span style="background:#fff4e0;color:#7a4a00;padding:1px 7px;border-radius:99px;font-size:10.5px;font-weight:600">${esc(m.codigo)} ${esc(m.descripcion)} · ${esc(m.categoria)}</span>`).join('')}
-         ${mop.length > 3 ? `<span style="color:#888780;font-size:10.5px">+${mop.length-3}</span>` : ''}
+         ${mop.slice(0, 3).map(m => `<span style="background:#fef3c7;color:#854d0e;padding:1px 7px;border-radius:99px;font-size:10.5px;font-weight:600">${esc(m.codigo)} ${esc(m.descripcion)} · ${esc(m.categoria)}</span>`).join('')}
+         ${mop.length > 3 ? `<span style="color:#64748b;font-size:10.5px">+${mop.length-3}</span>` : ''}
        </div>`
     : '';
 
@@ -1073,10 +1074,10 @@ function renderCard(lic) {
     if (lic.monto_ofertado_len && lic.monto_adjudicado) {
       const diff = ((lic.monto_ofertado_len - lic.monto_adjudicado) / lic.monto_adjudicado) * 100;
       const sign = diff >= 0 ? '+' : '';
-      const color = diff >= 0 ? '#a32d2d' : '#1d9e75';
+      const color = diff >= 0 ? '#dc2626' : '#16a34a';
       delta = `<span style="color:${color};font-weight:600">(${sign}${diff.toFixed(1)}%)</span>`;
     }
-    resultadoInfo = `<div style="margin-top:6px;padding:6px 10px;background:#f5f4f0;border-radius:6px;font-size:11.5px;line-height:1.5">
+    resultadoInfo = `<div style="margin-top:6px;padding:6px 10px;background:#f1f5f9;border-radius:6px;font-size:11.5px;line-height:1.5">
       <div><strong>Adjudicado:</strong> ${adj}</div>
       ${lic.adjudicatario ? `<div><strong>Ganador:</strong> ${esc(lic.adjudicatario)}</div>` : ''}
       ${lic.monto_ofertado_len ? `<div><strong>LEN ofertó:</strong> ${len} ${delta}</div>` : ''}
@@ -1089,7 +1090,7 @@ function renderCard(lic) {
       <div><div class="card-name">${esc(lic.nombre)}</div><div class="card-code">${esc(lic.codigo||'—')} · ${esc(lic.mandante||'—')}</div></div>
       ${epBadge}
     </div>
-    ${divBadge ? `<div style="margin-top:6px">${divBadge}</div>` : `<div style="margin-top:6px"><span class="div-badge" style="background:#f0efea;color:#888780;border:1px dashed #ccc9bf;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:500">❓ Sin clasificar</span></div>`}
+    ${divBadge ? `<div style="margin-top:6px">${divBadge}</div>` : `<div style="margin-top:6px"><span class="div-badge" style="background:#f8fafc;color:#64748b;border:1px dashed #cbd5e1;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:500">❓ Sin clasificar</span></div>`}
     <div class="card-meta">
       ${lic.responsable ? `<span>👤 ${esc(lic.responsable)}</span>` : ''}
       ${lic.fecha_cierre ? `<span>📅 Cierre: ${fmtDate(lic.fecha_cierre)}</span>` : ''}
@@ -1123,7 +1124,7 @@ function renderHistorico() {
       <div class="metric-lbl">Total licitaciones</div>
     </div>
     <div class="metric-card">
-      <div class="metric-num" style="color:#1d9e75">${enProceso}</div>
+      <div class="metric-num" style="color:#16a34a">${enProceso}</div>
       <div class="metric-lbl">En proceso</div>
     </div>
     <div class="metric-card">
@@ -1143,7 +1144,7 @@ function renderHistorico() {
       <div class="metric-lbl">Descartadas</div>
     </div>
     <div class="metric-card" style="grid-column:span 2">
-      <div class="metric-num" style="color:${tasaExito>=50?'#1d9e75':'#ef9f27'}">${tasaExito}%</div>
+      <div class="metric-num" style="color:${tasaExito>=50?'#16a34a':'#F5B731'}">${tasaExito}%</div>
       <div class="metric-lbl">Tasa de éxito (ganadas / enviadas)</div>
       <div class="win-bar-wrap"><div class="win-bar" style="width:${tasaExito}%"></div></div>
     </div>`;
@@ -1314,7 +1315,7 @@ function renderGestionInterna() {
   // Dropdown división
   const divActual = lic.division_len || lic.division_sugerida || '';
   const divSugeridaInfo = lic.division_sugerida && lic.division_sugerida !== lic.division_len
-    ? `<div style="font-size:11px;color:#7f77dd;margin-top:3px">💡 Sugerida por agente: ${divLabel(lic.division_sugerida)}</div>` : '';
+    ? `<div style="font-size:11px;color:#2d4a8a;margin-top:3px">💡 Sugerida por agente: ${divLabel(lic.division_sugerida)}</div>` : '';
   const divOptions = `<option value="">— Sin asignar —</option>` +
     DIVISIONES_LEN.map(d => `<option value="${d.id}" ${d.id===divActual?'selected':''}>${d.icon} ${d.label}</option>`).join('');
 
@@ -1327,9 +1328,9 @@ function renderGestionInterna() {
   const mop = Array.isArray(lic.especialidades_mop_json) ? lic.especialidades_mop_json : [];
   const mopHTML = mop.length
     ? `<div style="display:flex;flex-wrap:wrap;gap:6px">
-         ${mop.map(m => `<span style="background:#fff4e0;color:#7a4a00;padding:3px 10px;border-radius:99px;font-size:11.5px;font-weight:600">${esc(m.codigo)} ${esc(m.descripcion)} · Cat. ${esc(m.categoria)}</span>`).join('')}
+         ${mop.map(m => `<span style="background:#fef3c7;color:#854d0e;padding:3px 10px;border-radius:99px;font-size:11.5px;font-weight:600">${esc(m.codigo)} ${esc(m.descripcion)} · Cat. ${esc(m.categoria)}</span>`).join('')}
        </div>`
-    : '<div style="color:#888780;font-size:12px;font-style:italic">Sin requisitos MOP detectados (licitación no requiere registro MOP)</div>';
+    : '<div style="color:#64748b;font-size:12px;font-style:italic">Sin requisitos MOP detectados (licitación no requiere registro MOP)</div>';
 
   // Estado adjudicación (si ya hay datos)
   const tieneResultado = lic.monto_adjudicado || lic.adjudicatario;
@@ -1339,61 +1340,61 @@ function renderGestionInterna() {
     if (lic.monto_ofertado_len && lic.monto_adjudicado) {
       const diff = ((lic.monto_ofertado_len - lic.monto_adjudicado) / lic.monto_adjudicado) * 100;
       const sign = diff >= 0 ? '+' : '';
-      const color = diff >= 0 ? '#a32d2d' : '#1d9e75';
+      const color = diff >= 0 ? '#dc2626' : '#16a34a';
       delta = `<span style="color:${color};font-weight:700">${sign}${diff.toFixed(1)}%</span>`;
     }
     resultadoBlock = `
-      <div style="background:#f5f4f0;border-left:3px solid #534ab7;padding:10px 14px;border-radius:6px;margin-top:12px">
-        <div style="font-size:12px;font-weight:700;color:#534ab7;margin-bottom:6px">📋 RESULTADO DE ADJUDICACIÓN</div>
+      <div style="background:#f1f5f9;border-left:3px solid #1E2D5A;padding:10px 14px;border-radius:6px;margin-top:12px">
+        <div style="font-size:12px;font-weight:700;color:#1E2D5A;margin-bottom:6px">📋 RESULTADO DE ADJUDICACIÓN</div>
         ${lic.adjudicatario ? `<div style="font-size:13px"><strong>Ganador:</strong> ${esc(lic.adjudicatario)}${lic.adjudicatario_rut?` (${esc(lic.adjudicatario_rut)})`:''}</div>` : ''}
         <div style="font-size:13px"><strong>Monto adjudicado:</strong> ${fmtCLP(lic.monto_adjudicado)}</div>
         ${lic.monto_ofertado_len ? `<div style="font-size:13px"><strong>LEN ofertó:</strong> ${fmtCLP(lic.monto_ofertado_len)} · Δ vs ganador: ${delta}</div>` : ''}
-        ${lic.fecha_adjudicacion_real ? `<div style="font-size:11.5px;color:#888780;margin-top:4px">Adjudicación real: ${fmtDate(lic.fecha_adjudicacion_real)}</div>` : ''}
+        ${lic.fecha_adjudicacion_real ? `<div style="font-size:11.5px;color:#64748b;margin-top:4px">Adjudicación real: ${fmtDate(lic.fecha_adjudicacion_real)}</div>` : ''}
       </div>`;
   }
 
   cont.innerHTML = `
-    <div style="background:#fff;border:1px solid #dddbd2;border-radius:10px;padding:18px;margin-bottom:16px">
-      <h3 style="font-size:14px;font-weight:700;margin-bottom:14px;color:#1e1e1c">⚙️ Gestión Interna LEN</h3>
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:18px;margin-bottom:16px">
+      <h3 style="font-size:14px;font-weight:700;margin-bottom:14px;color:#1e293b">⚙️ Gestión Interna LEN</h3>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
         <div>
-          <label style="font-size:10.5px;font-weight:700;color:#6b6a64;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block">División LEN</label>
-          <select id="gi-division" onchange="actualizarCampoLicitacion('division_len', this.value)" style="width:100%;border:1px solid #dddbd2;border-radius:6px;padding:7px 10px;font-size:13px;font-family:inherit;background:#fff">${divOptions}</select>
+          <label style="font-size:10.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block">División LEN</label>
+          <select id="gi-division" onchange="actualizarCampoLicitacion('division_len', this.value)" style="width:100%;border:1px solid #e2e8f0;border-radius:6px;padding:7px 10px;font-size:13px;font-family:inherit;background:#fff">${divOptions}</select>
           ${divSugeridaInfo}
         </div>
         <div>
-          <label style="font-size:10.5px;font-weight:700;color:#6b6a64;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block">Estado del proceso</label>
-          <select id="gi-estado" onchange="actualizarCampoLicitacion('estado_proceso', this.value)" style="width:100%;border:1px solid #dddbd2;border-radius:6px;padding:7px 10px;font-size:13px;font-family:inherit;background:#fff">${epOptions}</select>
-          ${lic.ultimo_polling_at ? `<div style="font-size:10.5px;color:#888780;margin-top:3px">↻ Última verificación auto: ${fmtDateTime(lic.ultimo_polling_at)}</div>` : ''}
+          <label style="font-size:10.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block">Estado del proceso</label>
+          <select id="gi-estado" onchange="actualizarCampoLicitacion('estado_proceso', this.value)" style="width:100%;border:1px solid #e2e8f0;border-radius:6px;padding:7px 10px;font-size:13px;font-family:inherit;background:#fff">${epOptions}</select>
+          ${lic.ultimo_polling_at ? `<div style="font-size:10.5px;color:#64748b;margin-top:3px">↻ Última verificación auto: ${fmtDateTime(lic.ultimo_polling_at)}</div>` : ''}
         </div>
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px">
         <div>
-          <label style="font-size:10.5px;font-weight:700;color:#6b6a64;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block">Monto Estimado MP</label>
-          <input type="number" id="gi-monto-estimado" value="${lic.monto_estimado||''}" onchange="actualizarCampoLicitacion('monto_estimado', this.value ? Number(this.value) : null)" placeholder="Sin info" style="width:100%;border:1px solid #dddbd2;border-radius:6px;padding:7px 10px;font-size:13px;font-family:inherit">
-          <div style="font-size:10.5px;color:#888780;margin-top:3px">CLP. Auto desde MP si está disponible.</div>
+          <label style="font-size:10.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block">Monto Estimado MP</label>
+          <input type="number" id="gi-monto-estimado" value="${lic.monto_estimado||''}" onchange="actualizarCampoLicitacion('monto_estimado', this.value ? Number(this.value) : null)" placeholder="Sin info" style="width:100%;border:1px solid #e2e8f0;border-radius:6px;padding:7px 10px;font-size:13px;font-family:inherit">
+          <div style="font-size:10.5px;color:#64748b;margin-top:3px">CLP. Auto desde MP si está disponible.</div>
         </div>
         <div>
-          <label style="font-size:10.5px;font-weight:700;color:#6b6a64;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block">Monto Ofertado LEN</label>
-          <input type="number" id="gi-monto-len" value="${lic.monto_ofertado_len||''}" onchange="actualizarCampoLicitacion('monto_ofertado_len', this.value ? Number(this.value) : null)" placeholder="Ingresar al postular" style="width:100%;border:1px solid #dddbd2;border-radius:6px;padding:7px 10px;font-size:13px;font-family:inherit">
-          <div style="font-size:10.5px;color:#888780;margin-top:3px">CLP. Manual.</div>
+          <label style="font-size:10.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block">Monto Ofertado LEN</label>
+          <input type="number" id="gi-monto-len" value="${lic.monto_ofertado_len||''}" onchange="actualizarCampoLicitacion('monto_ofertado_len', this.value ? Number(this.value) : null)" placeholder="Ingresar al postular" style="width:100%;border:1px solid #e2e8f0;border-radius:6px;padding:7px 10px;font-size:13px;font-family:inherit">
+          <div style="font-size:10.5px;color:#64748b;margin-top:3px">CLP. Manual.</div>
         </div>
         <div>
-          <label style="font-size:10.5px;font-weight:700;color:#6b6a64;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block">Monto Adjudicado</label>
-          <input type="number" id="gi-monto-adj" value="${lic.monto_adjudicado||''}" readonly style="width:100%;border:1px solid #dddbd2;border-radius:6px;padding:7px 10px;font-size:13px;font-family:inherit;background:#f5f4f0;color:#6b6a64">
-          <div style="font-size:10.5px;color:#888780;margin-top:3px">Auto-detectado por polling.</div>
+          <label style="font-size:10.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block">Monto Adjudicado</label>
+          <input type="number" id="gi-monto-adj" value="${lic.monto_adjudicado||''}" readonly style="width:100%;border:1px solid #e2e8f0;border-radius:6px;padding:7px 10px;font-size:13px;font-family:inherit;background:#f1f5f9;color:#475569">
+          <div style="font-size:10.5px;color:#64748b;margin-top:3px">Auto-detectado por polling.</div>
         </div>
       </div>
 
       <div style="margin-bottom:12px">
-        <label style="font-size:10.5px;font-weight:700;color:#6b6a64;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block">Razón del resultado / Observaciones</label>
-        <textarea id="gi-razon" onchange="actualizarCampoLicitacion('razon_resultado', this.value)" placeholder="Ej: oferta económica $X, ganador era 7% más barato. Análisis post-mortem..." rows="2" style="width:100%;border:1px solid #dddbd2;border-radius:6px;padding:8px 10px;font-size:13px;font-family:inherit;resize:vertical">${esc(lic.razon_resultado || '')}</textarea>
+        <label style="font-size:10.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block">Razón del resultado / Observaciones</label>
+        <textarea id="gi-razon" onchange="actualizarCampoLicitacion('razon_resultado', this.value)" placeholder="Ej: oferta económica $X, ganador era 7% más barato. Análisis post-mortem..." rows="2" style="width:100%;border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px;font-size:13px;font-family:inherit;resize:vertical">${esc(lic.razon_resultado || '')}</textarea>
       </div>
 
       <div>
-        <label style="font-size:10.5px;font-weight:700;color:#6b6a64;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;display:block">Especialidades MOP requeridas</label>
+        <label style="font-size:10.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;display:block">Especialidades MOP requeridas</label>
         ${mopHTML}
       </div>
 
@@ -1491,7 +1492,7 @@ function renderSteps() {
         <div class="s-det">${s.c}
           ${si === 0 ? `
           <div style="margin-top:16px;padding-top:14px;border-top:1px solid #e2e8f0">
-            <div style="font-size:11px;font-weight:700;color:#6b6a64;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">📎 SUBIR BASES DE LICITACIÓN</div>
+            <div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">📎 SUBIR BASES DE LICITACIÓN</div>
             <div style="font-size:12px;color:#475569;margin-bottom:10px">Descarga las bases desde Mercado Público, comprímellas en un ZIP y súbelo aquí. El sistema las analizará con IA y generará un resumen en Excel.</div>
             <label for="input-zip-bases" id="btn-subir-bases" style="display:inline-block;background:#2563eb;color:white;padding:8px 18px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer">
               📦 Subir ZIP con bases
