@@ -1266,14 +1266,18 @@ URL: ${item.url || ""}${requisitosTexto}${contenidoExtra}
 
 Entrega el análisis con este formato exacto:
 
-📋 DESCRIPCIÓN Y OBJETIVOS
-Redacta un párrafo extenso de 6 a 10 líneas que cubra:
+📋 DESCRIPCIÓN
+Redacta un párrafo de 4-6 líneas que cubra:
 - Contexto y antecedentes del proyecto (por qué se licita, qué problema resuelve)
-- Objetivo general y objetivos específicos del estudio o servicio
 - Alcance geográfico, técnico y temporal del trabajo
-- Entregables principales esperados
 - Cualquier condición particular relevante (modalidad de ejecución, ubicación clave, etc.)
 Usa información concreta de las bases si está disponible. Evita frases genéricas.
+
+🧭 OBJETIVOS
+Redacta un párrafo de 3-5 líneas que cubra:
+- Objetivo general del estudio o servicio
+- Objetivos específicos
+- Entregables principales esperados
 
 🏢 DIVISIÓN LEN
 Indica qué división de LEN es la más adecuada para ejecutar este contrato.
