@@ -225,6 +225,17 @@ function extraerEspecialidadesMOP(html) {
   return requisitos;
 }
 
+// Detecta si la licitación REQUIERE Registro MOP, leyendo el flag IndicadorEsMOP
+// que mercadopublico.cl pone en el HTML inicial. Devuelve true/false.
+// Útil cuando los datos específicos de la tabla no están disponibles (cargan por AJAX).
+function requiereRegistroMOP(html) {
+  if (!html) return false;
+  const match = html.match(/<input[^>]*id\s*=\s*["']IndicadorEsMOP["'][^>]*value\s*=\s*["']([^"']*)["']/i);
+  if (!match) return false;
+  const v = match[1].toLowerCase().trim();
+  return v === "1" || v === "true" || v === "si" || v === "sí";
+}
+
 function estadoTexto(codigo) {
   const m = { "5":"Publicada","6":"Cerrada","7":"Desierta","8":"Adjudicada",
               "9":"Revocada","10":"Suspendida","15":"Publicada","18":"Adjudicada" };
@@ -824,9 +835,16 @@ app.post("/mp/analizar", async (req, res) => {
   }
 
   // ── Paso 2: PRE-FILTRO Registro MOP ─────────────────────────────────────────
-  // Si la licitación exige especialidades MOP y LEN no las tiene → descartar
-  // sin gastar tokens de OpenAI.
+  // Caso A: pudimos extraer las especialidades específicas → validar contra LEN
+  // Caso B: no extrajimos especialidades pero el flag IndicadorEsMOP está activo
+  //         → la licitación SÍ requiere MOP pero no podemos verificar especificidades
+  //         (los datos los carga JavaScript por AJAX). Devolvemos pendiente
+  //         manual para no quemar tokens en algo que LEN podría no calificar.
+  // Caso C: ni hay especialidades ni flag → seguir con análisis IA normal.
   const requisitosMOP = extraerEspecialidadesMOP(htmlCompleto);
+  const requiereMOP   = requiereRegistroMOP(htmlCompleto);
+
+  // Caso A: tenemos las especialidades específicas
   if (requisitosMOP.length > 0) {
     const validacion = validarRegistroMOP(requisitosMOP);
     if (!validacion.califica) {
@@ -859,6 +877,43 @@ Si crees que esto es un error o quieres revisar igualmente, abre la licitación 
       });
     }
   }
+  // Caso B: requiere MOP pero no podemos verificar especialidades específicas
+  else if (requiereMOP) {
+    const especialidadesLEN = Object.keys(LEN_REGISTRO_MOP.especialidades)
+      .sort((a, b) => parseFloat(a) - parseFloat(b))
+      .map(c => `   • ${c} — ${NOMBRE_CATEGORIA[LEN_REGISTRO_MOP.especialidades[c]]}`)
+      .join("\n");
+
+    const analysis =
+`🟡 LICITACIÓN PENDIENTE DE VERIFICACIÓN MANUAL
+
+⚠️ ESTA LICITACIÓN REQUIERE REGISTRO DE CONSULTORES MOP
+
+El indicador "IndicadorEsMOP" de Mercado Público está activado para esta licitación, lo que significa que SÍ exige especialidades del Registro MOP. Sin embargo, las especialidades específicas no pudieron extraerse automáticamente porque mercadopublico.cl las carga con JavaScript en el navegador (no vienen en el HTML que el backend descarga).
+
+Para evitar consumir tokens de OpenAI en una licitación que LEN podría no calificar, el análisis IA fue omitido.
+
+🔍 PASOS PARA VERIFICAR MANUALMENTE:
+1. Hacer clic en "Ver en MP" arriba para abrir la licitación
+2. Buscar el recuadro azul "Especialidades y categorías"
+3. Comparar las especialidades requeridas contra las inscritas de LEN
+
+📋 ESPECIALIDADES INSCRITAS DE LEN (Cert. N°${LEN_REGISTRO_MOP.certificado}):
+${especialidadesLEN}
+
+⏳ Vigencia del registro: hasta ${LEN_REGISTRO_MOP.vigente_hasta}
+
+Si tras la verificación manual confirmas que LEN califica, podemos analizar la licitación más adelante (cuando se implemente el extractor de bases PDF o se identifique el endpoint AJAX de MP).`;
+
+    return res.json({
+      descartado: true,
+      motivo: "Requiere Registro MOP — verificación manual pendiente",
+      requiere_mop: true,
+      verificacion_pendiente: true,
+      analysis
+    });
+  }
+  // Caso C: no requiere MOP → seguir con análisis IA normal
 
   const contenidoExtra = contenidoMP
     ? `\n\nCONTENIDO COMPLETO DE LA PÁGINA DE MERCADO PÚBLICO:\n${contenidoMP}`
