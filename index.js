@@ -236,6 +236,71 @@ function requiereRegistroMOP(html) {
   return v === "1" || v === "true" || v === "si" || v === "sí";
 }
 
+// Llama al WebMethod ObtenerEspecialidades de mercadopublico.cl para obtener
+// las especialidades MOP de una licitación. MP las carga por AJAX (no en SSR),
+// así que esta es la única forma de obtenerlas desde el backend.
+//
+// Requiere la cookie de sesión ASP.NET capturada del GET previo a la página.
+// Devuelve [{ codigo, descripcion, categoria, especialidad }, ...]
+async function obtenerEspecialidadesMOPviaAjax(codigo, cookieHeader) {
+  if (!codigo || !cookieHeader) return [];
+  const referer = `https://www.mercadopublico.cl/Procurement/Modules/RFB/DetailsAcquisition.aspx?idlicitacion=${codigo}`;
+  const ajaxUrl = "https://www.mercadopublico.cl/Procurement/Modules/RFB/DetailsAcquisition.aspx/ObtenerEspecialidades";
+  try {
+    const r = await fetch(ajaxUrl, {
+      method: "POST",
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Content-Type": "application/json; charset=utf-8",
+        "X-Requested-With": "XMLHttpRequest",
+        "Referer": referer,
+        "Origin": "https://www.mercadopublico.cl",
+        "Accept": "application/json, text/javascript, */*; q=0.01",
+        "Cookie": cookieHeader
+      },
+      body: JSON.stringify({}),
+      signal: AbortSignal.timeout(10000)
+    });
+    if (!r.ok) {
+      console.warn(`[ObtenerEspecialidades] WebMethod respondió ${r.status} para ${codigo}`);
+      return [];
+    }
+    const data = await r.json();
+    const items = Array.isArray(data?.d) ? data.d : [];
+
+    const requisitos = [];
+    const seen = new Set();
+
+    for (const it of items) {
+      // Descripcion tiene formato: "Especialidad|SubEspecialidad|Categoria"
+      // Ej: "Ingeniería Civil|4.8 Obras Sanitarias.|2da"
+      const partes = (it.Descripcion || "").split("|").map(s => s.trim());
+      if (partes.length < 3) continue;
+
+      const especialidad    = partes[0];
+      const subEspecialidad = partes[1];
+      const categoria       = partes[2];
+
+      // Extraer código N.N y descripción de la sub-especialidad
+      const m = subEspecialidad.match(/^(\d{1,2}\.\d{1,2})\s+(.+?)\.?\s*$/);
+      if (!m) continue;
+
+      const codigoEspec = m[1];
+      const descripcion = m[2].trim();
+
+      if (seen.has(codigoEspec)) continue;
+      seen.add(codigoEspec);
+
+      requisitos.push({ codigo: codigoEspec, descripcion, categoria, especialidad });
+    }
+
+    return requisitos;
+  } catch (e) {
+    console.warn(`[ObtenerEspecialidades] Error para ${codigo}:`, e.message);
+    return [];
+  }
+}
+
 function estadoTexto(codigo) {
   const m = { "5":"Publicada","6":"Cerrada","7":"Desierta","8":"Adjudicada",
               "9":"Revocada","10":"Suspendida","15":"Publicada","18":"Adjudicada" };
@@ -921,15 +986,25 @@ app.post("/mp/analizar", async (req, res) => {
   // ── Paso 1: Fetch de la página de MP para obtener contenido completo ────────
   let contenidoMP = "";
   let htmlCompleto = "";
+  let cookieHeader = "";  // Cookies de sesión ASP.NET, necesarias para el WebMethod AJAX
   if (item.url) {
     try {
       const mpPage = await fetch(item.url, {
         signal: AbortSignal.timeout(15000),
-        headers: { "User-Agent": "Mozilla/5.0 (compatible; LENBot/1.0)" }
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Accept": "text/html,application/xhtml+xml",
+          "Accept-Language": "es-CL,es;q=0.9"
+        }
       });
       if (mpPage.ok) {
         htmlCompleto = await mpPage.text();
         contenidoMP = extraerTextoMP(htmlCompleto);
+        // Capturar cookies de sesión para llamar luego al WebMethod ObtenerEspecialidades
+        const setCookies = mpPage.headers.raw ? mpPage.headers.raw()["set-cookie"] : null;
+        if (setCookies && setCookies.length) {
+          cookieHeader = setCookies.map(c => c.split(";")[0]).join("; ");
+        }
       }
     } catch (e) {
       console.warn("[mp/analizar] No se pudo obtener página MP:", e.message);
@@ -937,14 +1012,20 @@ app.post("/mp/analizar", async (req, res) => {
   }
 
   // ── Paso 2: PRE-FILTRO Registro MOP ─────────────────────────────────────────
-  // Caso A: pudimos extraer las especialidades específicas → validar contra LEN
-  // Caso B: no extrajimos especialidades pero el flag IndicadorEsMOP está activo
-  //         → la licitación SÍ requiere MOP pero no podemos verificar especificidades
-  //         (los datos los carga JavaScript por AJAX). Devolvemos pendiente
-  //         manual para no quemar tokens en algo que LEN podría no calificar.
-  // Caso C: ni hay especialidades ni flag → seguir con análisis IA normal.
-  const requisitosMOP = extraerEspecialidadesMOP(htmlCompleto);
-  const requiereMOP   = requiereRegistroMOP(htmlCompleto);
+  // Caso A: obtenemos las especialidades específicas (vía SSR o WebMethod AJAX)
+  //         → validar contra LEN_REGISTRO_MOP
+  // Caso B: no podemos extraer especialidades pero el flag IndicadorEsMOP está
+  //         activo → mostrar panel pendiente sin gastar tokens
+  // Caso C: no requiere MOP → seguir con análisis IA normal
+  //
+  // Estrategia para extraer: primero intentar desde el HTML (por si MP cambia
+  // y los datos vuelven a venir en SSR). Si no hay datos, llamar al WebMethod
+  // AJAX `ObtenerEspecialidades` con la cookie de sesión capturada.
+  let requisitosMOP = extraerEspecialidadesMOP(htmlCompleto);
+  if (requisitosMOP.length === 0 && cookieHeader && item.codigo) {
+    requisitosMOP = await obtenerEspecialidadesMOPviaAjax(item.codigo, cookieHeader);
+  }
+  const requiereMOP = requiereRegistroMOP(htmlCompleto);
 
   // Caso A: tenemos las especialidades específicas
   if (requisitosMOP.length > 0) {
