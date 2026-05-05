@@ -1348,8 +1348,10 @@ app.post("/mp/guardar-gestor", async (req, res) => {
   }
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
 
-  // ── Enriquecimiento desde API de MP (fecha estimada, monto, región) ────
+  // ── Enriquecimiento desde API de MP (fecha estimada, monto, región, descripción) ────
   const datosExtra = {};
+  let nombreCompletoMP = "";
+  let descripcionMP    = "";
   if (item.codigo) {
     try {
       const apiUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?codigo=${item.codigo}&ticket=${TICKET}`;
@@ -1362,6 +1364,9 @@ app.post("/mp/guardar-gestor", async (req, res) => {
           datosExtra.fecha_adjudicacion_estimada = lic.Fechas?.FechaEstimadaAdjudicacion || null;
           datosExtra.monto_estimado              = parseFloat(lic.MontoEstimado) || null;
           datosExtra.region                      = lic.Comprador?.RegionUnidad || null;
+          // Capturar nombre y descripción completos para clasificación enriquecida
+          nombreCompletoMP                       = lic.Nombre || "";
+          descripcionMP                          = lic.Descripcion || "";
         }
       }
     } catch (e) {
@@ -1398,7 +1403,19 @@ app.post("/mp/guardar-gestor", async (req, res) => {
     const r = REGIONES.find(reg => datosExtra.region.toLowerCase().includes(reg.oficial));
     if (r) codigoRegion = r.codigo;
   }
-  const divisionSugerida = sugerirDivision(item.titulo, especialidadesMOP, codigoRegion);
+  // Texto enriquecido: combinar TODAS las fuentes textuales disponibles para
+  // que el clasificador tenga máximo contexto. El título solo (que puede venir
+  // truncado o muy genérico como "DISEÑO DE INGENIERÍA") no alcanza —
+  // necesitamos también la descripción y objetivos para detectar palabras clave
+  // como "cauces", "saneamiento", "ITO", etc. que pueden no estar en el título.
+  const textoEnriquecido = [
+    item.titulo || "",
+    nombreCompletoMP,
+    descripcionMP,
+    item.descripcion || "",
+    item.objetivos   || ""
+  ].filter(Boolean).join(" | ");
+  const divisionSugerida = sugerirDivision(textoEnriquecido, especialidadesMOP, codigoRegion);
 
   // ── Payload completo ──────────────────────────────────────────────────────
   const payload = {
@@ -2275,12 +2292,12 @@ app.get("/mp/listar-gestor", async (req, res) => {
 
 // ── Clasificar licitaciones existentes (one-shot fix) ────────────────────────
 // Para todas las licitaciones que NO tengan division_len ni division_sugerida,
-// calcula sugerencia desde el título usando el clasificador y la guarda en BD.
-// Usar GET una vez después de actualizar el código.
+// calcula sugerencia desde el título + descripción + objetivos + datos
+// enriquecidos de la API de MP. Usar GET una vez después de actualizar el código.
 app.get("/mp/clasificar-existentes", async (req, res) => {
   try {
     // Listar todas las licitaciones que aún no tienen división asignada
-    const url = `${SUPABASE_URL}/rest/v1/licitaciones?select=id,nombre,region&division_len=is.null&division_sugerida=is.null`;
+    const url = `${SUPABASE_URL}/rest/v1/licitaciones?select=id,codigo,nombre,region,descripcion,objetivos,especialidades_mop_json&division_len=is.null&division_sugerida=is.null`;
     const r = await fetch(url, { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(20000) });
     if (!r.ok) return res.status(502).json({ error: `Supabase ${r.status}: ${await r.text()}` });
     const pendientes = await r.json();
@@ -2297,9 +2314,42 @@ app.get("/mp/clasificar-existentes", async (req, res) => {
         if (reg) codigoRegion = reg.codigo;
       }
 
-      // Sugerir basándose en título (sin especialidades MOP, que probablemente no estaban guardadas)
-      const sugeridas = clasificarDivisiones(lic.nombre || "", codigoRegion);
-      const divisionSugerida = sugeridas.length > 0 ? sugeridas[0].id : null;
+      // Enriquecer desde la API de MP para tener nombre + descripción completos
+      let nombreMP = "";
+      let descripcionMP = "";
+      if (lic.codigo) {
+        try {
+          const apiUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?codigo=${lic.codigo}&ticket=${TICKET}`;
+          const apiRes = await fetch(apiUrl, { signal: AbortSignal.timeout(8000) });
+          if (apiRes.ok) {
+            const data = await apiRes.json();
+            const licMP = data.Listado?.[0];
+            if (licMP) {
+              nombreMP      = licMP.Nombre      || "";
+              descripcionMP = licMP.Descripcion || "";
+              if (!codigoRegion && licMP.Comprador?.RegionUnidad) {
+                const reg2 = REGIONES.find(rx => licMP.Comprador.RegionUnidad.toLowerCase().includes(rx.oficial));
+                if (reg2) codigoRegion = reg2.codigo;
+              }
+            }
+          }
+        } catch (e) {
+          // Ignorar errores de enriquecimiento, seguir con datos parciales
+        }
+      }
+
+      // Texto enriquecido combinando todas las fuentes textuales disponibles
+      const textoEnriquecido = [
+        lic.nombre      || "",
+        nombreMP,
+        descripcionMP,
+        lic.descripcion || "",
+        lic.objetivos   || ""
+      ].filter(Boolean).join(" | ");
+
+      // Sugerir basándose en texto enriquecido + especialidades MOP si están
+      const especialidadesMOP = Array.isArray(lic.especialidades_mop_json) ? lic.especialidades_mop_json : [];
+      const divisionSugerida = sugerirDivision(textoEnriquecido, especialidadesMOP, codigoRegion);
 
       if (!divisionSugerida) {
         sinClasificar++;
