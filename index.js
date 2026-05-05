@@ -749,6 +749,24 @@ app.get("/debug-mop/:codigo", async (req, res) => {
       .sort((a, b) => b.tamaño - a.tamaño)
       .slice(0, 5);
 
+    // ── Scripts COMPLETOS que mencionan tblEspecialidades (clave para encontrar el endpoint AJAX) ──
+    const scriptsConTabla = scriptMatches
+      .map(m => m[1])
+      .filter(s => s.includes("tblEspecialidades") || s.includes("MostrarEsp") || /especialidad/i.test(s))
+      .map(s => s.length > 8000 ? s.substring(0, 8000) + "...[TRUNCADO]" : s);
+
+    // ── Extraer URLs y endpoints AJAX de los scripts ─────────────────────
+    const allScriptsText = scriptMatches.map(m => m[1]).join("\n");
+    const urlsAjax = new Set();
+    // Patrón 1: url: "..." o url:'...'
+    [...allScriptsText.matchAll(/url\s*:\s*['"]([^'"]+)['"]/gi)].forEach(m => urlsAjax.add(m[1]));
+    // Patrón 2: cualquier .aspx/Method o webservice path
+    [...allScriptsText.matchAll(/['"]([^'"]*\.aspx\/[A-Za-z0-9_]+)['"]/gi)].forEach(m => urlsAjax.add(m[1]));
+    [...allScriptsText.matchAll(/['"]([^'"]*\.asmx\/[A-Za-z0-9_]+)['"]/gi)].forEach(m => urlsAjax.add(m[1]));
+    [...allScriptsText.matchAll(/['"]([^'"]*WebService[^'"]*)['"]/gi)].forEach(m => urlsAjax.add(m[1]));
+    // Patrón 3: PageMethods (típico de ASP.NET ScriptManager)
+    [...allScriptsText.matchAll(/PageMethods\.([A-Za-z0-9_]+)/g)].forEach(m => urlsAjax.add("PageMethods." + m[1]));
+
     // ── Buscar campos hidden con datos ─────────────────────────────────────
     const inputsHidden = [...html.matchAll(/<input[^>]+type\s*=\s*["']hidden["'][^>]*>/gi)]
       .map(m => m[0].substring(0, 200))
@@ -772,6 +790,9 @@ app.get("/debug-mop/:codigo", async (req, res) => {
       },
       tabla_tblEspecialidades: tablaMatch ? tablaMatch[0] : null,
       requisitos_extraidos_por_extractor: requisitos,
+      requiere_mop_segun_flag: requiereRegistroMOP(html),
+      urls_ajax_encontradas: [...urlsAjax],
+      scripts_completos_que_tocan_la_tabla: scriptsConTabla,
       scripts_grandes_que_podrian_tener_datos: scriptsRelevantes,
       inputs_hidden_relacionados: inputsHidden,
       primeros_500_chars: html.substring(0, 500)
