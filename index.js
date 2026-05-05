@@ -170,41 +170,58 @@ function validarRegistroMOP(requisitos) {
 
 // Extrae los requisitos del recuadro "Especialidades y categorías" del HTML de MP
 // Devuelve: [{ codigo: "4.8", descripcion: "Obras Sanitarias", categoria: "2da" }, ...]
+//
+// El HTML de mercadopublico.cl usa <table id="tblEspecialidades"> con estructura:
+//   <tr><td>Ingeniería Civil</td><td>4.8 Obras Sanitarias.</td><td>2da</td></tr>
+// Así que parseamos la tabla celda por celda en lugar de regex sobre texto plano.
 function extraerEspecialidadesMOP(html) {
   if (!html) return [];
 
-  // Limpiar HTML a texto plano sin truncar
-  const texto = html
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<[^>]+>/g, " ")
+  // Localizar la tabla específica de especialidades MOP
+  const tablaMatch = html.match(/<table[^>]*id\s*=\s*["']tblEspecialidades["'][^>]*>([\s\S]*?)<\/table>/i);
+  if (!tablaMatch) return [];
+
+  const tablaHTML = tablaMatch[1];
+
+  // Si hay <tbody> usarlo, sino trabajar con todo el contenido de la tabla
+  const tbodyMatch = tablaHTML.match(/<tbody[^>]*>([\s\S]*?)<\/tbody>/i);
+  const filasHTML = tbodyMatch ? tbodyMatch[1] : tablaHTML;
+
+  // Extraer cada <tr>
+  const filas = filasHTML.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
+
+  const cleanCell = s => s
+    .replace(/<[^>]+>/g, "")
     .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&")
     .replace(/\s+/g, " ").trim();
 
-  // Localizar sección
-  const idx = texto.toLowerCase().indexOf("especialidades y categor");
-  if (idx === -1) return [];
-
-  // Trabajar sobre los 2500 chars siguientes a esa sección
-  const seccion = texto.substring(idx, idx + 2500);
-
-  // Patrón: "N.N descripción Categoría"
-  // Categoría puede ser: Primera Superior, Primera, Segunda, Tercera o variantes 1ra/2da/3ra/1°/2°/3°
-  const regex = /(\d{1,2}\.\d{1,2})\s+([A-Za-zÁÉÍÓÚáéíóúÑñ\s,()\-]{3,80}?)\s+(1ra\s*Superior|1°\s*Superior|Primera\s*Superior|1ra|1°|Primera|2da|2°|Segunda|3ra|3°|Tercera)\b/gi;
-
   const requisitos = [];
   const seen = new Set();
-  let match;
-  while ((match = regex.exec(seccion)) !== null) {
-    const codigo = match[1];
+
+  for (const filaHTML of filas) {
+    // Skip filas del thead (header)
+    if (/<th[\s>]/i.test(filaHTML)) continue;
+
+    const celdas = filaHTML.match(/<td[^>]*>[\s\S]*?<\/td>/gi) || [];
+    if (celdas.length < 3) continue;
+
+    const especialidad    = cleanCell(celdas[0]);  // "Ingeniería Civil"
+    const subEspecialidad = cleanCell(celdas[1]);  // "4.8 Obras Sanitarias."
+    const categoria       = cleanCell(celdas[2]);  // "2da"
+
+    // Extraer código N.N y descripción de la sub-especialidad
+    const m = subEspecialidad.match(/^(\d{1,2}\.\d{1,2})\s+(.+?)\.?\s*$/);
+    if (!m) continue;
+
+    const codigo = m[1];
+    const descripcion = m[2].trim();
+
     if (seen.has(codigo)) continue;
     seen.add(codigo);
-    requisitos.push({
-      codigo,
-      descripcion: match[2].trim().replace(/[\.,]+$/, "").replace(/\s+/g, " "),
-      categoria: match[3].trim()
-    });
+
+    requisitos.push({ codigo, descripcion, categoria, especialidad });
   }
+
   return requisitos;
 }
 
