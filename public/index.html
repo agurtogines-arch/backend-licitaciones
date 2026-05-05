@@ -27,7 +27,7 @@ a{text-decoration:none}
 const { useState, useRef, useCallback } = React;
 
 const BACKEND_URL = "https://backend-licitaciones.onrender.com";
-const LEN_LOGO = "data:image/jpeg;base64,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";
+const LEN_LOGO = "data:image/jpeg;base64,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";
 
 const REGIONES = [
   { value:"todas", label:"Todas las regiones" },
@@ -285,7 +285,6 @@ function migrarZonaSur() {
   const oldVial = localStorage.getItem("kw_vial");
   const oldHidro = localStorage.getItem("kw_hidro");
   const oldServ = localStorage.getItem("kw_servicio");
-  const oldActive = localStorage.getItem("kw_active");
   if (oldVial && !localStorage.getItem("kw_vial_zonasur")) {
     localStorage.setItem("kw_vial_zonasur", oldVial);
   }
@@ -294,9 +293,6 @@ function migrarZonaSur() {
   }
   if (oldServ && !localStorage.getItem("kw_servicio_zonasur")) {
     localStorage.setItem("kw_servicio_zonasur", oldServ);
-  }
-  if (oldActive && !localStorage.getItem("kw_active_zonasur_0") && !localStorage.getItem("kw_active_zonasur_1")) {
-    // Migrar activos al nuevo formato
   }
 }
 migrarZonaSur();
@@ -321,7 +317,7 @@ if (localStorage.getItem("kw_version") !== VERSION_KW) {
   ];
   keysToClean.forEach(k => localStorage.removeItem(k));
   localStorage.setItem("kw_version", VERSION_KW);
-  console.log("[LEN] Keywords actualizadas a v3.0 — localStorage limpiado");
+  console.log("[LEN] Keywords actualizadas a v" + VERSION_KW + " — localStorage limpiado");
 }
 
 // ── Inicializar estado de cada división ───────────────────────────────────
@@ -358,11 +354,9 @@ function deduplicar(arr) {
 }
 function parseFecha(str) {
   if(!str||str==="–") return null;
-  // Formato ISO: 2026-04-29 o 2026-04-29T17:31:00
   if(str.includes("-") && str.length >= 10 && str[4]==="-") {
-    return new Date(str); // el navegador maneja ISO correctamente
+    return new Date(str);
   }
-  // Formato DD/MM/YYYY o DD-MM-YYYY
   const p = str.split(/[-\/]/);
   if(p.length===3 && p[2].length===4) {
     return new Date(`${p[2]}-${p[1].padStart(2,"0")}-${p[0].padStart(2,"0")}`);
@@ -376,7 +370,6 @@ function filtrarPorFecha(arr, soloVigentes, fechaInicio, fechaFin) {
     const cierre = parseFecha(r.fechaCierre);
     const pub    = parseFecha(r.fechaPublicacion);
     if(soloVigentes) {
-      // Descartar solo si el cierre fue ANTES de hoy (no hoy mismo)
       if(cierre) {
         const cierreDia = new Date(cierre); cierreDia.setHours(0,0,0,0);
         if(cierreDia < hoy) return false;
@@ -396,48 +389,6 @@ function filtrarPorFecha(arr, soloVigentes, fechaInicio, fechaFin) {
     return true;
   });
 }
-// ── Organismos conocidos con código MP ────────────────────────────────────────
-const ORGANISMOS = [
-  { id:"sectra", nombre:"SECTRA", codigo:"7007", icon:"🚦", division:"infra",
-    desc:"Secretaría de Planificación de Transporte" },
-];
-
-
-// ── Mapeo portales externos → divisiones LEN ─────────────────────────────────
-const PORTAL_DIVISIONS_MAP = {
-  econssa: ["medioambiente", "infra"],
-  psa:     ["infra", "ito"],
-  sectra: ["zonasur", "infra"],
-  efe:    ["infra", "ito"],
-  minvu:  ["civil", "ito"],
-  metro:  ["infra", "ito"]
-};
-
-// Obtener keywords combinadas de las divisiones mapeadas a un portal
-function getPortalKeywords(portalId, divStates) {
-  const divIds = PORTAL_DIVISIONS_MAP[portalId] || [];
-  const keywords = [], servicios = [];
-  divIds.forEach(divId => {
-    const ds = divStates[divId];
-    if (!ds) return;
-    ds.grupos.forEach(g => g.keywords.filter(k => g.active.has(k)).forEach(k => { if(!keywords.includes(k)) keywords.push(k); }));
-    ds.servicios.keywords.filter(k => ds.servicios.active.has(k)).forEach(k => { if(!servicios.includes(k)) servicios.push(k); });
-  });
-  return { keywords, servicios };
-}
-
-// Obtener búsquedas por división mapeada (con región propia de cada división)
-function getPortalSearches(portalId, divStates) {
-  const divIds = PORTAL_DIVISIONS_MAP[portalId] || [];
-  return divIds.map(divId => {
-    const ds = divStates[divId];
-    if (!ds) return null;
-    const div = DIVISIONS.find(d => d.id === divId);
-    const keywords = ds.grupos.flatMap(g => g.keywords.filter(k => g.active.has(k)));
-    const servicios = ds.servicios.keywords.filter(k => ds.servicios.active.has(k));
-    return { divId, divLabel: div?.label || divId, divIcon: div?.icon || "", keywords, servicios, regionDesde: ds.regionDesde, regionHasta: ds.regionHasta };
-  }).filter(Boolean).filter(s => s.keywords.length > 0);
-}
 
 async function buscarEnBackend(tecnicas, servicios, regionDesde, regionHasta, signal) {
   const params = new URLSearchParams({ keywords: tecnicas.join(","), servicios: servicios.join(",") });
@@ -452,21 +403,6 @@ async function buscarEnBackend(tecnicas, servicios, regionDesde, regionHasta, si
   if(!res.ok) throw new Error(`El backend respondió ${res.status}`);
   const data = await res.json();
   return (data.resultados||[]).map(r => ({...r, fuente:"Mercado Público"}));
-}
-
-async function buscarPorOrganismo(organismo, regionDesde, regionHasta, signal) {
-  const params = new URLSearchParams({ organismo: organismo.codigo });
-  if(regionDesde !== "todas") params.set("desde", regionDesde);
-  if(regionHasta !== "todas") params.set("hasta", regionHasta);
-  let res;
-  try { res = await fetch(`${BACKEND_URL}/buscar-organismo?${params}`, {signal}); }
-  catch(e) {
-    if(e.name==="AbortError") throw e;
-    return [];
-  }
-  if(!res.ok) return [];
-  const data = await res.json();
-  return (data.resultados||[]).map(r => ({...r, fuente: organismo.nombre, fuenteIcon: organismo.icon}));
 }
 
 // ── Componente principal ──────────────────────────────────────────────────
@@ -486,6 +422,7 @@ function App() {
   const [selected, setSelected]             = useState(null);
   const [analysis, setAnalysis]             = useState("");
   const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisDescartado, setAnalysisDescartado] = useState(false);
   const [gestorEstado, setGestorEstado]     = useState(null);
   const [generalLoading, setGeneralLoading] = useState(false);
   const [generalProgress, setGeneralProgress] = useState([]);
@@ -497,274 +434,6 @@ function App() {
   const activDiv = DIVISIONS.find(d => d.id === activeDivId) || DIVISIONS[0];
   const activeDivId2 = activeDivId;
   const ds = divStates[activeDivId];
-
-
-  // ── Estado SECTRA ─────────────────────────────────────────────────────
-  const SECTRA_KW_DEFAULT = ["Plan de Transporte","Sistema de Transporte Urbano","Movilidad Urbana","Transporte Urbano","Diagnóstico Transporte","Plan Maestro Vial","Ciclovías","Accesibilidad Vial","Ingeniería de Tránsito","Modelación Transporte"];
-  const SECTRA_SERV_DEFAULT = ["Estudio","Consultoría","Diagnóstico","Actualización","Análisis","Diseño"];
-  const [sectraKw, setSectraKw]       = useState(() => { try { const v=localStorage.getItem("sectra_kw"); return v?JSON.parse(v):SECTRA_KW_DEFAULT; } catch(e){ return SECTRA_KW_DEFAULT; }});
-  const [sectraActive, setSectraActive] = useState(() => { try { const v=localStorage.getItem("sectra_active"); return new Set(v?JSON.parse(v):SECTRA_KW_DEFAULT); } catch(e){ return new Set(SECTRA_KW_DEFAULT); }});
-  const [sectraServ, setSectraServ]   = useState(() => { try { const v=localStorage.getItem("sectra_serv"); return v?JSON.parse(v):SECTRA_SERV_DEFAULT; } catch(e){ return SECTRA_SERV_DEFAULT; }});
-  const [sectraServActive, setSectraServActive] = useState(() => { try { const v=localStorage.getItem("sectra_serv_active"); return new Set(v?JSON.parse(v):SECTRA_SERV_DEFAULT); } catch(e){ return new Set(SECTRA_SERV_DEFAULT); }});
-  const [sectraRegDesde, setSectraRegDesde] = useState("todas");
-  const [sectraRegHasta, setSectraRegHasta] = useState("todas");
-  const [sectraResults, setSectraResults]   = useState([]);
-  const [sectraLoading, setSectraLoading]   = useState(false);
-  const [sectraSteps, setSectraSteps]       = useState([]);
-  const [sectraError, setSectraError]       = useState("");
-  const [sectraElapsed, setSectraElapsed]   = useState(0);
-  const [sectraNewKw, setSectraNewKw]       = useState("");
-  const [sectraNewServ, setSectraNewServ]   = useState("");
-  const sectraAbortRef = useRef(null);
-  const sectraTimerRef = useRef(null);
-
-  const buscarSECTRA = async () => {
-    const searches = getPortalSearches("sectra", divStates);
-    if(!searches.length) { setSectraError("Las divisiones Zona Sur e Infraestructura no tienen keywords activas."); return; }
-    setSectraLoading(true); setSectraError(""); setSectraSteps([]); setSectraResults([]); setSectraElapsed(0);
-    if(sectraAbortRef.current) sectraAbortRef.current.abort();
-    sectraAbortRef.current = new AbortController();
-    sectraTimerRef.current = setInterval(() => setSectraElapsed(e => e+1), 1000);
-
-    const allResults = [];
-    try {
-      // Buscar por organismo 7007 con keywords combinadas
-      const { keywords, servicios } = getPortalKeywords("sectra", divStates);
-      setSectraSteps([{msg:`🚦 Buscando en SECTRA con keywords de ${searches.map(s=>s.divLabel).join(" + ")}...`, state:"wait"}]);
-
-      const params1 = new URLSearchParams({ organismo: "7007" });
-      const res1 = await fetch(`${BACKEND_URL}/buscar-organismo?${params1}`, {signal: sectraAbortRef.current.signal});
-      const data1 = await res1.json();
-      (data1.resultados||[]).forEach(r => allResults.push({...r, divisionOrigen:"SECTRA Organismo", fuenteTag:"SECTRA"}));
-
-      // Buscar por keywords de cada división con su región propia
-      for(const search of searches) {
-        const params2 = new URLSearchParams({ keywords: search.keywords.join(","), servicios: search.servicios.join(",") });
-        if(search.regionDesde !== "todas") params2.set("desde", search.regionDesde);
-        if(search.regionHasta !== "todas") params2.set("hasta", search.regionHasta);
-        const res2 = await fetch(`${BACKEND_URL}/buscar?${params2}`, {signal: sectraAbortRef.current.signal});
-        const data2 = await res2.json();
-        (data2.resultados||[]).forEach(r => allResults.push({...r, divisionOrigen:`${search.divIcon} ${search.divLabel}`, fuenteTag:"SECTRA"}));
-      }
-
-      clearInterval(sectraTimerRef.current);
-      const uniq = deduplicar(allResults);
-      if(uniq.length) {
-        setSectraResults(uniq);
-        setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100));
-        setSectraSteps([{msg:`✅ ${uniq.length} licitaciones encontradas`, state:"ok"}]);
-      } else { setSectraError("Sin resultados."); }
-    } catch(e) {
-      clearInterval(sectraTimerRef.current);
-      if(e.name!=="AbortError") setSectraError(`Error: ${e.message}`);
-    }
-    setSectraLoading(false); setSectraElapsed(0);
-  };
-
-
-  // ── Estado EFE ────────────────────────────────────────────────────────────
-  const EFE_KW_DEFAULT = ["Vialidad","Infraestructura","Geotecnia","Hidráulic","Topografía","Civil","Señalización","Estación","Puente","Túnel","Inspección Técnica","ITO","Diseño","Consultoría","Estudio"];
-  const EFE_SERV_DEFAULT = ["Estudio","Consultoría","Diseño","Inspección","Asesoría","ITO"];
-  const [efeKw, setEfeKw]           = useState(() => { try { const v=localStorage.getItem("efe_kw"); return v?JSON.parse(v):EFE_KW_DEFAULT; } catch(e){ return EFE_KW_DEFAULT; }});
-  const [efeActive, setEfeActive]   = useState(() => { try { const v=localStorage.getItem("efe_active"); return new Set(v?JSON.parse(v):EFE_KW_DEFAULT); } catch(e){ return new Set(EFE_KW_DEFAULT); }});
-  const [efeServ, setEfeServ]       = useState(() => { try { const v=localStorage.getItem("efe_serv"); return v?JSON.parse(v):EFE_SERV_DEFAULT; } catch(e){ return EFE_SERV_DEFAULT; }});
-  const [efeServActive, setEfeServActive] = useState(() => { try { const v=localStorage.getItem("efe_serv_active"); return new Set(v?JSON.parse(v):EFE_SERV_DEFAULT); } catch(e){ return new Set(EFE_SERV_DEFAULT); }});
-  const [efeResults, setEfeResults] = useState([]);
-  const [efeLoading, setEfeLoading] = useState(false);
-  const [efeSteps, setEfeSteps]     = useState([]);
-  const [efeError, setEfeError]     = useState("");
-  const [efeElapsed, setEfeElapsed] = useState(0);
-  const [efeSoloVigentes, setEfeSoloVigentes] = useState(true);
-  const [efeNewKw, setEfeNewKw]     = useState("");
-  const [efeNewServ, setEfeNewServ] = useState("");
-  const efeAbortRef = useRef(null);
-  const efeTimerRef = useRef(null);
-
-  const buscarEFE = async () => {
-    setEfeLoading(true); setEfeError(""); setEfeSteps([]); setEfeResults([]); setEfeElapsed(0);
-    if(efeAbortRef.current) efeAbortRef.current.abort();
-    efeAbortRef.current = new AbortController();
-    efeTimerRef.current = setInterval(() => setEfeElapsed(e => e+1), 1000);
-    try {
-      setEfeSteps([{msg:"🚂 Conectando con EFE Trenes de Chile...", state:"wait"}]);
-      const res = await fetch(`${BACKEND_URL}/buscar-efe`, {signal: efeAbortRef.current.signal});
-      const data = await res.json();
-      clearInterval(efeTimerRef.current);
-      if(!res.ok) { setEfeError((data.error||"Error al consultar EFE") + " — Intenta de nuevo."); setEfeLoading(false); return; }
-      const ESTADOS_ACTIVOS = ["EN VENTA DE BASES","EN PERÍODO","EN PERIODO","CHARLA INFORMATIVA","CONSULTAS Y RESPUESTAS","EN RECEPCIÓN","EN RECEPCION DE OFERTAS"];
-      const filtrados = efeSoloVigentes ? (data.resultados||[]).filter(r => ESTADOS_ACTIVOS.some(e => (r.estado||"").toUpperCase().includes(e))) : (data.resultados||[]);
-      const uniq = deduplicar(filtrados);
-      if(uniq.length) {
-        setEfeResults(uniq);
-        setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100));
-        setEfeSteps([{msg:`✅ ${uniq.length} licitaciones encontradas en EFE`, state:"ok"}]);
-      } else { setEfeError("Sin resultados vigentes en EFE."); }
-    } catch(e) {
-      clearInterval(efeTimerRef.current);
-      if(e.name!=="AbortError") setEfeError(`Error: ${e.message}`);
-    }
-    setEfeLoading(false);
-  };
-
-  // ── Estado MINVU ─────────────────────────────────────────────────────────
-  const MINVU_KW_DEFAULT = ["Mejoramiento Barrio","Pavimentación","Vías Urbanas","Aceras","Urbanización","Espacio Público","Pasaje","Conjunto Habitacional","Villa","Obras Menores","Conservación Vial Urbana"];
-  const MINVU_SERV_DEFAULT = ["Estudio","Diseño","Consultoría","Inspección","Asesoría"];
-  const [minvuKw, setMinvuKw]           = useState(() => { try { const v=localStorage.getItem("minvu_kw"); return v?JSON.parse(v):MINVU_KW_DEFAULT; } catch(e){ return MINVU_KW_DEFAULT; }});
-  const [minvuActive, setMinvuActive]   = useState(() => { try { const v=localStorage.getItem("minvu_active"); return new Set(v?JSON.parse(v):[]);  } catch(e){ return new Set([]); }});
-  const [minvuServ, setMinvuServ]       = useState(() => { try { const v=localStorage.getItem("minvu_serv"); return v?JSON.parse(v):MINVU_SERV_DEFAULT; } catch(e){ return MINVU_SERV_DEFAULT; }});
-  const [minvuServActive, setMinvuServActive] = useState(() => { try { const v=localStorage.getItem("minvu_serv_active"); return new Set(v?JSON.parse(v):[]);  } catch(e){ return new Set([]); }});
-  const [minvuResults, setMinvuResults] = useState([]);
-  const [minvuLoading, setMinvuLoading] = useState(false);
-  const [minvuSteps, setMinvuSteps]     = useState([]);
-  const [minvuError, setMinvuError]     = useState("");
-  const [minvuElapsed, setMinvuElapsed] = useState(0);
-  const [minvuNewKw, setMinvuNewKw]     = useState("");
-  const [minvuNewServ, setMinvuNewServ] = useState("");
-  const minvuAbortRef = useRef(null);
-  const minvuTimerRef = useRef(null);
-
-  const buscarMINVU = async () => {
-    const { keywords, servicios } = getPortalKeywords("minvu", divStates);
-    const searches = getPortalSearches("minvu", divStates);
-    setMinvuLoading(true); setMinvuError(""); setMinvuSteps([]); setMinvuResults([]); setMinvuElapsed(0);
-    if(minvuAbortRef.current) minvuAbortRef.current.abort();
-    minvuAbortRef.current = new AbortController();
-    minvuTimerRef.current = setInterval(() => setMinvuElapsed(e => e+1), 1000);
-    try {
-      const divLabels = searches.length ? searches.map(s=>s.divLabel).join(" + ") : "sin filtro";
-      setMinvuSteps([{msg:`🏗️ Buscando en MINVU con keywords de ${divLabels}...`, state:"wait"}]);
-      const params = new URLSearchParams();
-      if(keywords.length) params.set("keywords", keywords.join(","));
-      if(servicios.length) params.set("servicios", servicios.join(","));
-      const res = await fetch(`${BACKEND_URL}/buscar-minvu?${params}`, {signal: minvuAbortRef.current.signal});
-      const data = await res.json();
-      clearInterval(minvuTimerRef.current);
-      if(!res.ok) { setMinvuError((data.error||"Error al consultar MINVU") + " — Intenta de nuevo."); setMinvuLoading(false); return; }
-      const uniq = deduplicar(data.resultados||[]);
-      if(uniq.length) {
-        setMinvuResults(uniq);
-        setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100));
-        setMinvuSteps([{msg:`✅ ${uniq.length} licitaciones encontradas en MINVU/SERVIU`, state:"ok"}]);
-      } else { setMinvuError("Sin resultados. Activa keywords en Proyectos Civiles o ITO."); }
-    } catch(e) {
-      clearInterval(minvuTimerRef.current);
-      if(e.name!=="AbortError") setMinvuError(`Error: ${e.message}`);
-    }
-    setMinvuLoading(false);
-  };
-
-
-  // ── Estado ECONSSA ───────────────────────────────────────────────────────
-  const [econssaResults, setEconssaResults] = useState([]);
-  const [econssaLoading, setEconssaLoading] = useState(false);
-  const [econssaSteps, setEconssaSteps]     = useState([]);
-  const [econssaError, setEconssaError]     = useState("");
-  const [econssaElapsed, setEconssaElapsed] = useState(0);
-  const econssaAbortRef = useRef(null);
-  const econssaTimerRef = useRef(null);
-
-  const buscarECONSSA = async () => {
-    setEconssaLoading(true); setEconssaError(""); setEconssaSteps([]); setEconssaResults([]); setEconssaElapsed(0);
-    if(econssaAbortRef.current) econssaAbortRef.current.abort();
-    econssaAbortRef.current = new AbortController();
-    econssaTimerRef.current = setInterval(() => setEconssaElapsed(e => e+1), 1000);
-    try {
-      setEconssaSteps([{msg:"💧 Conectando con ECONSSA...", state:"wait"}]);
-      const res = await fetch(`${BACKEND_URL}/buscar-econssa`, {signal: econssaAbortRef.current.signal});
-      clearInterval(econssaTimerRef.current);
-      const rawText = await res.text();
-      if(!res.ok || rawText.trim().startsWith("<")) {
-        setEconssaError("Error al conectar con ECONSSA — verifica que el backend esté actualizado en Render.");
-        setEconssaLoading(false); return;
-      }
-      const data = JSON.parse(rawText);
-      const uniq = deduplicar(data.resultados||[]);
-      if(uniq.length) {
-        setEconssaResults(uniq);
-        setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100));
-        setEconssaSteps([{msg:`✅ ${uniq.length} licitaciones encontradas en ECONSSA`, state:"ok"}]);
-      } else { setEconssaError("Sin resultados."); }
-    } catch(e) {
-      clearInterval(econssaTimerRef.current);
-      if(e.name!=="AbortError") setEconssaError(`Error: ${e.message}`);
-    }
-    setEconssaLoading(false);
-  };
-
-  // ── Estado Puerto San Antonio ─────────────────────────────────────────────
-  const [psaResults, setPsaResults]     = useState([]);
-  const [psaLoading, setPsaLoading]     = useState(false);
-  const [psaSteps, setPsaSteps]         = useState([]);
-  const [psaError, setPsaError]         = useState("");
-  const [psaElapsed, setPsaElapsed]     = useState(0);
-  const psaAbortRef = useRef(null);
-  const psaTimerRef = useRef(null);
-
-  const buscarPSA = async () => {
-    setPsaLoading(true); setPsaError(""); setPsaSteps([]); setPsaResults([]); setPsaElapsed(0);
-    if(psaAbortRef.current) psaAbortRef.current.abort();
-    psaAbortRef.current = new AbortController();
-    psaTimerRef.current = setInterval(() => setPsaElapsed(e => e+1), 1000);
-    try {
-      setPsaSteps([{msg:"⚓ Conectando con Puerto San Antonio...", state:"wait"}]);
-      const res = await fetch(`${BACKEND_URL}/buscar-psa`, {signal: psaAbortRef.current.signal});
-      clearInterval(psaTimerRef.current);
-      const rawText = await res.text();
-      if(!res.ok || rawText.trim().startsWith("<")) {
-        setPsaError("Error al conectar con Puerto San Antonio — verifica que el backend esté actualizado en Render.");
-        setPsaLoading(false); return;
-      }
-      const data = JSON.parse(rawText);
-      const uniq = deduplicar(data.resultados||[]);
-      if(uniq.length) {
-        setPsaResults(uniq);
-        setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100));
-        setPsaSteps([{msg:`✅ ${uniq.length} licitaciones encontradas en Puerto San Antonio`, state:"ok"}]);
-      } else { setPsaError("Sin resultados."); }
-    } catch(e) {
-      clearInterval(psaTimerRef.current);
-      if(e.name!=="AbortError") setPsaError(`Error: ${e.message}`);
-    }
-    setPsaLoading(false);
-  };
-
-
-  // ── Estado Metro ─────────────────────────────────────────────────────────
-  const [metroResults, setMetroResults] = useState([]);
-  const [metroLoading, setMetroLoading] = useState(false);
-  const [metroSteps, setMetroSteps]     = useState([]);
-  const [metroError, setMetroError]     = useState("");
-  const [metroElapsed, setMetroElapsed] = useState(0);
-  const metroAbortRef = useRef(null);
-  const metroTimerRef = useRef(null);
-
-  const buscarMetro = async () => {
-    setMetroLoading(true); setMetroError(""); setMetroSteps([]); setMetroResults([]); setMetroElapsed(0);
-    if(metroAbortRef.current) metroAbortRef.current.abort();
-    metroAbortRef.current = new AbortController();
-    metroTimerRef.current = setInterval(() => setMetroElapsed(e => e+1), 1000);
-    try {
-      setMetroSteps([{msg:"🚇 Conectando con Metro de Santiago...", state:"wait"}]);
-      const res = await fetch(`${BACKEND_URL}/buscar-metro`, {signal: metroAbortRef.current.signal});
-      clearInterval(metroTimerRef.current);
-      const rawText = await res.text();
-      if(!res.ok || rawText.trim().startsWith("<")) {
-        setMetroError("Error al conectar con Metro — verifica que el backend esté actualizado.");
-        setMetroLoading(false); return;
-      }
-      const data = JSON.parse(rawText);
-      const uniq = deduplicar(data.resultados||[]);
-      if(uniq.length) {
-        setMetroResults(uniq);
-        setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100));
-        setMetroSteps([{msg:`✅ ${uniq.length} próximas licitaciones encontradas en Metro`, state:"ok"}]);
-      } else { setMetroError("Sin resultados."); }
-    } catch(e) {
-      clearInterval(metroTimerRef.current);
-      if(e.name!=="AbortError") setMetroError(`Error: ${e.message}`);
-    }
-    setMetroLoading(false);
-  };
 
   const updateDs = useCallback((divId, updater) => {
     setDivStates(prev => ({ ...prev, [divId]: updater(prev[divId]) }));
@@ -953,7 +622,12 @@ function App() {
   };
 
   const verDetalle = async item => {
-    setSelected(item); setAnalysis("⏳ Analizando con IA..."); setAnalysisLoading(true); setGestorEstado(null); setTab("detalle");
+    setSelected(item);
+    setAnalysis("⏳ Analizando con IA...");
+    setAnalysisLoading(true);
+    setAnalysisDescartado(false);
+    setGestorEstado(null);
+    setTab("detalle");
     await new Promise(r => setTimeout(r, 100));
     try {
       const res = await fetch(`${BACKEND_URL}/mp/analizar`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({item}) });
@@ -961,6 +635,12 @@ function App() {
       const data = await res.json();
       const texto = data.analysis || "No se pudo obtener el análisis.";
       setAnalysis(texto);
+      // Si el backend descartó automáticamente por filtro MOP, marcar y NO guardar en gestor
+      if(data.descartado === true) {
+        setAnalysisDescartado(true);
+        setAnalysisLoading(false);
+        return;
+      }
       const esParticpar = texto.includes("🟢");
       const esEvaluar   = texto.includes("🟡");
       if(esParticpar || esEvaluar) {
@@ -976,7 +656,7 @@ function App() {
     setAnalysisLoading(false);
   };
 
-  // ── Búsqueda General ─────────────────────────────────────────────────
+  // ── Búsqueda General (solo MP) ───────────────────────────────────────
   const buscarGeneral = async () => {
     setGeneralLoading(true);
     setGeneralProgress([]);
@@ -993,7 +673,6 @@ function App() {
 
     const nuevosResultados = {};
 
-    // ── Paso 1: UNA sola petición para todas las divisiones MP ────────────
     addProg("mp_general", "🏛️ Descargando licitaciones de Mercado Público...", "wait");
     DIVISIONS.forEach(div => addProg(div.id, `${div.icon} ${div.label} — esperando...`, "wait"));
 
@@ -1025,7 +704,6 @@ function App() {
 
       addProg("mp_general", `🏛️ Mercado Público — ${data.total||0} licitaciones activas descargadas`, "ok");
 
-      // Distribuir resultados por división — van directo a cada división
       DIVISIONS.forEach(div => {
         const ds = divStates[div.id];
         const results = data.resultados?.[div.id] || [];
@@ -1034,7 +712,6 @@ function App() {
         addProg(div.id, `${div.icon} ${div.label} — ${filtradas.length} resultado(s)`, filtradas.length > 0 ? "ok" : "empty");
         if(filtradas.length) {
           setHistory(prev => deduplicar([...filtradas,...prev]).slice(0,100));
-          // Guardar resultados en la división correspondiente
           updateDs(div.id, ds => ({...ds, results: filtradas}));
         }
       });
@@ -1045,103 +722,6 @@ function App() {
       } else {
         addProg("mp_general", `❌ Error MP: ${e.message}`, "error");
       }
-    }
-
-    // ── Paso 2: SECTRA (organismo 7007) ───────────────────────────────────
-    for(const org of ORGANISMOS) {
-      addProg(`org_${org.id}`, `${org.icon} ${org.nombre} — buscando...`, "wait");
-      try {
-        const found = await buscarPorOrganismo(org, "todas", "todas", generalAbortRef.current.signal);
-        const uniq = deduplicar(found);
-        nuevosResultados[`org_${org.id}`] = uniq;
-        if(uniq.length) { setSectraResults(uniq); setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100)); }
-        addProg(`org_${org.id}`, `${org.icon} ${org.nombre} — ${uniq.length} resultado(s)`, uniq.length > 0 ? "ok" : "empty");
-      } catch(e) {
-        if(e.name === "AbortError") { addProg(`org_${org.id}`, `${org.icon} ${org.nombre} — cancelado`, "skip"); break; }
-        addProg(`org_${org.id}`, `${org.icon} ${org.nombre} — error`, "error");
-      }
-    }
-
-    // ── Paso 3: EFE ───────────────────────────────────────────────────────
-    await new Promise(r => setTimeout(r, 2000));
-    addProg("efe", "🚂 EFE — buscando...", "wait");
-    try {
-      const res = await fetch(`${BACKEND_URL}/buscar-efe`, {signal: generalAbortRef.current.signal});
-      const data = await res.json();
-      const ESTADOS_ACTIVOS_EFE = ["EN VENTA DE BASES","EN PERÍODO","EN PERIODO","CHARLA INFORMATIVA","CONSULTAS Y RESPUESTAS","EN RECEPCIÓN","EN RECEPCION DE OFERTAS"];
-      const filtrados = soloVigentesGlobal ? (data.resultados||[]).filter(r => ESTADOS_ACTIVOS_EFE.some(e => (r.estado||"").toUpperCase().includes(e))) : (data.resultados||[]);
-      const uniq = deduplicar(filtrados);
-      nuevosResultados["efe"] = uniq;
-      if(uniq.length) { setEfeResults(uniq); setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100)); }
-      addProg("efe", `🚂 EFE — ${uniq.length} resultado(s)`, uniq.length > 0 ? "ok" : "empty");
-    } catch(e) {
-      if(e.name === "AbortError") addProg("efe", "🚂 EFE — cancelado", "skip");
-      else addProg("efe", `🚂 EFE — error: ${e.message}`, "error");
-    }
-
-    // ── Paso 4: MINVU ─────────────────────────────────────────────────────────
-    await new Promise(r => setTimeout(r, 2000));
-    addProg("minvu", "🏗️ MINVU — buscando...", "wait");
-    try {
-      const tecnicasMinvu = minvuKw.filter(k => minvuActive.has(k));
-      const serviciosMinvu = minvuServ.filter(k => minvuServActive.has(k));
-      const params = new URLSearchParams();
-      if(tecnicasMinvu.length) params.set("keywords", tecnicasMinvu.join(","));
-      if(serviciosMinvu.length) params.set("servicios", serviciosMinvu.join(","));
-      const res = await fetch(`${BACKEND_URL}/buscar-minvu?${params}`, {signal: generalAbortRef.current.signal});
-      const data = await res.json();
-      const uniq = deduplicar(data.resultados || []);
-      nuevosResultados["minvu"] = uniq;
-      if(uniq.length) { setMinvuResults(uniq); setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100)); }
-      addProg("minvu", `🏗️ MINVU — ${uniq.length} resultado(s)`, uniq.length > 0 ? "ok" : "empty");
-    } catch(e) {
-      if(e.name === "AbortError") addProg("minvu", "🏗️ MINVU — cancelado", "skip");
-      else addProg("minvu", `🏗️ MINVU — error: ${e.message}`, "error");
-    }
-
-    // ── Paso 5: ECONSSA ───────────────────────────────────────────────────────
-    await new Promise(r => setTimeout(r, 1500));
-    addProg("econssa", "💧 ECONSSA — buscando...", "wait");
-    try {
-      const res = await fetch(`${BACKEND_URL}/buscar-econssa`, {signal: generalAbortRef.current.signal});
-      const data = await res.json();
-      const uniq = deduplicar(data.resultados||[]);
-      nuevosResultados["econssa"] = uniq;
-      if(uniq.length) { setEconssaResults(uniq); setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100)); }
-      addProg("econssa", `💧 ECONSSA — ${uniq.length} resultado(s)`, uniq.length>0?"ok":"empty");
-    } catch(e) {
-      if(e.name==="AbortError") addProg("econssa","💧 ECONSSA — cancelado","skip");
-      else addProg("econssa",`💧 ECONSSA — error: ${e.message}`,"error");
-    }
-
-    // ── Paso 6: Puerto San Antonio ────────────────────────────────────────────
-    await new Promise(r => setTimeout(r, 1500));
-    addProg("psa", "⚓ Puerto San Antonio — buscando...", "wait");
-    try {
-      const res = await fetch(`${BACKEND_URL}/buscar-psa`, {signal: generalAbortRef.current.signal});
-      const data = await res.json();
-      const uniq = deduplicar(data.resultados||[]);
-      nuevosResultados["psa"] = uniq;
-      if(uniq.length) { setPsaResults(uniq); setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100)); }
-      addProg("psa", `⚓ Puerto San Antonio — ${uniq.length} resultado(s)`, uniq.length>0?"ok":"empty");
-    } catch(e) {
-      if(e.name==="AbortError") addProg("psa","⚓ Puerto San Antonio — cancelado","skip");
-      else addProg("psa",`⚓ Puerto San Antonio — error: ${e.message}`,"error");
-    }
-
-    // ── Paso 7: Metro ─────────────────────────────────────────────────────────
-    await new Promise(r => setTimeout(r, 1500));
-    addProg("metro", "🚇 Metro — buscando...", "wait");
-    try {
-      const res = await fetch(`${BACKEND_URL}/buscar-metro`, {signal: generalAbortRef.current.signal});
-      const data = await res.json();
-      const uniq = deduplicar(data.resultados||[]);
-      nuevosResultados["metro"] = uniq;
-      if(uniq.length) { setMetroResults(uniq); setHistory(prev => deduplicar([...uniq,...prev]).slice(0,100)); }
-      addProg("metro", `🚇 Metro — ${uniq.length} resultado(s)`, uniq.length>0?"ok":"empty");
-    } catch(e) {
-      if(e.name==="AbortError") addProg("metro","🚇 Metro — cancelado","skip");
-      else addProg("metro",`🚇 Metro — error: ${e.message}`,"error");
     }
 
     setGeneralResults(nuevosResultados);
@@ -1167,7 +747,7 @@ function App() {
           <img src={LEN_LOGO} alt="LEN Ingeniería" style={{height:52,borderRadius:8,background:"white",padding:"5px 10px",boxShadow:"0 2px 8px rgba(0,0,0,.3)"}}/>
           <div>
             <div style={{color:"white",fontSize:18,fontWeight:800,letterSpacing:.3}}>Agente de Licitaciones</div>
-            <div style={{color:"rgba(255,255,255,.55)",fontSize:11,marginTop:2,letterSpacing:.5}}>LEN INGENIERÍA · CHILE · API OFICIAL</div>
+            <div style={{color:"rgba(255,255,255,.55)",fontSize:11,marginTop:2,letterSpacing:.5}}>LEN INGENIERÍA · CHILE · MERCADO PÚBLICO</div>
           </div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
@@ -1208,30 +788,6 @@ function App() {
           {Object.values(divStates).reduce((s,d)=>s+d.results.length,0) > 0 &&
             <span className="ptag">{Object.values(divStates).reduce((s,d)=>s+d.results.length,0)}</span>}
         </button>
-        <button className={`portal-tab ${activePortal==="sectra"?"active":""}`} onClick={() => setActivePortal("sectra")}>
-          🚦 SECTRA
-          {sectraResults.length > 0 && <span className="ptag">{sectraResults.length}</span>}
-        </button>
-        <button className={`portal-tab ${activePortal==="efe"?"active":""}`} onClick={() => setActivePortal("efe")}>
-          🚂 EFE
-          {efeResults.length > 0 && <span className="ptag">{efeResults.length}</span>}
-        </button>
-        <button className={`portal-tab ${activePortal==="minvu"?"active":""}`} onClick={() => setActivePortal("minvu")}>
-          🏗️ MINVU
-          {minvuResults.length > 0 && <span className="ptag">{minvuResults.length}</span>}
-        </button>
-        <button className={`portal-tab ${activePortal==="econssa"?"active":""}`} onClick={() => setActivePortal("econssa")}>
-          💧 ECONSSA
-          {econssaResults.length > 0 && <span className="ptag">{econssaResults.length}</span>}
-        </button>
-        <button className={`portal-tab ${activePortal==="psa"?"active":""}`} onClick={() => setActivePortal("psa")}>
-          ⚓ Pto. San Antonio
-          {psaResults.length > 0 && <span className="ptag">{psaResults.length}</span>}
-        </button>
-        <button className={`portal-tab ${activePortal==="metro"?"active":""}`} onClick={() => setActivePortal("metro")}>
-          🚇 Metro
-          {metroResults.length > 0 && <span className="ptag">{metroResults.length}</span>}
-        </button>
       </div>
 
       {/* ── PORTAL INICIO ── */}
@@ -1244,7 +800,7 @@ function App() {
               <div style={{fontSize:40,marginBottom:12}}>🔍</div>
               <div style={{fontSize:22,fontWeight:800,marginBottom:8}}>Agente de Licitaciones LEN</div>
               <div style={{fontSize:14,opacity:.75,marginBottom:24,maxWidth:480,margin:"0 auto 24px"}}>
-                Busca simultáneamente en Mercado Público, SECTRA, EFE, MINVU, ECONSSA y Puerto San Antonio
+                Busca en Mercado Público con keywords calibradas por las 7 divisiones de LEN
               </div>
               <button onClick={buscarGeneral}
                 style={{background:"#F5B731",color:"#1E2D5A",border:"none",padding:"14px 36px",borderRadius:12,fontSize:16,fontWeight:800,cursor:"pointer",boxShadow:"0 4px 16px rgba(245,183,49,.5)"}}>
@@ -1261,7 +817,7 @@ function App() {
             <div style={{background:"white",borderRadius:12,padding:"20px 24px",marginBottom:16,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
                 <div style={{fontWeight:700,fontSize:15}}>
-                  {generalLoading ? "⏳ Buscando en todas las plataformas..." : "✅ Búsqueda completada"}
+                  {generalLoading ? "⏳ Buscando en Mercado Público..." : "✅ Búsqueda completada"}
                 </div>
                 {generalLoading && (
                   <button onClick={cancelarGeneral} style={{background:"#fee2e2",color:"#dc2626",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>
@@ -1317,37 +873,6 @@ function App() {
                           <span style={{fontSize:18}}>{div.icon}</span>
                           <span style={{fontWeight:700,fontSize:12,color:count>0?div.color:"#94a3b8",flex:1}}>{div.label}</span>
                           <span style={{background:count>0?div.color:"#e2e8f0",color:count>0?"white":"#94a3b8",fontSize:12,fontWeight:800,padding:"2px 8px",borderRadius:99,minWidth:24,textAlign:"center"}}>{count}</span>
-                        </div>
-                        <div style={{fontSize:10,color:count>0?"#64748b":"#cbd5e1"}}>
-                          {count>0?"Clic para ver resultados →":"Sin resultados"}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Portales externos */}
-              <div>
-                <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>🌐 Portales Externos</div>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:8}}>
-                  {[
-                    {key:`org_sectra`, label:"SECTRA",           icon:"🚦", portal:"sectra", color:"#1E2D5A"},
-                    {key:"efe",        label:"EFE",               icon:"🚂", portal:"efe",    color:"#1E2D5A"},
-                    {key:"minvu",      label:"MINVU/SERVIU",      icon:"🏗️", portal:"minvu",  color:"#7c3aed"},
-                    {key:"econssa",    label:"ECONSSA",           icon:"💧", portal:"econssa",color:"#0891b2"},
-                    {key:"psa",        label:"Pto. San Antonio",  icon:"⚓", portal:"psa",    color:"#334155"},
-                  {key:"metro",      label:"Metro Santiago",    icon:"🚇", portal:"metro",  color:"#e11d48"},
-                  ].map(p => {
-                    const count = (generalResults[p.key]||[]).length;
-                    return (
-                      <button key={p.key}
-                        onClick={() => setActivePortal(p.portal)}
-                        style={{background:count>0?"white":"#f8fafc",border:`2px solid ${count>0?p.color:"#e2e8f0"}`,borderRadius:10,padding:"12px 14px",cursor:count>0?"pointer":"default",textAlign:"left",transition:"all .15s",opacity:count>0?1:.6}}>
-                        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
-                          <span style={{fontSize:18}}>{p.icon}</span>
-                          <span style={{fontWeight:700,fontSize:12,color:count>0?p.color:"#94a3b8",flex:1}}>{p.label}</span>
-                          <span style={{background:count>0?p.color:"#e2e8f0",color:count>0?"white":"#94a3b8",fontSize:12,fontWeight:800,padding:"2px 8px",borderRadius:99,minWidth:24,textAlign:"center"}}>{count}</span>
                         </div>
                         <div style={{fontSize:10,color:count>0?"#64748b":"#cbd5e1"}}>
                           {count>0?"Clic para ver resultados →":"Sin resultados"}
@@ -1600,17 +1125,24 @@ function App() {
         <div>
           {!selected
             ? <div style={{textAlign:"center",color:"#94a3b8",padding:48,background:"white",borderRadius:12}}>Selecciona una licitación desde Resultados para analizarla.</div>
-            : <div style={{background:"white",borderRadius:12,padding:24,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
-                <div style={{fontWeight:800,fontSize:15,marginBottom:4}}>{selected.titulo}</div>
+            : <div style={{background:"white",borderRadius:12,padding:24,boxShadow:"0 1px 4px rgba(0,0,0,.07)",borderLeft: analysisDescartado ? "5px solid #dc2626" : "none"}}>
+                <div style={{fontWeight:800,fontSize:15,marginBottom:4, textDecoration: analysisDescartado ? "line-through" : "none", color: analysisDescartado ? "#94a3b8" : "#1e293b"}}>{selected.titulo}</div>
                 <div style={{fontSize:12,color:"#64748b",marginBottom:8}}>{selected.organismo} · Código: {selected.codigo||"N/A"}</div>
-                {gestorEstado==="guardado"  && <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"8px 14px",fontSize:12,color:"#15803d",marginBottom:12}}>✅ Enviada al Gestor automáticamente</div>}
-                {gestorEstado==="duplicado" && <div style={{background:"#fefce8",border:"1px solid #fef08a",borderRadius:8,padding:"8px 14px",fontSize:12,color:"#854d0e",marginBottom:12}}>⚠️ Ya estaba en el Gestor</div>}
-                {gestorEstado==="error"     && <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"8px 14px",fontSize:12,color:"#dc2626",marginBottom:12}}>❌ No se pudo guardar — agrégala manualmente</div>}
+                {analysisDescartado && (
+                  <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#dc2626",marginBottom:12,fontWeight:600}}>
+                    🔴 Esta licitación fue descartada automáticamente — LEN no cumple con las especialidades del Registro MOP requeridas. No se realizó análisis IA para no consumir tokens.
+                  </div>
+                )}
+                {!analysisDescartado && gestorEstado==="guardado"  && <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"8px 14px",fontSize:12,color:"#15803d",marginBottom:12}}>✅ Enviada al Gestor automáticamente</div>}
+                {!analysisDescartado && gestorEstado==="duplicado" && <div style={{background:"#fefce8",border:"1px solid #fef08a",borderRadius:8,padding:"8px 14px",fontSize:12,color:"#854d0e",marginBottom:12}}>⚠️ Ya estaba en el Gestor</div>}
+                {!analysisDescartado && gestorEstado==="error"     && <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"8px 14px",fontSize:12,color:"#dc2626",marginBottom:12}}>❌ No se pudo guardar — agrégala manualmente</div>}
                 <div style={{borderTop:"1px solid #e2e8f0",paddingTop:16}}>
-                  <div style={{fontWeight:700,fontSize:13,marginBottom:14,color:"#2563eb"}}>🤖 Análisis de Factibilidad</div>
+                  <div style={{fontWeight:700,fontSize:13,marginBottom:14,color: analysisDescartado ? "#dc2626" : "#2563eb"}}>
+                    {analysisDescartado ? "🔴 Resultado del filtro automático" : "🤖 Análisis de Factibilidad"}
+                  </div>
                   {analysisLoading
                     ? <div style={{color:"#2563eb",fontSize:14,padding:"20px 0"}}>⏳ Analizando con IA...</div>
-                    : <AnalysisRenderer text={analysis} />
+                    : <AnalysisRenderer text={analysis} descartado={analysisDescartado} />
                   }
                 </div>
                 {selected.url && <div style={{marginTop:20}}><a href={selected.url} target="_blank" rel="noreferrer" style={{background:"#eff6ff",color:"#2563eb",padding:"10px 20px",borderRadius:8,fontSize:13,fontWeight:600}}>🔗 Abrir en Mercado Público</a></div>}
@@ -1647,297 +1179,21 @@ function App() {
       )}
       </> /* fin portal MP */}
 
-      {/* ── PORTAL SECTRA ── */}
-      {activePortal==="sectra" && (
-        <div style={{padding:"16px 0"}}>
-          <div style={{background:"white",borderRadius:12,padding:20,marginBottom:14,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
-            <div style={{fontWeight:700,fontSize:14,marginBottom:8}}>🚦 SECTRA — Secretaría de Planificación de Transporte</div>
-            <div style={{background:"#1E2D5A0A",border:"1px solid #1E2D5A22",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#1E2D5A",marginBottom:16}}>
-              🚦 SECTRA usa las keywords activas de <b>Zona Sur</b> (región Maule→Magallanes) e <b>Infraestructura</b> (todo Chile) — configúralas desde esas divisiones en LEN-MP.<br/>
-              <span style={{color:"#64748b",marginTop:4,display:"block"}}>Además busca directamente por organismo 7007 (Subsecretaría de Transportes).</span>
-            </div>
-            <button onClick={buscarSECTRA} disabled={sectraLoading}
-              style={{background:sectraLoading?"#94a3b8":"#1E2D5A",color:"white",border:"none",padding:"12px 32px",borderRadius:8,fontSize:15,fontWeight:700,cursor:sectraLoading?"not-allowed":"pointer",boxShadow:sectraLoading?"none":"0 2px 8px rgba(30,45,90,.4)"}}>
-              {sectraLoading ? `⏳ Buscando... ${sectraElapsed}s` : "🚦 Buscar en SECTRA"}
-            </button>
-            {sectraError && <div style={{marginTop:12,background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",fontSize:13,color:"#dc2626"}}>⚠️ {sectraError}</div>}
-            {sectraSteps.length > 0 && (
-              <div style={{marginTop:12}}>
-                {sectraSteps.map((s,i)=>(
-                  <div key={i} style={{fontSize:12,color:s.state==="ok"?"#15803d":"#2563eb",display:"flex",gap:6,marginBottom:3}}>
-                    <span>{s.state==="ok"?"✅":"⏳"}</span><span>{s.msg}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Resultados SECTRA */}
-          {sectraResults.length > 0 && (
-            <div>
-              <div style={{fontSize:13,color:"#64748b",marginBottom:12,display:"flex",alignItems:"center",gap:8}}>
-                <span style={{background:"#1E2D5A18",color:"#1E2D5A",padding:"3px 10px",borderRadius:99,fontSize:11,fontWeight:700}}>🚦 SECTRA</span>
-                <span>{sectraResults.length} licitaciones encontradas</span>
-              </div>
-              {sectraResults.map((r,i) => (
-                <div key={i} style={{background:"white",border:"1px solid #e2e8f0",borderLeft:"4px solid #1E2D5A",borderRadius:10,padding:16,marginBottom:10,boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}>
-                  <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
-                    <span style={{background:"#1E2D5A18",color:"#1E2D5A",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>🚦 {r.fuenteTag||"SECTRA"}</span>
-                    {r.estado && <span style={{background:"#f0fdf4",color:"#15803d",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>● {r.estado}</span>}
-                    <span style={{background:"#fefce8",color:"#854d0e",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>📍 {r.region||"Cargando..."}</span>
-                  </div>
-                  {r.divisiones && r.divisiones.length > 0 && <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:4}}>{r.divisiones.map((d,i)=><span key={i} style={{background:d.color+"18",color:d.color,border:`1px solid ${d.color}44`,fontSize:10,padding:"1px 7px",borderRadius:99,fontWeight:700}}>{d.icon} {d.label}</span>)}</div>}
-                  <div style={{fontWeight:700,fontSize:14,marginBottom:4,lineHeight:1.4}}>{r.titulo}</div>
-                  <div style={{fontSize:12,color:"#64748b",marginBottom:4}}>{r.organismo}</div>
-                  {r.codigo && <div style={{fontSize:11,color:"#94a3b8",marginBottom:4}}>Código: {r.codigo}</div>}
-                  <div style={{display:"flex",gap:16,fontSize:12,color:"#94a3b8",flexWrap:"wrap"}}>
-                    {r.fechaCierre && <span>⏰ Cierre: {r.fechaCierre}</span>}
-                    {r.monto && <span>💰 {r.monto}</span>}
-                  </div>
-                  <div style={{display:"flex",gap:8,marginTop:10,flexWrap:"wrap"}}>
-                    <button onClick={()=>verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>🤖 Analizar con IA</button>
-                    {r.url && <a href={r.url} target="_blank" rel="noreferrer" style={{background:"#f8fafc",color:"#475569",border:"1px solid #e2e8f0",padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600}}>🔗 Ver en MP</a>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {activePortal==="efe" && (
-        <div style={{padding:"16px 0"}}>
-          <div style={{background:"white",borderRadius:12,padding:20,marginBottom:14,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
-            <div style={{fontWeight:700,fontSize:14,marginBottom:8}}>🚂 EFE — Empresa de Ferrocarriles del Estado</div>
-            <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#15803d",marginBottom:16}}>
-              🚂 EFE muestra todas sus licitaciones activas sin filtro — son todas del rubro ferroviario. Usa el toggle de vigentes para filtrar por estado.
-            </div>
-
-            {/* Filtro vigentes */}
-            <div style={{display:"flex",gap:8,marginBottom:16}}>
-              <button onClick={() => setEfeSoloVigentes(true)}
-                style={{flex:1,padding:"9px 0",borderRadius:8,border:"2px solid",fontSize:13,fontWeight:600,cursor:"pointer",borderColor:efeSoloVigentes?"#2563eb":"#e2e8f0",background:efeSoloVigentes?"#eff6ff":"white",color:efeSoloVigentes?"#2563eb":"#94a3b8"}}>
-                ✅ Solo vigentes
-              </button>
-              <button onClick={() => setEfeSoloVigentes(false)}
-                style={{flex:1,padding:"9px 0",borderRadius:8,border:"2px solid",fontSize:13,fontWeight:600,cursor:"pointer",borderColor:!efeSoloVigentes?"#2563eb":"#e2e8f0",background:!efeSoloVigentes?"#eff6ff":"white",color:!efeSoloVigentes?"#2563eb":"#94a3b8"}}>
-                📋 Todas (incluye adjudicadas)
-              </button>
-            </div>
-
-            <button onClick={buscarEFE} disabled={efeLoading}
-              style={{background:efeLoading?"#94a3b8":"#1E2D5A",color:"white",border:"none",padding:"12px 32px",borderRadius:8,fontSize:15,fontWeight:700,cursor:efeLoading?"not-allowed":"pointer"}}>
-              {efeLoading ? `⏳ Buscando... ${efeElapsed}s` : "🚂 Buscar en EFE"}
-            </button>
-            {efeError && <div style={{marginTop:12,background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",fontSize:13,color:"#dc2626"}}>⚠️ {efeError}</div>}
-            {efeSteps.map((s,i) => <div key={i} style={{marginTop:8,fontSize:12,color:s.state==="ok"?"#15803d":"#2563eb",display:"flex",gap:6}}><span>{s.state==="ok"?"✅":"⏳"}</span><span>{s.msg}</span></div>)}
-          </div>
-
-          {/* Resultados EFE */}
-          {efeResults.length > 0 && (
-            <div>
-              <div style={{fontSize:13,color:"#64748b",marginBottom:12,display:"flex",alignItems:"center",gap:8}}>
-                <span style={{background:"#1E2D5A18",color:"#1E2D5A",padding:"3px 10px",borderRadius:99,fontSize:11,fontWeight:700}}>🚂 EFE</span>
-                <span>{efeResults.length} licitaciones encontradas</span>
-              </div>
-              {efeResults.map((r,i) => (
-                <div key={i} style={{background:"white",border:"1px solid #e2e8f0",borderLeft:"4px solid #1E2D5A",borderRadius:10,padding:16,marginBottom:10,boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}>
-                  <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
-                    <span style={{background:"#1E2D5A18",color:"#1E2D5A",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>🚂 EFE</span>
-                    {r.estado && <span style={{background:"#f0fdf4",color:"#15803d",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>● {r.estado}</span>}
-                    {r.fechaPublicacion && <span style={{background:"#f8fafc",color:"#64748b",fontSize:11,padding:"2px 8px",borderRadius:12}}>📅 {r.fechaPublicacion}</span>}
-                    {r.fechaCierre && <span style={{background:"#fef2f2",color:"#dc2626",fontSize:11,padding:"2px 8px",borderRadius:12}}>⏰ Fin venta: {r.fechaCierre}</span>}
-                  </div>
-                  {r.divisiones && r.divisiones.length > 0 && <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:4}}>{r.divisiones.map((d,i)=><span key={i} style={{background:d.color+"18",color:d.color,border:`1px solid ${d.color}44`,fontSize:10,padding:"1px 7px",borderRadius:99,fontWeight:700}}>{d.icon} {d.label}</span>)}</div>}
-                  <div style={{fontWeight:700,fontSize:14,marginBottom:4,lineHeight:1.4}}>{r.titulo}</div>
-                  <div style={{fontSize:12,color:"#64748b",marginBottom:8}}>EFE Trenes de Chile</div>
-                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                    <button onClick={()=>verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>🤖 Analizar con IA</button>
-                    {r.url && <a href={r.url} target="_blank" rel="noreferrer" style={{background:"#f8fafc",color:"#475569",border:"1px solid #e2e8f0",padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600}}>🔗 Ver en EFE</a>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {activePortal==="minvu" && (
-        <div style={{padding:"16px 0"}}>
-          <div style={{background:"white",borderRadius:12,padding:20,marginBottom:14,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
-            <div style={{fontWeight:700,fontSize:14,marginBottom:8}}>🏗️ MINVU — Portal Proveedores Técnicos</div>
-            <div style={{background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#7c3aed",marginBottom:16}}>
-              🏗️ MINVU usa las keywords activas de <b>Proyectos Civiles</b> e <b>Inspección Técnica</b> — configúralas desde esas divisiones en LEN-MP. MINVU publica principalmente obras de construcción.
-            </div>
-
-            <button onClick={buscarMINVU} disabled={minvuLoading}
-              style={{background:minvuLoading?"#94a3b8":"#7c3aed",color:"white",border:"none",padding:"12px 32px",borderRadius:8,fontSize:15,fontWeight:700,cursor:minvuLoading?"not-allowed":"pointer"}}>
-              {minvuLoading ? `⏳ Buscando... ${minvuElapsed}s` : "🏗️ Buscar en MINVU"}
-            </button>
-            {minvuError && <div style={{marginTop:12,background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",fontSize:13,color:"#dc2626"}}>⚠️ {minvuError}</div>}
-            {minvuSteps.map((s,i) => <div key={i} style={{marginTop:8,fontSize:12,color:s.state==="ok"?"#15803d":"#2563eb",display:"flex",gap:6}}><span>{s.state==="ok"?"✅":"⏳"}</span><span>{s.msg}</span></div>)}
-          </div>
-
-          {/* Resultados MINVU */}
-          {minvuResults.length > 0 && (
-            <div>
-              <div style={{fontSize:13,color:"#64748b",marginBottom:12,display:"flex",alignItems:"center",gap:8}}>
-                <span style={{background:"#7c3aed18",color:"#7c3aed",padding:"3px 10px",borderRadius:99,fontSize:11,fontWeight:700}}>🏗️ MINVU/SERVIU</span>
-                <span>{minvuResults.length} licitaciones encontradas</span>
-              </div>
-              {minvuResults.map((r,i) => (
-                <div key={i} style={{background:"white",border:"1px solid #e2e8f0",borderLeft:"4px solid #7c3aed",borderRadius:10,padding:16,marginBottom:10,boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}>
-                  <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
-                    <span style={{background:"#7c3aed18",color:"#7c3aed",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>🏗️ MINVU</span>
-                    {r.estado && <span style={{background:"#f0fdf4",color:"#15803d",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>● {r.estado}</span>}
-                    {r.fechaPublicacion && <span style={{background:"#f8fafc",color:"#64748b",fontSize:11,padding:"2px 8px",borderRadius:12}}>📅 {r.fechaPublicacion}</span>}
-                    {r.fechaCierre && <span style={{background:"#fef2f2",color:"#dc2626",fontSize:11,padding:"2px 8px",borderRadius:12}}>⏰ Cierre: {r.fechaCierre}</span>}
-                  </div>
-                  {r.divisiones && r.divisiones.length > 0 && <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:4}}>{r.divisiones.map((d,i)=><span key={i} style={{background:d.color+"18",color:d.color,border:`1px solid ${d.color}44`,fontSize:10,padding:"1px 7px",borderRadius:99,fontWeight:700}}>{d.icon} {d.label}</span>)}</div>}
-                  <div style={{fontWeight:700,fontSize:14,marginBottom:4,lineHeight:1.4}}>{r.titulo}</div>
-                  <div style={{fontSize:12,color:"#64748b",marginBottom:4}}>{r.organismo}</div>
-                  {r.codigo && <div style={{fontSize:11,color:"#94a3b8",marginBottom:8}}>Código: {r.codigo}</div>}
-                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                    <button onClick={()=>verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>🤖 Analizar con IA</button>
-                    {r.url && <a href={r.url} target="_blank" rel="noreferrer" style={{background:"#f8fafc",color:"#475569",border:"1px solid #e2e8f0",padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600}}>🔗 Ver en MINVU</a>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {activePortal==="econssa" && (
-        <div style={{padding:"16px 0"}}>
-          <div style={{background:"white",borderRadius:12,padding:20,marginBottom:14,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
-            <div style={{fontWeight:700,fontSize:14,marginBottom:8}}>💧 ECONSSA — Empresa Constructora Sanitaria Norte Grande</div>
-            <div style={{background:"#ecfeff",border:"1px solid #a5f3fc",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#0891b2",marginBottom:16}}>
-              💧 ECONSSA muestra todas sus licitaciones publicadas sin filtro — son todas relevantes para LEN.<br/>
-              <span style={{color:"#64748b",marginTop:4,display:"block"}}>Especialidad: estudios hidráulicos, DIA, ITO sanitaria — Regiones Tarapacá, Antofagasta, Atacama.</span>
-            </div>
-            <button onClick={buscarECONSSA} disabled={econssaLoading}
-              style={{background:econssaLoading?"#94a3b8":"#0891b2",color:"white",border:"none",padding:"12px 32px",borderRadius:8,fontSize:15,fontWeight:700,cursor:econssaLoading?"not-allowed":"pointer"}}>
-              {econssaLoading ? `⏳ Buscando... ${econssaElapsed}s` : "💧 Buscar en ECONSSA"}
-            </button>
-            {econssaError && <div style={{marginTop:12,background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",fontSize:13,color:"#dc2626"}}>⚠️ {econssaError}</div>}
-            {econssaSteps.map((s,i) => <div key={i} style={{marginTop:8,fontSize:12,color:s.state==="ok"?"#15803d":"#2563eb",display:"flex",gap:6}}><span>{s.state==="ok"?"✅":"⏳"}</span><span>{s.msg}</span></div>)}
-          </div>
-          {econssaResults.length > 0 && (
-            <div>
-              <div style={{fontSize:13,color:"#64748b",marginBottom:12,display:"flex",alignItems:"center",gap:8}}>
-                <span style={{background:"#ecfeff",color:"#0891b2",padding:"3px 10px",borderRadius:99,fontSize:11,fontWeight:700}}>💧 ECONSSA</span>
-                <span>{econssaResults.length} licitaciones encontradas</span>
-              </div>
-              {econssaResults.map((r,i) => (
-                <div key={i} style={{background:"white",border:"1px solid #e2e8f0",borderLeft:"4px solid #0891b2",borderRadius:10,padding:16,marginBottom:10,boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}>
-                  <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
-                    <span style={{background:"#ecfeff",color:"#0891b2",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>💧 ECONSSA</span>
-                    <span style={{background:"#fefce8",color:"#854d0e",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>📍 {r.region||"Norte"}</span>
-                  </div>
-                  {r.divisiones && r.divisiones.length > 0 && <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:4}}>{r.divisiones.map((d,i)=><span key={i} style={{background:d.color+"18",color:d.color,border:`1px solid ${d.color}44`,fontSize:10,padding:"1px 7px",borderRadius:99,fontWeight:700}}>{d.icon} {d.label}</span>)}</div>}
-                  <div style={{fontWeight:700,fontSize:14,marginBottom:8,lineHeight:1.4}}>{r.titulo}</div>
-                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                    <button onClick={()=>verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>🤖 Analizar con IA</button>
-                    {r.url && <a href={r.url} target="_blank" rel="noreferrer" style={{background:"#f8fafc",color:"#475569",border:"1px solid #e2e8f0",padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600}}>🔗 Ver en ECONSSA</a>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {activePortal==="psa" && (
-        <div style={{padding:"16px 0"}}>
-          <div style={{background:"white",borderRadius:12,padding:20,marginBottom:14,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
-            <div style={{fontWeight:700,fontSize:14,marginBottom:8}}>⚓ Puerto San Antonio — Empresa Portuaria</div>
-            <div style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#475569",marginBottom:16}}>
-              ⚓ Puerto San Antonio muestra todas sus licitaciones publicadas sin filtro.<br/>
-              <span style={{color:"#64748b",marginTop:4,display:"block"}}>95 licitaciones activas · Región Valparaíso · ITO portuaria, obras costeras.</span>
-            </div>
-            <button onClick={buscarPSA} disabled={psaLoading}
-              style={{background:psaLoading?"#94a3b8":"#334155",color:"white",border:"none",padding:"12px 32px",borderRadius:8,fontSize:15,fontWeight:700,cursor:psaLoading?"not-allowed":"pointer"}}>
-              {psaLoading ? `⏳ Buscando... ${psaElapsed}s` : "⚓ Buscar en Puerto San Antonio"}
-            </button>
-            {psaError && <div style={{marginTop:12,background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",fontSize:13,color:"#dc2626"}}>⚠️ {psaError}</div>}
-            {psaSteps.map((s,i) => <div key={i} style={{marginTop:8,fontSize:12,color:s.state==="ok"?"#15803d":"#2563eb",display:"flex",gap:6}}><span>{s.state==="ok"?"✅":"⏳"}</span><span>{s.msg}</span></div>)}
-          </div>
-          {psaResults.length > 0 && (
-            <div>
-              <div style={{fontSize:13,color:"#64748b",marginBottom:12,display:"flex",alignItems:"center",gap:8}}>
-                <span style={{background:"#f1f5f9",color:"#334155",padding:"3px 10px",borderRadius:99,fontSize:11,fontWeight:700}}>⚓ Puerto San Antonio</span>
-                <span>{psaResults.length} licitaciones encontradas</span>
-              </div>
-              {psaResults.map((r,i) => (
-                <div key={i} style={{background:"white",border:"1px solid #e2e8f0",borderLeft:"4px solid #334155",borderRadius:10,padding:16,marginBottom:10,boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}>
-                  <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
-                    <span style={{background:"#f1f5f9",color:"#334155",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>⚓ Pto. San Antonio</span>
-                    <span style={{background:"#fefce8",color:"#854d0e",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>📍 Valparaíso</span>
-                    {r.codigo && <span style={{background:"#f0fdf4",color:"#15803d",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>{r.codigo}</span>}
-                  </div>
-                  {r.divisiones && r.divisiones.length > 0 && <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:4}}>{r.divisiones.map((d,i)=><span key={i} style={{background:d.color+"18",color:d.color,border:`1px solid ${d.color}44`,fontSize:10,padding:"1px 7px",borderRadius:99,fontWeight:700}}>{d.icon} {d.label}</span>)}</div>}
-                  <div style={{fontWeight:700,fontSize:14,marginBottom:8,lineHeight:1.4}}>{r.titulo}</div>
-                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                    <button onClick={()=>verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>🤖 Analizar con IA</button>
-                    {r.url && <a href={r.url} target="_blank" rel="noreferrer" style={{background:"#f8fafc",color:"#475569",border:"1px solid #e2e8f0",padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600}}>🔗 Ver en PSA</a>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {activePortal==="metro" && (
-        <div style={{padding:"16px 0"}}>
-          <div style={{background:"white",borderRadius:12,padding:20,marginBottom:14,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
-            <div style={{fontWeight:700,fontSize:14,marginBottom:8}}>🚇 Metro de Santiago — Próximas Licitaciones</div>
-            <div style={{background:"#fff1f2",border:"1px solid #fecdd3",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#e11d48",marginBottom:16}}>
-              🚇 Metro publica un <b>plan anticipado de licitaciones</b> — son proyectos planificados con fecha estimada, no licitaciones activas aún.<br/>
-              <span style={{color:"#64748b",marginTop:4,display:"block"}}>Relevante para Infraestructura (L7, L9) e Inspección Técnica de Obras. Región Metropolitana.</span>
-            </div>
-            <button onClick={buscarMetro} disabled={metroLoading}
-              style={{background:metroLoading?"#94a3b8":"#e11d48",color:"white",border:"none",padding:"12px 32px",borderRadius:8,fontSize:15,fontWeight:700,cursor:metroLoading?"not-allowed":"pointer"}}>
-              {metroLoading ? `⏳ Buscando... ${metroElapsed}s` : "🚇 Buscar en Metro"}
-            </button>
-            {metroError && <div style={{marginTop:12,background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",fontSize:13,color:"#dc2626"}}>⚠️ {metroError}</div>}
-            {metroSteps.map((s,i) => <div key={i} style={{marginTop:8,fontSize:12,color:s.state==="ok"?"#15803d":"#2563eb",display:"flex",gap:6}}><span>{s.state==="ok"?"✅":"⏳"}</span><span>{s.msg}</span></div>)}
-          </div>
-
-          {metroResults.length > 0 && (
-            <div>
-              <div style={{fontSize:13,color:"#64748b",marginBottom:12,display:"flex",alignItems:"center",gap:8}}>
-                <span style={{background:"#fff1f2",color:"#e11d48",padding:"3px 10px",borderRadius:99,fontSize:11,fontWeight:700}}>🚇 Metro</span>
-                <span>{metroResults.length} próximas licitaciones</span>
-              </div>
-              {metroResults.map((r,i) => (
-                <div key={i} style={{background:"white",border:"1px solid #e2e8f0",borderLeft:"4px solid #e11d48",borderRadius:10,padding:16,marginBottom:10,boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}>
-                  <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
-                    <span style={{background:"#fff1f2",color:"#e11d48",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>🚇 {r.tipo||"Metro"}</span>
-                    <span style={{background:"#fefce8",color:"#854d0e",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>📍 RM</span>
-                    {r.fechaCierre && <span style={{background:"#f0fdf4",color:"#15803d",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>📅 Est. {r.fechaCierre}</span>}
-                  </div>
-                  {r.divisiones && r.divisiones.length > 0 && <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:4}}>{r.divisiones.map((d,i)=><span key={i} style={{background:d.color+"18",color:d.color,border:`1px solid ${d.color}44`,fontSize:10,padding:"1px 7px",borderRadius:99,fontWeight:700}}>{d.icon} {d.label}</span>)}</div>}
-                  <div style={{fontWeight:700,fontSize:14,marginBottom:8,lineHeight:1.4}}>{r.titulo}</div>
-                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                    <button onClick={()=>verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>🤖 Analizar con IA</button>
-                    <a href={r.url} target="_blank" rel="noreferrer" style={{background:"#fff1f2",color:"#e11d48",border:"1px solid #fecdd3",padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600}}>🔗 Ver en Metro</a>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
     </div>
   );
 }
 
 // ── Renderizador del análisis IA ──────────────────────────────────────────
-function AnalysisRenderer({ text }) {
+function AnalysisRenderer({ text, descartado }) {
   if (!text) return null;
+  // Si fue descartado, mostrar el texto crudo del backend (ya viene con formato propio)
+  if (descartado) {
+    return (
+      <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:10,padding:"16px 18px",fontSize:13,lineHeight:1.7,color:"#7f1d1d",whiteSpace:"pre-wrap",fontFamily:"system-ui,sans-serif"}}>
+        {text}
+      </div>
+    );
+  }
   const esParticipar = text.includes("🟢");
   const esEvaluar    = text.includes("🟡");
   const esDescartar  = text.includes("🔴");
