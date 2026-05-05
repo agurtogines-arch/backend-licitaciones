@@ -697,6 +697,62 @@ app.get("/detalle-raw/:codigo", async (req, res) => {
   }
 });
 
+// ── DEBUG: descarga el HTML de la ficha de MP y diagnostica el extractor ─────
+// Uso: abrir https://backend-licitaciones.onrender.com/debug-mop/1063487-10-O126
+app.get("/debug-mop/:codigo", async (req, res) => {
+  const codigo = req.params.codigo;
+  const url = `https://www.mercadopublico.cl/Procurement/Modules/RFB/DetailsAcquisition.aspx?idlicitacion=${codigo}`;
+  try {
+    const mpRes = await fetch(url, {
+      signal: AbortSignal.timeout(20000),
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; LENBot/1.0)" }
+    });
+    const status = mpRes.status;
+    const html = await mpRes.text();
+
+    // Buscar señales en el HTML
+    const tieneTabla       = /id\s*=\s*["']tblEspecialidades["']/i.test(html);
+    const tieneTextoEspec  = html.toLowerCase().includes("especialidades y categor");
+    const tieneScript      = html.toLowerCase().includes("<script");
+    const tieneRedirect    = /window\.location|http-equiv\s*=\s*["']?refresh/i.test(html);
+    const requisitos       = extraerEspecialidadesMOP(html);
+
+    // Si encontramos el texto "Especialidades y categor" pero no la tabla, mostrar contexto
+    let contextoTexto = null;
+    if (tieneTextoEspec && !tieneTabla) {
+      const idx = html.toLowerCase().indexOf("especialidades y categor");
+      contextoTexto = html.substring(Math.max(0, idx - 200), idx + 1500);
+    }
+
+    // Si encontramos la tabla, mostrar su contenido
+    let contextoTabla = null;
+    const tablaMatch = html.match(/<table[^>]*id\s*=\s*["']tblEspecialidades["'][^>]*>([\s\S]*?)<\/table>/i);
+    if (tablaMatch) contextoTabla = tablaMatch[0];
+
+    // Primeros 500 chars del HTML para verificar si llegó la página correcta
+    const primeros500 = html.substring(0, 500);
+
+    res.json({
+      url,
+      status,
+      tamaño_html: html.length,
+      diagnostico: {
+        tiene_tabla_tblEspecialidades: tieneTabla,
+        tiene_texto_especialidades:    tieneTextoEspec,
+        tiene_scripts:                 tieneScript,
+        parece_redirect_o_loader:      tieneRedirect,
+        requisitos_extraidos:          requisitos.length,
+      },
+      requisitos,
+      primeros_500_chars: primeros500,
+      contexto_si_hay_texto_pero_no_tabla: contextoTexto,
+      contexto_si_hay_tabla:              contextoTabla
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message, url });
+  }
+});
+
 // ── Validar Registro de Consultores MOP de LEN ───────────────────────────────
 // Recibe { requisitos: [{ codigo: "4.8", descripcion: "Obras Sanitarias", categoria: "2da" }] }
 // Devuelve { califica, fallas, diasVigencia, avisoVigencia }
