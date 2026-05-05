@@ -710,43 +710,60 @@ app.get("/debug-mop/:codigo", async (req, res) => {
     const status = mpRes.status;
     const html = await mpRes.text();
 
-    // Buscar señales en el HTML
-    const tieneTabla       = /id\s*=\s*["']tblEspecialidades["']/i.test(html);
-    const tieneTextoEspec  = html.toLowerCase().includes("especialidades y categor");
-    const tieneScript      = html.toLowerCase().includes("<script");
-    const tieneRedirect    = /window\.location|http-equiv\s*=\s*["']?refresh/i.test(html);
-    const requisitos       = extraerEspecialidadesMOP(html);
+    // ── Búsquedas de texto en TODO el HTML ─────────────────────────────────
+    // Si los datos están escondidos en cualquier parte (script, hidden, otra
+    // tabla), aparecerán aquí. Si NO aparecen, confirma que es AJAX.
+    const buscarEnHTML = (termino) => {
+      const lower = html.toLowerCase();
+      const t = termino.toLowerCase();
+      const matches = [];
+      let idx = 0;
+      while ((idx = lower.indexOf(t, idx)) !== -1 && matches.length < 5) {
+        const inicio = Math.max(0, idx - 80);
+        const fin = Math.min(html.length, idx + termino.length + 80);
+        matches.push({
+          posicion: idx,
+          contexto: html.substring(inicio, fin).replace(/\s+/g, " ").trim()
+        });
+        idx += termino.length;
+      }
+      return { ocurrencias: matches.length, matches };
+    };
 
-    // Si encontramos el texto "Especialidades y categor" pero no la tabla, mostrar contexto
-    let contextoTexto = null;
-    if (tieneTextoEspec && !tieneTabla) {
-      const idx = html.toLowerCase().indexOf("especialidades y categor");
-      contextoTexto = html.substring(Math.max(0, idx - 200), idx + 1500);
-    }
+    // ── Listar scripts grandes (>1KB) que podrían contener datos ──────────
+    const scriptMatches = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)];
+    const scriptsRelevantes = scriptMatches
+      .map(m => ({ tamaño: m[1].length, primeros300: m[1].substring(0, 300).replace(/\s+/g, " ").trim() }))
+      .filter(s => s.tamaño > 1000)
+      .sort((a, b) => b.tamaño - a.tamaño)
+      .slice(0, 5);
 
-    // Si encontramos la tabla, mostrar su contenido
-    let contextoTabla = null;
+    // ── Buscar campos hidden con datos ─────────────────────────────────────
+    const inputsHidden = [...html.matchAll(/<input[^>]+type\s*=\s*["']hidden["'][^>]*>/gi)]
+      .map(m => m[0].substring(0, 200))
+      .filter(s => /especial|categor|mop/i.test(s))
+      .slice(0, 10);
+
+    // ── Diagnóstico de la tabla específica ────────────────────────────────
     const tablaMatch = html.match(/<table[^>]*id\s*=\s*["']tblEspecialidades["'][^>]*>([\s\S]*?)<\/table>/i);
-    if (tablaMatch) contextoTabla = tablaMatch[0];
-
-    // Primeros 500 chars del HTML para verificar si llegó la página correcta
-    const primeros500 = html.substring(0, 500);
+    const requisitos = extraerEspecialidadesMOP(html);
 
     res.json({
       url,
       status,
       tamaño_html: html.length,
-      diagnostico: {
-        tiene_tabla_tblEspecialidades: tieneTabla,
-        tiene_texto_especialidades:    tieneTextoEspec,
-        tiene_scripts:                 tieneScript,
-        parece_redirect_o_loader:      tieneRedirect,
-        requisitos_extraidos:          requisitos.length,
+      // Lo más importante: ¿están los datos esperados en el HTML?
+      busqueda_datos_esperados: {
+        "4.8":              buscarEnHTML("4.8"),
+        "Obras Sanitarias": buscarEnHTML("Obras Sanitarias"),
+        "2da":              buscarEnHTML("2da"),
+        "tblEspecialidades":buscarEnHTML("tblEspecialidades")
       },
-      requisitos,
-      primeros_500_chars: primeros500,
-      contexto_si_hay_texto_pero_no_tabla: contextoTexto,
-      contexto_si_hay_tabla:              contextoTabla
+      tabla_tblEspecialidades: tablaMatch ? tablaMatch[0] : null,
+      requisitos_extraidos_por_extractor: requisitos,
+      scripts_grandes_que_podrian_tener_datos: scriptsRelevantes,
+      inputs_hidden_relacionados: inputsHidden,
+      primeros_500_chars: html.substring(0, 500)
     });
   } catch (err) {
     res.status(500).json({ error: err.message, url });
