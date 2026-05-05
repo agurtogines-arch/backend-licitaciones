@@ -1216,7 +1216,7 @@ function AnalysisRenderer({ text, descartado }) {
     );
   };
   const secciones = [];
-  const regex = /(📋|🧭|🏢|📅|📊|🎯|⚠️)/g;
+  const regex = /(📋|🧭|🏛️|💰|🏢|📅|📊|🎯|⚠️)/g;
   let match; const indices = [];
   while ((match = regex.exec(text)) !== null) indices.push(match.index);
   indices.forEach((idx,i) => {
@@ -1230,6 +1230,8 @@ function AnalysisRenderer({ text, descartado }) {
   const seccionConfig = {
     "📋": { bg:"#f0f9ff", border:"#bae6fd", titleColor:"#0369a1" },
     "🧭": { bg:"#fef3c7", border:"#fde68a", titleColor:"#a16207" },
+    "🏛️": { bg:"#fdf2f8", border:"#fbcfe8", titleColor:"#9d174d" },
+    "💰": { bg:"#ecfdf5", border:"#a7f3d0", titleColor:"#065f46" },
     "🏢": { bg:"#f5f3ff", border:"#ddd6fe", titleColor:"#6d28d9" },
     "📅": { bg:"#f0fdf4", border:"#bbf7d0", titleColor:"#15803d" },
     "📊": { bg:"#f8fafc", border:"#e2e8f0", titleColor:"#1e293b" },
@@ -1239,7 +1241,7 @@ function AnalysisRenderer({ text, descartado }) {
   return (
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       {secciones.map((s,i) => {
-        const emoji = ["📋","🧭","🏢","📅","📊","🎯","⚠️"].find(e => s.titulo.startsWith(e)) || "📋";
+        const emoji = ["📋","🧭","🏛️","💰","🏢","📅","📊","🎯","⚠️"].find(e => s.titulo.startsWith(e)) || "📋";
         const cfg = seccionConfig[emoji] || { bg:"#f8fafc", border:"#e2e8f0", titleColor:"#1e293b" };
         const esTabla = s.contenido.includes("|") && s.contenido.split("\n").filter(l => l.includes("|")).length > 2;
         return (
