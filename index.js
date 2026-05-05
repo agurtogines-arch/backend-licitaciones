@@ -115,7 +115,98 @@ function clasificarDivisiones(titulo, codigoRegion) {
   return divisiones;
 }
 
+// ── Registro Consultores MOP de LEN (Cert. N° 264614) ─────────────────────
+// Rank: 1 = Primera Superior, 2 = Primera, 3 = Segunda, 4 = Tercera
+// Una licitación que pide "2da" la cumple quien tenga rank ≤ 3.
+const LEN_REGISTRO_MOP = {
+  certificado: "264614",
+  rut: "83.665.200-2",
+  vigente_hasta: "2026-05-23",
+  especialidades: {
+    "1.1":  3, "1.2":  4, "1.3":  1, "2.2":  1, "3.1":  1,
+    "3.2":  2, "3.3":  1, "3.6":  1, "3.7":  1, "4.1":  1,
+    "4.2":  4, "4.3":  1, "4.4":  3, "4.5":  1, "4.6":  3,
+    "4.7":  4, "4.9":  1, "4.10": 1, "7.1":  1, "7.4":  4,
+    "7.8":  2, "8.3":  2, "8.5":  3, "8.6":  4, "9.1":  1
+  }
+};
 
+const RANK_CATEGORIA = {
+  "primera superior": 1, "1ra superior": 1, "1° superior": 1, "1 superior": 1,
+  "primera":          2, "1ra":          2, "1°":          2, "1":           2,
+  "segunda":          3, "2da":          3, "2°":          3, "2":           3,
+  "tercera":          4, "3ra":          4, "3°":          4, "3":           4
+};
+
+const NOMBRE_CATEGORIA = ["", "1ra Superior", "1ra", "2da", "3ra"];
+
+function validarRegistroMOP(requisitos) {
+  const hoy = new Date();
+  const vence = new Date(LEN_REGISTRO_MOP.vigente_hasta);
+  const dias = Math.ceil((vence - hoy) / 86400000);
+
+  if (dias < 0) {
+    return { califica: false, fallas: ["⛔ Registro MOP vencido"], diasVigencia: dias, avisoVigencia: "⛔ Registro vencido — renovar urgente" };
+  }
+
+  const fallas = [];
+  for (const req of (requisitos || [])) {
+    const rankLEN = LEN_REGISTRO_MOP.especialidades[req.codigo];
+    const rankReq = RANK_CATEGORIA[(req.categoria || "").toLowerCase().trim()];
+    if (rankLEN === undefined) {
+      fallas.push(`Falta especialidad ${req.codigo} (${req.descripcion || ""})`);
+    } else if (rankReq && rankLEN > rankReq) {
+      fallas.push(`${req.codigo}: requiere ${req.categoria}, LEN tiene ${NOMBRE_CATEGORIA[rankLEN]}`);
+    }
+  }
+
+  return {
+    califica: fallas.length === 0,
+    fallas,
+    diasVigencia: dias,
+    avisoVigencia: dias < 30 ? `⚠️ Registro vence en ${dias} días` : null
+  };
+}
+
+// Extrae los requisitos del recuadro "Especialidades y categorías" del HTML de MP
+// Devuelve: [{ codigo: "4.8", descripcion: "Obras Sanitarias", categoria: "2da" }, ...]
+function extraerEspecialidadesMOP(html) {
+  if (!html) return [];
+
+  // Limpiar HTML a texto plano sin truncar
+  const texto = html
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&")
+    .replace(/\s+/g, " ").trim();
+
+  // Localizar sección
+  const idx = texto.toLowerCase().indexOf("especialidades y categor");
+  if (idx === -1) return [];
+
+  // Trabajar sobre los 2500 chars siguientes a esa sección
+  const seccion = texto.substring(idx, idx + 2500);
+
+  // Patrón: "N.N descripción Categoría"
+  // Categoría puede ser: Primera Superior, Primera, Segunda, Tercera o variantes 1ra/2da/3ra/1°/2°/3°
+  const regex = /(\d{1,2}\.\d{1,2})\s+([A-Za-zÁÉÍÓÚáéíóúÑñ\s,()\-]{3,80}?)\s+(1ra\s*Superior|1°\s*Superior|Primera\s*Superior|1ra|1°|Primera|2da|2°|Segunda|3ra|3°|Tercera)\b/gi;
+
+  const requisitos = [];
+  const seen = new Set();
+  let match;
+  while ((match = regex.exec(seccion)) !== null) {
+    const codigo = match[1];
+    if (seen.has(codigo)) continue;
+    seen.add(codigo);
+    requisitos.push({
+      codigo,
+      descripcion: match[2].trim().replace(/[\.,]+$/, "").replace(/\s+/g, " "),
+      categoria: match[3].trim()
+    });
+  }
+  return requisitos;
+}
 
 function estadoTexto(codigo) {
   const m = { "5":"Publicada","6":"Cerrada","7":"Desierta","8":"Adjudicada",
@@ -140,17 +231,14 @@ app.get("/regiones", (req, res) => res.json(REGIONES));
 app.get("/buscar", async (req, res) => {
   const keywordsParam  = (req.query.keywords || "").trim();
   const serviciosParam = (req.query.servicios || "").trim();
-  const legacyQ        = (req.query.q || "").trim(); // compatibilidad n8n
   const desdeParam     = req.query.desde || "todas";
   const hastaParam     = req.query.hasta || "todas";
 
-  if (!keywordsParam && !legacyQ) {
+  if (!keywordsParam) {
     return res.status(400).json({ error: "Parámetro keywords requerido" });
   }
 
-  const keywords  = keywordsParam
-    ? keywordsParam.split(",").map(k => k.trim()).filter(Boolean)
-    : [legacyQ];
+  const keywords  = keywordsParam.split(",").map(k => k.trim()).filter(Boolean);
   const servicios = serviciosParam
     ? serviciosParam.split(",").map(k => k.trim()).filter(Boolean)
     : [];
@@ -579,74 +667,24 @@ app.get("/detalle/:codigo", async (req, res) => {
   }
 });
 
-// ── Proxy Claude ──────────────────────────────────────────────────────────────
-app.post("/claude", async (req, res) => {
-  const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || "";
-  if (!ANTHROPIC_KEY) return res.status(500).json({ error: "ANTHROPIC_API_KEY no configurada" });
+// ── DEBUG: devuelve el JSON crudo del API de MP para inspeccionar campos ─────
+app.get("/detalle-raw/:codigo", async (req, res) => {
   try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "Content-Type":"application/json","anthropic-version":"2023-06-01","x-api-key":ANTHROPIC_KEY },
-      body: JSON.stringify(req.body)
-    });
-    const data = await response.json();
-    res.status(response.status).json(data);
+    const url = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?codigo=${req.params.codigo}&ticket=${TICKET}`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(30000) });
+    if (!r.ok) return res.status(r.status).json({ error: `API MP ${r.status}` });
+    const data = await r.json();
+    res.json(data.Listado?.[0] || { error: "No encontrada", raw: data });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// ── Diario Oficial — Búsqueda ─────────────────────────────────────────────────
-app.post("/diario-oficial/buscar", async (req, res) => {
-  const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || "";
-  if (!ANTHROPIC_KEY) return res.status(500).json({ error: "ANTHROPIC_API_KEY no configurada" });
-  const { keyword, regiones, hayFiltro } = req.body;
-  if (!keyword) return res.status(400).json({ error: "keyword requerido" });
-  const regionQuery = hayFiltro && regiones?.length ? ` (${regiones.slice(0,3).join(" OR ")})` : "";
-  try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "Content-Type":"application/json","anthropic-version":"2023-06-01","x-api-key":ANTHROPIC_KEY },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514", max_tokens: 3000,
-        system: `Eres un agente experto en buscar licitaciones en el Diario Oficial de Chile.
-Responde ÚNICAMENTE con un array JSON válido. Sin texto, sin markdown, sin explicaciones.
-Schema: {"titulo":"","organismo":"","estado":"Publicada","fechaPublicacion":"","fechaCierre":"","monto":null,"descripcion":"","url":"","region":""}`,
-        messages: [{ role:"user", content:`Busca licitaciones en el Diario Oficial de Chile relacionadas con: "${keyword}"${hayFiltro?` en las regiones: ${regiones?.join(", ")}`:""}.\n1. site:diariooficial.interior.gob.cl licitacion "${keyword}"${regionQuery}\n2. diario oficial chile licitacion "${keyword}"${regionQuery} 2025 2026\nDevuelve array JSON.` }],
-        tools: [{ type:"web_search_20250305", name:"web_search" }]
-      })
-    });
-    const data = await response.json();
-    const text = (data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n");
-    try {
-      const clean = text.replace(/```json|```/g,"").trim();
-      const match = clean.match(/\[[\s\S]*\]/);
-      res.json({ resultados: match ? JSON.parse(match[0]) : [] });
-    } catch { res.json({ resultados:[] }); }
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-// ── Diario Oficial — Análisis IA ──────────────────────────────────────────────
-app.post("/diario-oficial/analizar", async (req, res) => {
-  const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || "";
-  if (!ANTHROPIC_KEY) return res.status(500).json({ error: "ANTHROPIC_API_KEY no configurada" });
-  const { item } = req.body;
-  if (!item) return res.status(400).json({ error: "item requerido" });
-  try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method:"POST",
-      headers:{ "Content-Type":"application/json","anthropic-version":"2023-06-01","x-api-key":ANTHROPIC_KEY },
-      body: JSON.stringify({
-        model:"claude-sonnet-4-20250514", max_tokens:1500,
-        system:`Eres experto en licitaciones públicas chilenas para LEN Ingeniería, consultora multidisciplinaria. NO ejecuta obras físicas directamente, pero SÍ realiza ITO.`,
-        messages:[{ role:"user", content:`Analiza esta licitación:\nTítulo: ${item.titulo}\nOrganismo: ${item.organismo}\nRegión: ${item.region||"No especificada"}\nCierre: ${item.fechaCierre}\nURL: ${item.url||""}\n\n1. Objeto\n2. Relevancia Alta/Media/Baja\n3. Modalidad de participación\n4. Recomendación` }],
-        tools:[{ type:"web_search_20250305", name:"web_search" }]
-      })
-    });
-    const data = await response.json();
-    const text = (data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n");
-    res.json({ analysis: text||"No se pudo obtener el análisis." });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+// ── Validar Registro de Consultores MOP de LEN ───────────────────────────────
+// Recibe { requisitos: [{ codigo: "4.8", descripcion: "Obras Sanitarias", categoria: "2da" }] }
+// Devuelve { califica, fallas, diasVigencia, avisoVigencia }
+app.post("/mp/validar-registro-mop", (req, res) => {
+  res.json(validarRegistroMOP(req.body.requisitos || []));
 });
 
 // ── Helpers para extraer texto limpio del HTML de MP ─────────────────────────
@@ -679,6 +717,7 @@ app.post("/mp/analizar", async (req, res) => {
 
   // ── Paso 1: Fetch de la página de MP para obtener contenido completo ────────
   let contenidoMP = "";
+  let htmlCompleto = "";
   if (item.url) {
     try {
       const mpPage = await fetch(item.url, {
@@ -686,11 +725,48 @@ app.post("/mp/analizar", async (req, res) => {
         headers: { "User-Agent": "Mozilla/5.0 (compatible; LENBot/1.0)" }
       });
       if (mpPage.ok) {
-        const html = await mpPage.text();
-        contenidoMP = extraerTextoMP(html);
+        htmlCompleto = await mpPage.text();
+        contenidoMP = extraerTextoMP(htmlCompleto);
       }
     } catch (e) {
       console.warn("[mp/analizar] No se pudo obtener página MP:", e.message);
+    }
+  }
+
+  // ── Paso 2: PRE-FILTRO Registro MOP ─────────────────────────────────────────
+  // Si la licitación exige especialidades MOP y LEN no las tiene → descartar
+  // sin gastar tokens de OpenAI.
+  const requisitosMOP = extraerEspecialidadesMOP(htmlCompleto);
+  if (requisitosMOP.length > 0) {
+    const validacion = validarRegistroMOP(requisitosMOP);
+    if (!validacion.califica) {
+      const listaReq = requisitosMOP
+        .map(r => `   • ${r.codigo} ${r.descripcion} — Categoría ${r.categoria}`)
+        .join("\n");
+      const listaFallas = validacion.fallas.map(f => `   ⚠️ ${f}`).join("\n");
+      const aviso = validacion.avisoVigencia ? `\n${validacion.avisoVigencia}\n` : "";
+      const analysis =
+`🔴 LICITACIÓN DESCARTADA AUTOMÁTICAMENTE
+
+❌ NO CUMPLE REQUISITOS DEL REGISTRO DE CONSULTORES MOP
+
+Esta licitación exige las siguientes especialidades del Registro MOP:
+${listaReq}
+
+Estado de LEN frente a esos requisitos:
+${listaFallas}
+${aviso}
+LEN quedaría fuera de bases automáticamente. El análisis IA fue omitido para no consumir tokens de OpenAI.
+
+Si crees que esto es un error o quieres revisar igualmente, abre la licitación con "Ver en MP" y verifica el recuadro "Especialidades y categorías".`;
+
+      return res.json({
+        descartado: true,
+        motivo: "No cumple Registro MOP",
+        requisitos_mop: requisitosMOP,
+        validacion,
+        analysis
+      });
     }
   }
 
@@ -698,7 +774,11 @@ app.post("/mp/analizar", async (req, res) => {
     ? `\n\nCONTENIDO COMPLETO DE LA PÁGINA DE MERCADO PÚBLICO:\n${contenidoMP}`
     : "\n\n(No se pudo obtener el contenido de la página de Mercado Público. Analiza solo con los metadatos disponibles.)";
 
-  // ── Paso 2: Análisis con GPT-4o ─────────────────────────────────────────────
+  const requisitosTexto = requisitosMOP.length
+    ? `\n\nREGISTRO MOP — VERIFICACIÓN PREVIA: Esta licitación exige ${requisitosMOP.map(r => `${r.codigo} ${r.descripcion} (${r.categoria})`).join(", ")}. LEN cumple con todos estos requisitos según el certificado vigente N°${LEN_REGISTRO_MOP.certificado}.`
+    : "";
+
+  // ── Paso 3: Análisis con GPT-4o ─────────────────────────────────────────────
   try {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -781,12 +861,18 @@ Estado: ${item.estado || "N/A"}
 Publicación: ${item.fechaPublicacion || "N/A"}
 Cierre: ${item.fechaCierre || "N/A"}
 Monto: ${item.monto || "No especificado"}
-URL: ${item.url || ""}${contenidoExtra}
+URL: ${item.url || ""}${requisitosTexto}${contenidoExtra}
 
 Entrega el análisis con este formato exacto:
 
-📋 OBJETO
-Describe en 2-3 líneas qué se requiere y cuál es el alcance del servicio.
+📋 DESCRIPCIÓN Y OBJETIVOS
+Redacta un párrafo extenso de 6 a 10 líneas que cubra:
+- Contexto y antecedentes del proyecto (por qué se licita, qué problema resuelve)
+- Objetivo general y objetivos específicos del estudio o servicio
+- Alcance geográfico, técnico y temporal del trabajo
+- Entregables principales esperados
+- Cualquier condición particular relevante (modalidad de ejecución, ubicación clave, etc.)
+Usa información concreta de las bases si está disponible. Evita frases genéricas.
 
 🏢 DIVISIÓN LEN
 Indica qué división de LEN es la más adecuada para ejecutar este contrato.
@@ -1383,376 +1469,6 @@ Responde ÚNICAMENTE con JSON válido sin markdown.`;
       res.status(500).json({ error: err.message });
     }
   });
-});
-
-// ── Búsqueda EFE ─────────────────────────────────────────────────────────────
-app.get("/buscar-efe", async (req, res) => {
-  const keywords = (req.query.keywords || "").split(",").map(k => k.trim()).filter(Boolean);
-  const servicios = (req.query.servicios || "").split(",").map(k => k.trim()).filter(Boolean);
-  try {
-    // Paso 1: Obtener nonce fresco desde la página pública
-    const pageRes = await fetch("https://www.efe.cl/licitaciones/licitaciones-publicadas/", {
-      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" }
-    });
-    const html   = await pageRes.text();
-    const nonceM = html.match(/"nonce":"([a-f0-9]+)"/);
-    if (!nonceM) return res.status(502).json({ error: "No se pudo obtener nonce de EFE" });
-    const nonce  = nonceM[1];
-
-    // Paso 2: Obtener listado de licitaciones
-    const apiRes = await fetch("https://www.efe.cl/wp-json/licitaciones/listado", {
-      headers: {
-        "X-WP-Nonce": nonce,
-        "Referer":    "https://www.efe.cl/licitaciones/licitaciones-publicadas/",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Accept":     "application/json, */*"
-      }
-    });
-    if (!apiRes.ok) return res.status(502).json({ error: `EFE API respondió ${apiRes.status}` });
-
-    // Verificar que la respuesta es JSON antes de parsear
-    const contentType = apiRes.headers.get("content-type") || "";
-    const rawText = await apiRes.text();
-    if (!contentType.includes("json") && !rawText.trim().startsWith("{")) {
-      console.error("[buscar-efe] Respuesta no es JSON:", rawText.substring(0,100));
-      return res.status(502).json({ error: "EFE devolvió respuesta inesperada. Intenta de nuevo." });
-    }
-
-    let data;
-    try { data = JSON.parse(rawText); }
-    catch(e) { return res.status(502).json({ error: "Error al parsear respuesta de EFE" }); }
-    const items = data.data || [];
-
-    // Paso 3: Parsear y normalizar
-    const cleanHtml  = s => (s || "")
-      .replace(/<[^>]+>/g, "")
-      .replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">")
-      .replace(/&#8220;/g,'"').replace(/&#8221;/g,'"').replace(/&#8211;/g,"–")
-      .replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&nbsp;/g," ")
-      .replace(/\s+/g, " ").trim();
-    const extractUrl = s => { const m = (s || "").match(/href=["']([^"']+)['"]/); return m ? m[1] : ""; };
-    const extractDate= s => { const m = cleanHtml(s).match(/\d{2}\/\d{2}\/\d{4}/); return m ? m[0] : ""; };
-
-    // Estados activos de EFE (excluir ADJUDICADA, DESIERTO, etc.)
-    const ESTADOS_ACTIVOS = ["EN VENTA DE BASES","EN PERÍODO DE INSCRIPCIÓN","EN PERIODO DE INSCRIPCIÓN",
-      "CHARLA INFORMATIVA","CONSULTAS Y RESPUESTAS","EN RECEPCIÓN DE OFERTAS","EN RECEPCION DE OFERTAS"];
-
-    const licitaciones = items.map(item => {
-      const titulo = cleanHtml(item[1] || "").replace(/^Descripción/i, "").trim();
-      return {
-        titulo,
-        estado:           cleanHtml(item[0] || "").replace(/^Estado/i, "").trim(),
-        fechaPublicacion: extractDate(item[2]),
-        fechaCierre:      extractDate(item[3]),
-        url:              extractUrl(item[4] || ""),
-        organismo:        "EFE Trenes de Chile",
-        region:           null,
-        fuente:           "EFE",
-        codigo:           "",
-        divisiones:       clasificarDivisiones(titulo, null)
-      };
-    }).filter(l => l.titulo && ESTADOS_ACTIVOS.some(e => l.estado.toUpperCase().includes(e)));
-
-    // Paso 4: Filtrar por keywords si se proporcionan
-    const norm = s => (s || "").toLowerCase()
-      .replace(/[áàä]/g,"a").replace(/[éèë]/g,"e").replace(/[íìï]/g,"i")
-      .replace(/[óòö]/g,"o").replace(/[úùü]/g,"u").replace(/ñ/g,"n").trim();
-    const stem = t => t.length >= 6 ? t.slice(0,-2) : t;
-    const matchKw = (titulo, kw) => {
-      const tNorm = norm(titulo);
-      return norm(kw).split(/\s+/).filter(t=>t.length>=3).every(t=>tNorm.includes(stem(t)));
-    };
-
-    let resultado = licitaciones;
-    if (keywords.length > 0) {
-      resultado = licitaciones.filter(l => {
-        const matchTec = keywords.some(kw => matchKw(l.titulo, kw));
-        if (!matchTec) return false;
-        if (servicios.length === 0) return true;
-        return servicios.some(s => matchKw(l.titulo, s));
-      });
-    }
-
-    res.json({ total: resultado.length, resultados: resultado });
-  } catch(err) {
-    console.error("[buscar-efe]", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── Búsqueda MINVU ───────────────────────────────────────────────────────────
-app.get("/buscar-minvu", async (req, res) => {
-  const keywords = (req.query.keywords || "").split(",").map(k => k.trim()).filter(Boolean);
-  const servicios = (req.query.servicios || "").split(",").map(k => k.trim()).filter(Boolean);
-
-  try {
-    // Obtener las últimas 100 licitaciones vía API REST WordPress
-    const pages = await Promise.all([1,2,3,4].map(page =>
-      fetch(`https://proveedores-tecnicos.minvu.gob.cl/wp-json/wp/v2/posts?categories=36&per_page=25&page=${page}&_fields=id,title,excerpt,date,link&orderby=date&order=desc`)
-        .then(r => r.ok ? r.json() : [])
-        .catch(() => [])
-    ));
-    const posts = pages.flat();
-
-    const cleanHtml = s => (s||"").replace(/<[^>]+>/g,"").replace(/&nbsp;/g," ").replace(/&amp;/g,"&").replace(/\s+/g," ").trim();
-
-    const licitaciones = posts.map(p => {
-      const texto   = cleanHtml(p.excerpt?.rendered || "");
-      const titulo  = cleanHtml(p.title?.rendered || "");
-      const idMatch = texto.match(/(?:ID:|Licitación\s+ID:)\s*([\w-]+)/i);
-      const respMatch = texto.match(/Responsable[^:]*:\s*(.+?)(?:Fecha|$)/is);
-      const cierreMatch = texto.match(/Fecha de Cierre:\s*([\d-]+)/);
-
-      return {
-        titulo,
-        codigo:          idMatch ? idMatch[1] : "",
-        organismo:       respMatch ? respMatch[1].replace(/\n/g," ").trim().substring(0,80) : "MINVU/SERVIU",
-        region:          null,
-        estado:          "Publicada",
-        fechaPublicacion: p.date ? p.date.substring(0,10) : "",
-        fechaCierre:     cierreMatch ? cierreMatch[1] : "",
-        monto:           null,
-        descripcion:     "",
-        url:             p.link || "",
-        fuente:          "MINVU",
-        codigo_fuente:   "minvu",
-        divisiones:      clasificarDivisiones(titulo, null)
-      };
-    }).filter(l => l.titulo);
-
-    // Filtrar por keywords si se proporcionan
-    const norm = s => (s||"").toLowerCase()
-      .replace(/[áàä]/g,"a").replace(/[éèë]/g,"e").replace(/[íìï]/g,"i")
-      .replace(/[óòö]/g,"o").replace(/[úùü]/g,"u").replace(/ñ/g,"n").trim();
-    const stem = t => t.length >= 6 ? t.slice(0,-2) : t;
-    const matchKw = (titulo, kw) => {
-      const tNorm = norm(titulo);
-      return norm(kw).split(/\s+/).filter(t=>t.length>=3).every(t=>tNorm.includes(stem(t)));
-    };
-
-    let resultado = licitaciones;
-    if (keywords.length > 0) {
-      resultado = licitaciones.filter(l => {
-        const matchTec = keywords.some(kw => matchKw(l.titulo, kw));
-        if (!matchTec) return false;
-        if (!servicios.length) return true;
-        return servicios.some(s => matchKw(l.titulo, s));
-      });
-    }
-
-    res.json({ total: resultado.length, resultados: resultado });
-  } catch(err) {
-    console.error("[buscar-minvu]", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── Búsqueda ECONSSA ─────────────────────────────────────────────────────────
-app.get("/buscar-econssa", async (req, res) => {
-  const keywords = (req.query.keywords || "").split(",").map(k => k.trim()).filter(Boolean);
-  const servicios = (req.query.servicios || "").split(",").map(k => k.trim()).filter(Boolean);
-
-  try {
-    const pageRes = await fetch("https://www.econssachile.cl/nosotros/proveedores/39-licitaciones-vigentes", {
-      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" }
-    });
-    if (!pageRes.ok) return res.status(502).json({ error: `ECONSSA respondió ${pageRes.status}` });
-    const html = await pageRes.text();
-
-    // Extraer títulos h2-h4 como licitaciones
-    const titulosMatch = [...html.matchAll(/<h[234][^>]*>(.*?)<\/h[234]>/gis)];
-    const cleanHtml = s => (s||"").replace(/<[^>]+>/g,"").replace(/&amp;/g,"&").replace(/&quot;/g,'"').replace(/&#[0-9]+;/g, c => String.fromCharCode(parseInt(c.slice(2,-1)))).replace(/&[a-z]+;/g,"").replace(/\s+/g," ").trim();
-
-    // Extraer PDFs agrupados por título
-    const pdfMatches = [...html.matchAll(/href=["']([^"']+\.(?:pdf|docx|doc))["']/gi)];
-    const pdfs = pdfMatches.map(m => m[1].startsWith("http") ? m[1] : "https://www.econssachile.cl" + m[1]);
-
-    // Construir licitaciones — cada h3/h4 es un título
-    const licitaciones = [];
-    let pdfIdx = 0;
-    for (const match of titulosMatch) {
-      const titulo = cleanHtml(match[1]);
-      if (titulo.length < 15) continue;
-      if (titulo.toLowerCase().includes("memorias") || titulo.toLowerCase().includes("auditoría operacional")) continue;
-      // Asignar PDFs cercanos
-      const urlBase = pdfs[pdfIdx] || "https://www.econssachile.cl/nosotros/proveedores/39-licitaciones-vigentes";
-      pdfIdx = Math.min(pdfIdx + 3, pdfs.length - 1);
-      licitaciones.push({
-        titulo,
-        organismo: "ECONSSA Chile S.A.",
-        region: detectarRegionEconssa(titulo),
-        estado: "Vigente",
-        fechaPublicacion: "",
-        fechaCierre: "",
-        monto: null,
-        descripcion: "",
-        url: urlBase,
-        fuente: "ECONSSA",
-        codigo: ""
-      });
-    }
-
-    // Filtrar por keywords
-    const norm = s => (s||"").toLowerCase().replace(/[áàä]/g,"a").replace(/[éèë]/g,"e").replace(/[íìï]/g,"i").replace(/[óòö]/g,"o").replace(/[úùü]/g,"u").replace(/ñ/g,"n").trim();
-    const stem = t => t.length >= 6 ? t.slice(0,-2) : t;
-    const matchKw = (titulo, kw) => norm(kw).split(/\s+/).filter(t=>t.length>=3).every(t=>norm(titulo).includes(stem(t)));
-
-    let resultado = licitaciones;
-    if (keywords.length > 0) {
-      resultado = licitaciones.filter(l => {
-        const matchTec = keywords.some(kw => matchKw(l.titulo, kw));
-        if (!matchTec) return false;
-        if (!servicios.length) return true;
-        return servicios.some(s => matchKw(l.titulo, s));
-      });
-    }
-
-    res.json({ total: resultado.length, resultados: resultado });
-  } catch(err) {
-    console.error("[buscar-econssa]", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-function detectarRegionEconssa(titulo) {
-  const t = titulo.toLowerCase();
-  if (t.includes("antofagasta") || t.includes("chuquicamata")) return "Antofagasta";
-  if (t.includes("hospicio") || t.includes("iquique") || t.includes("tarapacá")) return "Tarapacá";
-  if (t.includes("tocopilla")) return "Antofagasta";
-  if (t.includes("atacama") || t.includes("copiapó")) return "Atacama";
-  if (t.includes("valparaíso") || t.includes("peñuelas")) return "Valparaíso";
-  return "Norte";
-}
-
-// ── Búsqueda Puerto San Antonio ────────────────────────────────────────────── 
-app.get("/buscar-psa", async (req, res) => {
-  const keywords = (req.query.keywords || "").split(",").map(k => k.trim()).filter(Boolean);
-  const servicios = (req.query.servicios || "").split(",").map(k => k.trim()).filter(Boolean);
-
-  try {
-    const pageRes = await fetch("https://www.puertosanantonio.com/licitaciones-publicas", {
-      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" }
-    });
-    if (!pageRes.ok) return res.status(502).json({ error: `PSA respondió ${pageRes.status}` });
-    const html = await pageRes.text();
-
-    const cleanHtml = s => (s||"").replace(/<[^>]+>/g,"").replace(/\s+/g," ").trim();
-
-    // Extraer filas de la tabla
-    const rows = [...html.matchAll(/<tr[^>]*>(.*?)<\/tr>/gis)].slice(1); // skip header
-    const licitaciones = [];
-
-    for (const row of rows) {
-      const cells = [...row[1].matchAll(/<td[^>]*>(.*?)<\/td>/gis)].map(c => cleanHtml(c[1]));
-      if (cells.length < 2) continue;
-      const codigo = cells[0];
-      const titulo = cells[1];
-      if (!titulo || titulo.length < 5) continue;
-
-      // Extraer URL del adjunto
-      const urlMatch = row[1].match(/href=["']([^"']+\.pdf)["']/i);
-      const url = urlMatch ? (urlMatch[1].startsWith("http") ? urlMatch[1] : "https://www.puertosanantonio.com" + urlMatch[1]) : "https://www.puertosanantonio.com/licitaciones-publicas";
-
-      licitaciones.push({
-        titulo,
-        codigo,
-        organismo: "Puerto San Antonio",
-        region: "Valparaíso",
-        estado: "Publicada",
-        fechaPublicacion: "",
-        fechaCierre: "",
-        monto: null,
-        descripcion: "",
-        url,
-        fuente: "Puerto San Antonio",
-        divisiones: clasificarDivisiones(titulo, "5")
-      });
-    }
-
-    // Filtrar por keywords
-    const norm = s => (s||"").toLowerCase().replace(/[áàä]/g,"a").replace(/[éèë]/g,"e").replace(/[íìï]/g,"i").replace(/[óòö]/g,"o").replace(/[úùü]/g,"u").replace(/ñ/g,"n").trim();
-    const stem = t => t.length >= 6 ? t.slice(0,-2) : t;
-    const matchKw = (titulo, kw) => norm(kw).split(/\s+/).filter(t=>t.length>=3).every(t=>norm(titulo).includes(stem(t)));
-
-    let resultado = licitaciones;
-    if (keywords.length > 0) {
-      resultado = licitaciones.filter(l => {
-        const matchTec = keywords.some(kw => matchKw(l.titulo, kw));
-        if (!matchTec) return false;
-        if (!servicios.length) return true;
-        return servicios.some(s => matchKw(l.titulo, s));
-      });
-    }
-
-    res.json({ total: resultado.length, resultados: resultado });
-  } catch(err) {
-    console.error("[buscar-psa]", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── Búsqueda Metro ───────────────────────────────────────────────────────────
-app.get("/buscar-metro", async (req, res) => {
-  const keywords = (req.query.keywords || "").split(",").map(k => k.trim()).filter(Boolean);
-  const servicios = (req.query.servicios || "").split(",").map(k => k.trim()).filter(Boolean);
-
-  try {
-    const pageRes = await fetch("https://www.metro.cl/licitaciones/proximas-licitaciones", {
-      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" }
-    });
-    if (!pageRes.ok) return res.status(502).json({ error: `Metro respondió ${pageRes.status}` });
-    const html = await pageRes.text();
-
-    const cleanHtml = s => (s||"").replace(/<[^>]+>/g,"").replace(/\s+/g," ").trim();
-
-    const rows = [...html.matchAll(/<tr[^>]*>(.*?)<\/tr>/gis)];
-    const licitaciones = [];
-
-    for (const row of rows) {
-      const cells = [...row[1].matchAll(/<td[^>]*>(.*?)<\/td>/gis)].map(c => cleanHtml(c[1]));
-      if (cells.length < 3) continue;
-      const tipo  = cells[0];
-      const titulo = cells[1];
-      const fecha = cells[2];
-      if (!titulo || titulo.length < 5) continue;
-
-      licitaciones.push({
-        titulo,
-        codigo:          "",
-        organismo:       `Metro de Santiago — ${tipo}`,
-        region:          "Metropolitana",
-        estado:          "Próxima licitación",
-        fechaPublicacion: "",
-        fechaCierre:     fecha,
-        monto:           null,
-        descripcion:     `Línea/Tipo: ${tipo} | Fecha estimada: ${fecha}`,
-        url:             "https://www.metro.cl/licitaciones/proximas-licitaciones",
-        fuente:          "Metro",
-        tipo,
-        divisiones:      clasificarDivisiones(titulo, "13")
-      });
-    }
-
-    // Filtrar por keywords
-    const norm = s => (s||"").toLowerCase().replace(/[áàä]/g,"a").replace(/[éèë]/g,"e").replace(/[íìï]/g,"i").replace(/[óòö]/g,"o").replace(/[úùü]/g,"u").replace(/ñ/g,"n").trim();
-    const stem = t => t.length >= 6 ? t.slice(0,-2) : t;
-    const matchKw = (titulo, kw) => norm(kw).split(/\s+/).filter(t=>t.length>=3).every(t=>norm(titulo).includes(stem(t)));
-
-    let resultado = licitaciones;
-    if (keywords.length > 0) {
-      resultado = licitaciones.filter(l => {
-        const matchTec = keywords.some(kw => matchKw(l.titulo, kw));
-        if (!matchTec) return false;
-        if (!servicios.length) return true;
-        return servicios.some(s => matchKw(l.titulo, s));
-      });
-    }
-
-    res.json({ total: resultado.length, resultados: resultado });
-  } catch(err) {
-    console.error("[buscar-metro]", err.message);
-    res.status(500).json({ error: err.message });
-  }
 });
 
 app.listen(PORT, () => console.log(`Backend licitaciones en puerto ${PORT} | Ticket: ${TICKET.substring(0,8)}...`));
