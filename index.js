@@ -1171,6 +1171,28 @@ Si tras la verificación manual confirmas que LEN califica, podemos analizar la 
   }
   // Caso C: no requiere MOP → seguir con análisis IA normal
 
+  // ── Pre-cálculo de la división LEN sugerida (texto enriquecido) ─────────
+  // El clasificador del sistema mira título + organismo + región + texto del
+  // sitio + especialidades MOP. Esta división calculada se inyecta al prompt
+  // de GPT como dato fijo, para que GPT NO invente otra división arbitraria
+  // (lo cual generaba contradicciones entre la pestaña activa y el análisis).
+  const textoParaClasif = [
+    item.titulo || "",
+    item.organismo || "",
+    item.region || "",
+    contenidoMP || ""
+  ].filter(Boolean).join(" | ").substring(0, 6000); // cap de seguridad
+  // Determinar codigoRegion si tenemos texto de región
+  let codigoRegionAnalizar = item.codigoRegion || null;
+  if (!codigoRegionAnalizar && item.region) {
+    const r = REGIONES.find(reg => item.region.toLowerCase().includes(reg.oficial));
+    if (r) codigoRegionAnalizar = r.codigo;
+  }
+  const divisionPreCalc = sugerirDivision(textoParaClasif, requisitosMOP, codigoRegionAnalizar);
+  const divisionPreCalcLabel = divisionPreCalc
+    ? (DIVISIONES_LEN.find(d => d.id === divisionPreCalc)?.label || divisionPreCalc)
+    : "Sin clasificar (GPT debe sugerir)";
+
   const contenidoExtra = contenidoMP
     ? `\n\nCONTENIDO COMPLETO DE LA PÁGINA DE MERCADO PÚBLICO:\n${contenidoMP}`
     : "\n\n(No se pudo obtener el contenido de la página de Mercado Público. Analiza solo con los metadatos disponibles.)";
@@ -1261,7 +1283,8 @@ Región: ${item.region || "No especificada"}
 Estado: ${item.estado || "N/A"}
 Publicación: ${item.fechaPublicacion || "N/A"}
 Cierre: ${item.fechaCierre || "N/A"}
-Monto: ${item.monto || "No especificado"}
+Monto declarado en metadatos: ${item.monto || "No especificado"}
+División LEN ya clasificada por el sistema: ${divisionPreCalcLabel}
 URL: ${item.url || ""}${requisitosTexto}${contenidoExtra}
 
 Entrega el análisis con este formato exacto:
@@ -1279,8 +1302,20 @@ Redacta un párrafo de 3-5 líneas que cubra:
 - Objetivos específicos
 - Entregables principales esperados
 
+🏛️ ORGANISMO MANDANTE
+Indica el nombre completo del organismo licitante, su tipo (MOP / DOH / SERVIU / Municipalidad / Universidad / GORE / etc.), su ámbito territorial, y si es un cliente recurrente o nuevo para consultoras del rubro de LEN. 2-3 líneas como máximo.
+
+💰 MONTO ESTIMADO
+Indica el monto total estimado del contrato.
+Busca esta información en el contenido de las bases si está disponible (suele estar en una sección llamada "Montos y duración del contrato" o similar). Si está en bases, indica: $XXX.XXX.XXX CLP (con separadores de miles) y especifica si es referencial, presupuesto disponible, o monto exacto.
+Si no está en bases ni en metadatos, indica "No especificado" y sugerí estimar por similitud con proyectos pasados.
+
 🏢 DIVISIÓN LEN
-Indica qué división de LEN es la más adecuada para ejecutar este contrato.
+La clasificación automática del sistema indica: ${divisionPreCalcLabel}.
+${divisionPreCalc 
+  ? "Confirma esta clasificación si te parece correcta. Si propondrías una división diferente, indica la propuesta y la razón en 1-2 líneas."
+  : "Sugiere la división de LEN más adecuada en base a las reglas de asignación, justificando en 1-2 líneas."
+}
 
 📅 FECHAS CLAVE
 Fecha publicación:         DD-MM-AAAA
