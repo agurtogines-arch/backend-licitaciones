@@ -903,7 +903,7 @@ function App() {
           const isActive = div.id === activeDivId2;
           const divResults = divStates[div.id].results.length;
           return (
-            <button key={div.id} onClick={() => { setActiveDivId(div.id); setTab("buscar"); }}
+            <button key={div.id} onClick={() => { setActiveDivId(div.id); setTab("resultados"); }}
               style={{flex:"1 1 auto",padding:"10px 12px",borderRadius:8,border:`2px solid ${isActive ? div.color : "transparent"}`,cursor:"pointer",fontSize:13,fontWeight:700,background:isActive ? div.bg : "transparent",color:isActive ? div.color : "#64748b",transition:"all .15s",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
               <span>{div.icon}</span>
               <span>{div.label}</span>
