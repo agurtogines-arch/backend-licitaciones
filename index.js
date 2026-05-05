@@ -1056,6 +1056,40 @@ app.post("/mp/analizar", async (req, res) => {
   const { item } = req.body;
   if (!item) return res.status(400).json({ error: "item requerido" });
 
+  // ── Enriquecer datos desde el API de ChileCompra ─────────────────────────
+  // El item del frontend a veces no trae monto, organismo completo o región.
+  // El API de MP sí los tiene en campos confiables, así que los pedimos antes
+  // de armar el prompt para que GPT no diga "no especificado" cuando sí hay
+  // datos disponibles.
+  let datosAPI = {};
+  if (item.codigo) {
+    try {
+      const apiUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?codigo=${item.codigo}&ticket=${TICKET}`;
+      const apiRes = await fetch(apiUrl, { signal: AbortSignal.timeout(10000) });
+      if (apiRes.ok) {
+        const data = await apiRes.json();
+        const lic = data.Listado?.[0];
+        if (lic) {
+          datosAPI = {
+            montoEstimado:           parseFloat(lic.MontoEstimado) || 0,
+            organismoCompleto:       lic.Comprador?.NombreOrganismo || null,
+            unidadCompradora:        lic.Comprador?.NombreUnidad   || null,
+            rutOrganismo:            lic.Comprador?.RutOrganismo   || null,
+            regionUnidad:            lic.Comprador?.RegionUnidad   || null,
+            comuna:                  lic.Comprador?.ComunaUnidad   || null,
+            descripcionMP:           lic.Descripcion               || null,
+            duracionContrato:        lic.UnidadTiempoContratoLicitacion && lic.TiempoDuracionContrato
+                                       ? `${lic.TiempoDuracionContrato} ${lic.UnidadTiempoContratoLicitacion}`
+                                       : null,
+            tipoEstimacion:          lic.MontoEstimado > 0 ? "Presupuesto disponible (oficial MP)" : null
+          };
+        }
+      }
+    } catch (e) {
+      console.warn("[mp/analizar] No se pudo enriquecer desde API:", e.message);
+    }
+  }
+
   // ── Paso 1: Fetch de la página de MP para obtener contenido completo ────────
   let contenidoMP = "";
   let htmlCompleto = "";
@@ -1171,6 +1205,62 @@ Si tras la verificación manual confirmas que LEN califica, podemos analizar la 
   }
   // Caso C: no requiere MOP → seguir con análisis IA normal
 
+  // ── Extraer monto desde el HTML del sitio MP (si la API no lo trajo) ────
+  // Busca patrones tipo "Monto Total Estimado: 347718000" o "Monto Total
+  // Estimado: $347.718.000". A veces la API devuelve 0 y este monto sí
+  // aparece en la sección "7. Montos y duración del contrato" del HTML.
+  let montoExtraidoHTML = 0;
+  let baseEstimacionHTML = null;
+  if (htmlCompleto) {
+    // Limpiar HTML para texto plano
+    const textoMP = htmlCompleto
+      .replace(/<script[\s\S]*?<\/script>/gi, "")
+      .replace(/<style[\s\S]*?<\/style>/gi, "")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/g, " ")
+      .replace(/\s+/g, " ");
+    
+    // Patrones (ordenados de más específico a más genérico)
+    // 1) "Monto Total Estimado: 347718000" (sin formato)
+    // 2) "Monto Total Estimado: $347.718.000" (con formato CLP)
+    // 3) "Monto Total Estimado: 347.718.000"
+    const patrones = [
+      /Monto\s*Total\s*Estimado\s*[:.]?\s*\$?\s*([\d.,]+)/i,
+      /Monto\s*Estimado\s*[:.]?\s*\$?\s*([\d.,]+)/i,
+      /Presupuesto\s*Disponible\s*[:.]?\s*\$?\s*([\d.,]+)/i,
+      /Monto\s*Referencial\s*[:.]?\s*\$?\s*([\d.,]+)/i
+    ];
+    for (const pat of patrones) {
+      const m = textoMP.match(pat);
+      if (m) {
+        // Limpiar el número: quitar puntos como separador de miles, mantener dígitos
+        const numStr = m[1].replace(/\./g, "").replace(/,/g, "");
+        const num = parseInt(numStr, 10);
+        if (!isNaN(num) && num > 0) {
+          montoExtraidoHTML = num;
+          // Detectar la base de la estimación
+          const ctx = textoMP.substring(Math.max(0, m.index - 200), m.index);
+          if (/Estimaci[oó]n\s*en\s*base\s*a\s*[:.]?\s*Presupuesto\s*Disponible/i.test(ctx)) {
+            baseEstimacionHTML = "Presupuesto Disponible";
+          } else if (/Estimaci[oó]n\s*en\s*base\s*a\s*[:.]?\s*Monto\s*Referencial/i.test(ctx)) {
+            baseEstimacionHTML = "Monto Referencial";
+          } else if (/Estimaci[oó]n\s*en\s*base\s*a\s*[:.]?\s*Monto\s*Estimado/i.test(ctx)) {
+            baseEstimacionHTML = "Monto Estimado";
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  // Combinar: usar API primero, HTML después
+  const montoFinal = datosAPI.montoEstimado > 0 ? datosAPI.montoEstimado : montoExtraidoHTML;
+  const fuenteMonto = datosAPI.montoEstimado > 0
+    ? `API ChileCompra (${datosAPI.tipoEstimacion})`
+    : montoExtraidoHTML > 0
+      ? `HTML del sitio MP${baseEstimacionHTML ? ` (${baseEstimacionHTML})` : ""}`
+      : null;
+
   // ── Pre-cálculo de la división LEN sugerida (texto enriquecido) ─────────
   // El clasificador del sistema mira título + organismo + región + texto del
   // sitio + especialidades MOP. Esta división calculada se inyecta al prompt
@@ -1278,12 +1368,16 @@ INSTRUCCIÓN IMPORTANTE: Si tienes el contenido completo de la página de MP, ú
 
 Título: ${item.titulo}
 Código: ${item.codigo || "N/A"}
-Organismo: ${item.organismo || "N/A"}
-Región: ${item.region || "No especificada"}
+Organismo: ${datosAPI.organismoCompleto || item.organismo || "N/A"}
+${datosAPI.unidadCompradora ? `Unidad compradora: ${datosAPI.unidadCompradora}` : ""}
+${datosAPI.rutOrganismo ? `RUT organismo: ${datosAPI.rutOrganismo}` : ""}
+Región: ${datosAPI.regionUnidad || item.region || "No especificada"}
+${datosAPI.comuna ? `Comuna: ${datosAPI.comuna}` : ""}
 Estado: ${item.estado || "N/A"}
 Publicación: ${item.fechaPublicacion || "N/A"}
 Cierre: ${item.fechaCierre || "N/A"}
-Monto declarado en metadatos: ${item.monto || "No especificado"}
+Monto estimado oficial: ${montoFinal > 0 ? `$${Number(montoFinal).toLocaleString("es-CL")} CLP — fuente: ${fuenteMonto}` : "No publicado en API ni en HTML"}
+${datosAPI.duracionContrato ? `Duración del contrato (API): ${datosAPI.duracionContrato}` : ""}
 División LEN ya clasificada por el sistema: ${divisionPreCalcLabel}
 URL: ${item.url || ""}${requisitosTexto}${contenidoExtra}
 
@@ -1306,9 +1400,11 @@ Redacta un párrafo de 3-5 líneas que cubra:
 Indica el nombre completo del organismo licitante, su tipo (MOP / DOH / SERVIU / Municipalidad / Universidad / GORE / etc.), su ámbito territorial, y si es un cliente recurrente o nuevo para consultoras del rubro de LEN. 2-3 líneas como máximo.
 
 💰 MONTO ESTIMADO
-Indica el monto total estimado del contrato.
-Busca esta información en el contenido de las bases si está disponible (suele estar en una sección llamada "Montos y duración del contrato" o similar). Si está en bases, indica: $XXX.XXX.XXX CLP (con separadores de miles) y especifica si es referencial, presupuesto disponible, o monto exacto.
-Si no está en bases ni en metadatos, indica "No especificado" y sugerí estimar por similitud con proyectos pasados.
+PRIORIDAD 1: Si "Monto estimado oficial" tiene un valor, USA ESE MONTO sin modificar (con la fuente que indica entre paréntesis).
+PRIORIDAD 2: Si "Monto estimado oficial" dice "No publicado", busca en el contenido completo del HTML alguna sección con "Monto Total Estimado", "Presupuesto Disponible", "Monto Referencial", o tabla "Montos y duración del contrato". Extraé literalmente el número que aparece y formátalo.
+Formato de salida: $XXX.XXX.XXX CLP (con separadores de miles y signo $).
+Indica la base de la estimación (Presupuesto Disponible / Monto Referencial / Estimado por contrato / etc.) si está disponible.
+Solo usa "No especificado" si realmente no aparece en ningún lado del contenido proporcionado.
 
 🏢 DIVISIÓN LEN
 La clasificación automática del sistema indica: ${divisionPreCalcLabel}.
