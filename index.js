@@ -121,8 +121,15 @@ function matchDivKw(titulo, kw) {
 }
 
 function clasificarDivisiones(titulo, codigoRegion) {
+  // Orden de evaluación: de más específico a más genérico (Zona Sur al final
+  // porque su keyword "vial" es muy amplia y mataría matches más precisos como
+  // "inspección fiscal" → ITO).
+  const ORDEN_CLASIFICACION = ["ito","medioambiente","energia","mineria","civil","infra","zonasur"];
   const divisiones = [];
-  for (const div of DIVISIONES_LEN) {
+  const divsById = Object.fromEntries(DIVISIONES_LEN.map(d => [d.id, d]));
+  for (const id of ORDEN_CLASIFICACION) {
+    const div = divsById[id];
+    if (!div) continue;
     const matchTec = div.keywords.some(kw => matchDivKw(titulo, kw));
     if (!matchTec) continue;
     // Para Zona Sur verificar región si está disponible
@@ -2261,6 +2268,71 @@ app.get("/mp/listar-gestor", async (req, res) => {
     if (!r.ok) return res.status(502).json({ error: `Supabase ${r.status}` });
     const data = await r.json();
     res.json({ ok: true, total: data.length, licitaciones: data });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Clasificar licitaciones existentes (one-shot fix) ────────────────────────
+// Para todas las licitaciones que NO tengan division_len ni division_sugerida,
+// calcula sugerencia desde el título usando el clasificador y la guarda en BD.
+// Usar GET una vez después de actualizar el código.
+app.get("/mp/clasificar-existentes", async (req, res) => {
+  try {
+    // Listar todas las licitaciones que aún no tienen división asignada
+    const url = `${SUPABASE_URL}/rest/v1/licitaciones?select=id,nombre,region&division_len=is.null&division_sugerida=is.null`;
+    const r = await fetch(url, { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(20000) });
+    if (!r.ok) return res.status(502).json({ error: `Supabase ${r.status}: ${await r.text()}` });
+    const pendientes = await r.json();
+
+    let actualizadas = 0;
+    let sinClasificar = 0;
+    const detalles = [];
+
+    for (const lic of pendientes) {
+      // Determinar codigoRegion si tenemos texto de región
+      let codigoRegion = null;
+      if (lic.region) {
+        const reg = REGIONES.find(rx => lic.region.toLowerCase().includes(rx.oficial));
+        if (reg) codigoRegion = reg.codigo;
+      }
+
+      // Sugerir basándose en título (sin especialidades MOP, que probablemente no estaban guardadas)
+      const sugeridas = clasificarDivisiones(lic.nombre || "", codigoRegion);
+      const divisionSugerida = sugeridas.length > 0 ? sugeridas[0].id : null;
+
+      if (!divisionSugerida) {
+        sinClasificar++;
+        detalles.push({ id: lic.id, nombre: lic.nombre, status: "sin-match" });
+        continue;
+      }
+
+      // Actualizar Supabase
+      const patchRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/licitaciones?id=eq.${encodeURIComponent(lic.id)}`,
+        {
+          method: "PATCH",
+          headers: SUPABASE_HEADERS,
+          body: JSON.stringify({
+            division_sugerida: divisionSugerida,
+            division_len:      divisionSugerida // pre-llenar con sugerida (editable después)
+          }),
+          signal: AbortSignal.timeout(8000)
+        }
+      );
+      if (patchRes.ok) {
+        actualizadas++;
+        detalles.push({ id: lic.id, nombre: lic.nombre, division: divisionSugerida });
+      }
+    }
+
+    res.json({
+      ok: true,
+      total_pendientes: pendientes.length,
+      actualizadas,
+      sin_clasificar: sinClasificar,
+      detalles
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
