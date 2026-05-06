@@ -1053,8 +1053,35 @@ app.post("/mp/analizar", async (req, res) => {
   const OPENAI_KEY = process.env.OPENAI_API_KEY || "";
   if (!OPENAI_KEY) return res.status(500).json({ error: "OPENAI_API_KEY no configurada en Render" });
 
-  const { item } = req.body;
+  const { item, forzarReanalisis } = req.body;
   if (!item) return res.status(400).json({ error: "item requerido" });
+
+  // ── Cache lookup ─────────────────────────────────────────────────────────
+  // Si la licitación ya fue analizada antes y no se pide reanálisis explícito,
+  // devolvemos el resultado cacheado sin llamar a GPT. Esto evita gastar
+  // tokens en la misma licitación múltiples veces.
+  if (item.codigo && !forzarReanalisis) {
+    try {
+      const cacheRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/analisis_cache?codigo=eq.${encodeURIComponent(item.codigo)}&select=analisis,creado_en`,
+        { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(5000) }
+      );
+      if (cacheRes.ok) {
+        const data = await cacheRes.json();
+        if (data.length > 0) {
+          console.log(`[analizar] Cache HIT para ${item.codigo} (creado ${data[0].creado_en})`);
+          return res.json({
+            analysis: data[0].analisis,
+            cached: true,
+            cacheCreadoEn: data[0].creado_en
+          });
+        }
+      }
+    } catch (e) {
+      console.warn(`[analizar] Cache lookup falló: ${e.message}`);
+      // Continuar con análisis normal si el cache falla
+    }
+  }
 
   // ── Enriquecer datos desde el API de ChileCompra ─────────────────────────
   // El item del frontend a veces no trae monto, organismo completo o región.
@@ -1452,7 +1479,27 @@ Si no hay alertas relevantes, indica "Sin alertas críticas".`
 
     const data = await response.json();
     const text = data.choices?.[0]?.message?.content || "No se pudo obtener el análisis.";
-    res.json({ analysis: text });
+
+    // Guardar en cache para evitar re-gastar tokens en futuras consultas
+    if (item.codigo && text && !text.startsWith("No se pudo")) {
+      try {
+        // Upsert: crea si no existe, sobreescribe si ya existe (caso forzarReanalisis)
+        await fetch(
+          `${SUPABASE_URL}/rest/v1/analisis_cache`,
+          {
+            method: "POST",
+            headers: { ...SUPABASE_HEADERS, "Prefer": "resolution=merge-duplicates" },
+            body: JSON.stringify({ codigo: item.codigo, analisis: text, creado_en: new Date().toISOString() }),
+            signal: AbortSignal.timeout(5000)
+          }
+        );
+        console.log(`[analizar] Análisis cacheado para ${item.codigo}`);
+      } catch (e) {
+        console.warn(`[analizar] No se pudo cachear ${item.codigo}: ${e.message}`);
+      }
+    }
+
+    res.json({ analysis: text, cached: false });
 
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1572,8 +1619,28 @@ app.post("/mp/guardar-gestor", async (req, res) => {
     fecha_publicacion:        datosExtra.fecha_publicacion || null,
     fecha_adjudicacion_estimada: datosExtra.fecha_adjudicacion_estimada || null,
     monto_estimado:           datosExtra.monto_estimado || null,
-    region:                   datosExtra.region || null
+    region:                   datosExtra.region || null,
+    analisis_ia_completo:     item.analysis || null  // pre-llenar si viene del agente
   };
+
+  // Si no vino el análisis en el item pero existe en cache, recuperarlo
+  if (!payload.analisis_ia_completo && item.codigo) {
+    try {
+      const cacheRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/analisis_cache?codigo=eq.${encodeURIComponent(item.codigo)}&select=analisis`,
+        { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(5000) }
+      );
+      if (cacheRes.ok) {
+        const data = await cacheRes.json();
+        if (data.length > 0) {
+          payload.analisis_ia_completo = data[0].analisis;
+          console.log(`[guardar-gestor] Análisis recuperado del cache para ${item.codigo}`);
+        }
+      }
+    } catch (e) {
+      console.warn(`[guardar-gestor] No se pudo recuperar análisis cache: ${e.message}`);
+    }
+  }
 
   try {
     // Verificar duplicados por código
@@ -2409,6 +2476,7 @@ app.get("/mp/exportar-excel", async (req, res) => {
       { header: "Especialidades MOP",key: "especialidades_str",           width: 40 },
       { header: "Descripción",       key: "descripcion",                  width: 60 },
       { header: "Objetivos",         key: "objetivos",                    width: 60 },
+      { header: "Análisis IA",       key: "analisis_ia_completo",         width: 80 },
       { header: "URL",               key: "url",                          width: 30 },
       { header: "Notas Internas",    key: "notas_internas",               width: 40 }
     ];
