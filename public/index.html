@@ -427,9 +427,9 @@ function App() {
   const [generalLoading, setGeneralLoading] = useState(false);
   const [generalProgress, setGeneralProgress] = useState([]);
   const [generalResults, setGeneralResults] = useState({});
-  // Set de códigos de licitaciones que ya están en el gestor.
-  // Se usa para mostrar badge "🆕 Nueva" o "✓ En gestor" en cada tarjeta.
-  const [gestorCodigos, setGestorCodigos]   = useState(new Set());
+  // Map de códigos del gestor con su estado_proceso. Permite mostrar 3 badges
+  // distintos en cada tarjeta: 🆕 Nueva / ✓ En gestor / 🚫 Descartada.
+  const [gestorEstados, setGestorEstados]   = useState(new Map());
   // Filtro opcional: si está activo, solo muestra las que NO están en el gestor.
   const [soloNuevas, setSoloNuevas]         = useState(false);
   const generalAbortRef = useRef(null);
@@ -444,18 +444,29 @@ function App() {
     setDivStates(prev => ({ ...prev, [divId]: updater(prev[divId]) }));
   }, []);
 
-  // Cargar códigos del gestor al inicio y refrescar después de guardar/buscar
+  // Cargar códigos+estado del gestor al inicio y refrescar después de guardar/buscar
   const refrescarCodigosGestor = useCallback(async () => {
     try {
       const res = await fetch(`${BACKEND_URL}/mp/codigos-gestor`);
       if (!res.ok) return;
       const data = await res.json();
-      setGestorCodigos(new Set(data.codigos || []));
-      console.log(`[gestor] ${data.codigos?.length || 0} códigos cargados`);
+      const map = new Map();
+      (data.items || []).forEach(it => map.set(it.codigo, it.estado_proceso));
+      setGestorEstados(map);
+      console.log(`[gestor] ${map.size} licitaciones del gestor cargadas`);
     } catch (e) {
       console.warn("[gestor] No se pudieron cargar códigos:", e.message);
     }
   }, []);
+
+  // Helper: dado un código, devuelve 'nueva' | 'activa' | 'descartada'
+  const getEstadoEnGestor = useCallback((codigo) => {
+    if (!codigo) return 'nueva';
+    const ep = gestorEstados.get(codigo);
+    if (!ep) return 'nueva';
+    if (ep === 'Descartada' || ep === 'Desierta' || ep === 'Revocada') return 'descartada';
+    return 'activa';
+  }, [gestorEstados]);
 
   useEffect(() => {
     refrescarCodigosGestor();
@@ -689,11 +700,13 @@ function App() {
       const esEvaluar   = texto.includes("🟡");
       if(esParticpar || esEvaluar) {
         try {
-          const gRes = await fetch(`${BACKEND_URL}/mp/guardar-gestor`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({item}) });
+          // Pasar el análisis al gestor para guardarlo en BD junto con la licitación
+          const itemConAnalisis = { ...item, analysis: texto };
+          const gRes = await fetch(`${BACKEND_URL}/mp/guardar-gestor`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({item: itemConAnalisis}) });
           const gData = await gRes.json();
           if(gData.ok) {
             setGestorEstado("guardado");
-            refrescarCodigosGestor(); // actualizar badge en las tarjetas
+            refrescarCodigosGestor();
           }
           else if(gData.mensaje?.includes("ya existe")) setGestorEstado("duplicado");
           else setGestorEstado("error");
@@ -1135,19 +1148,20 @@ function App() {
           {ds.results.length===0
             ? <div style={{textAlign:"center",color:"#94a3b8",padding:48,background:"white",borderRadius:12}}>Sin resultados para {activDivConf.label}. Realiza una búsqueda primero.</div>
             : (() => {
-                // Calcular cuántas son nuevas (no están en gestor)
-                const nuevasCount = ds.results.filter(r => r.codigo && !gestorCodigos.has(r.codigo)).length;
-                const enGestorCount = ds.results.length - nuevasCount;
+                // Calcular cuántas son de cada estado para los contadores del header
+                const stats = { nueva: 0, activa: 0, descartada: 0 };
+                ds.results.forEach(r => { stats[getEstadoEnGestor(r.codigo)]++; });
                 // Aplicar filtro "solo nuevas" si está activo
                 const visibles = soloNuevas
-                  ? ds.results.filter(r => r.codigo && !gestorCodigos.has(r.codigo))
+                  ? ds.results.filter(r => getEstadoEnGestor(r.codigo) === 'nueva')
                   : ds.results;
                 return <>
                 <div style={{fontSize:13,color:"#64748b",marginBottom:12,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
                   <span style={{background:activDivConf.bg,color:activDivConf.color,padding:"3px 10px",borderRadius:99,fontSize:11,fontWeight:700}}>{activDivConf.icon} {activDivConf.label}</span>
                   <span><strong>{ds.results.length}</strong> licitaciones encontradas</span>
-                  {nuevasCount > 0 && <span style={{background:"#dcfce7",color:"#15803d",padding:"3px 10px",borderRadius:99,fontSize:11,fontWeight:700}}>🆕 {nuevasCount} nueva{nuevasCount===1?'':'s'}</span>}
-                  {enGestorCount > 0 && <span style={{background:"#f1f5f9",color:"#64748b",padding:"3px 10px",borderRadius:99,fontSize:11,fontWeight:600}}>✓ {enGestorCount} en gestor</span>}
+                  {stats.nueva > 0 && <span style={{background:"#dcfce7",color:"#15803d",padding:"3px 10px",borderRadius:99,fontSize:11,fontWeight:700}}>🆕 {stats.nueva} nueva{stats.nueva===1?'':'s'}</span>}
+                  {stats.activa > 0 && <span style={{background:"#f1f5f9",color:"#64748b",padding:"3px 10px",borderRadius:99,fontSize:11,fontWeight:600}}>✓ {stats.activa} en gestor</span>}
+                  {stats.descartada > 0 && <span style={{background:"#fef2f2",color:"#b91c1c",padding:"3px 10px",borderRadius:99,fontSize:11,fontWeight:600}}>🚫 {stats.descartada} descartada{stats.descartada===1?'':'s'}</span>}
                   <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",marginLeft:"auto",fontSize:12,color:"#475569",userSelect:"none"}}>
                     <input type="checkbox" checked={soloNuevas} onChange={e => setSoloNuevas(e.target.checked)} style={{cursor:"pointer"}} />
                     Solo nuevas
@@ -1160,14 +1174,17 @@ function App() {
                   </div>
                 )}
                 {visibles.map((r,i) => {
-                  const enGestor = r.codigo && gestorCodigos.has(r.codigo);
+                  const estadoGestor = getEstadoEnGestor(r.codigo);
+                  // Configuración visual según estado
+                  const cardCfg = {
+                    nueva:      { borderColor:'#bbf7d0', opacity:1,    badge:{ bg:"#15803d",   color:"white",   text:"🆕 Nueva",      shadow:"0 1px 3px rgba(21,128,61,.3)" } },
+                    activa:     { borderColor:'#e2e8f0', opacity:1,    badge:{ bg:"#f1f5f9",   color:"#64748b", text:"✓ En gestor",   shadow:"none" } },
+                    descartada: { borderColor:'#fecaca', opacity:0.65, badge:{ bg:"#fef2f2",   color:"#b91c1c", text:"🚫 Descartada", shadow:"none" } }
+                  }[estadoGestor];
                   return (
-                  <div key={i} style={{background:"white",border:`1px solid ${enGestor?'#e2e8f0':'#bbf7d0'}`,borderRadius:10,padding:16,marginBottom:10,boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}>
+                  <div key={i} style={{background:"white",border:`1px solid ${cardCfg.borderColor}`,borderRadius:10,padding:16,marginBottom:10,boxShadow:"0 1px 3px rgba(0,0,0,.05)",opacity:cardCfg.opacity}}>
                     <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
-                      {!enGestor
-                        ? <span style={{background:"#15803d",color:"white",fontSize:11,padding:"3px 10px",borderRadius:12,fontWeight:700,boxShadow:"0 1px 3px rgba(21,128,61,.3)"}}>🆕 Nueva</span>
-                        : <span style={{background:"#f1f5f9",color:"#64748b",fontSize:11,padding:"3px 10px",borderRadius:12,fontWeight:600}}>✓ En gestor</span>
-                      }
+                      <span style={{background:cardCfg.badge.bg,color:cardCfg.badge.color,fontSize:11,padding:"3px 10px",borderRadius:12,fontWeight:700,boxShadow:cardCfg.badge.shadow}}>{cardCfg.badge.text}</span>
                       <span style={{background:"#eff6ff",color:"#2563eb",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>🏛️ Mercado Público</span>
                       {r.estado && <span style={{background:"#f0fdf4",color:"#15803d",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>● {r.estado}</span>}
                       <span style={{background:"#fefce8",color:"#854d0e",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>📍 {r.region||"Cargando región..."}</span>
