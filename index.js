@@ -2515,6 +2515,26 @@ app.get("/mp/listar-gestor", async (req, res) => {
   }
 });
 
+// ── Endpoint liviano: solo códigos de las licitaciones guardadas ────────────
+// El agente lo consulta cada vez que muestra resultados de búsqueda para
+// detectar cuáles ya están en el gestor (badge "✓ En gestor") vs cuáles son
+// nuevas (badge "🆕 Nueva"). Mucho más rápido que /listar-gestor porque solo
+// devuelve un array de strings, no el objeto completo.
+app.get("/mp/codigos-gestor", async (req, res) => {
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/licitaciones?select=codigo`,
+      { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(10000) }
+    );
+    if (!r.ok) return res.status(502).json({ error: `Supabase ${r.status}` });
+    const data = await r.json();
+    const codigos = data.map(l => l.codigo).filter(Boolean);
+    res.json({ ok: true, total: codigos.length, codigos });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Clasificar licitaciones existentes (one-shot fix) ────────────────────────
 // Para todas las licitaciones que NO tengan division_len ni division_sugerida,
 // calcula sugerencia desde el título + descripción + objetivos + datos
