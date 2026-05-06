@@ -432,6 +432,10 @@ function App() {
   const [gestorEstados, setGestorEstados]   = useState(new Map());
   // Filtro opcional: si está activo, solo muestra las que NO están en el gestor.
   const [soloNuevas, setSoloNuevas]         = useState(false);
+  // Map global de veredictos de triaje: codigo → {veredicto, razon}
+  const [triajes, setTriajes]               = useState(new Map());
+  // Estado del proceso de triaje (loading / done / error)
+  const [triajeLoading, setTriajeLoading]   = useState(false);
   const generalAbortRef = useRef(null);
   const abortRefs = useRef({});
   const timerRefs = useRef({});
@@ -471,6 +475,43 @@ function App() {
   useEffect(() => {
     refrescarCodigosGestor();
   }, [refrescarCodigosGestor]);
+
+  // Disparar triaje sobre todas las licitaciones del activeDivId que aún no
+  // fueron triadas y no están en el gestor.
+  const dispararTriaje = useCallback(async () => {
+    const codigosATriar = ds.results
+      .filter(r => r.codigo && getEstadoEnGestor(r.codigo) === 'nueva' && !triajes.has(r.codigo))
+      .map(r => r.codigo);
+    if (codigosATriar.length === 0) {
+      console.log("[triaje] Nada por triar (todas ya triadas o en gestor)");
+      return;
+    }
+    setTriajeLoading(true);
+    console.log(`[triaje] Disparando triaje sobre ${codigosATriar.length} licitaciones...`);
+    try {
+      const res = await fetch(`${BACKEND_URL}/mp/triaje`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ codigos: codigosATriar })
+      });
+      if (!res.ok) {
+        console.error("[triaje] Error backend:", await res.text());
+        setTriajeLoading(false);
+        return;
+      }
+      const data = await res.json();
+      console.log(`[triaje] OK. GPT consultados: ${data.gpt_consultados}, cache hits: ${data.cache_hits}`);
+      // Mergear nuevos veredictos en el Map global
+      setTriajes(prev => {
+        const next = new Map(prev);
+        Object.entries(data.resultados || {}).forEach(([cod, v]) => next.set(cod, v));
+        return next;
+      });
+    } catch(e) {
+      console.error("[triaje] Error de red:", e.message);
+    }
+    setTriajeLoading(false);
+  }, [ds.results, getEstadoEnGestor, triajes]);
 
   // ── Keywords helpers ──────────────────────────────────────────────────
   const toggleKw = (divId, tipo, idx, kw) => {
@@ -1162,6 +1203,16 @@ function App() {
                   {stats.nueva > 0 && <span style={{background:"#dcfce7",color:"#15803d",padding:"3px 10px",borderRadius:99,fontSize:11,fontWeight:700}}>🆕 {stats.nueva} nueva{stats.nueva===1?'':'s'}</span>}
                   {stats.activa > 0 && <span style={{background:"#f1f5f9",color:"#64748b",padding:"3px 10px",borderRadius:99,fontSize:11,fontWeight:600}}>✓ {stats.activa} en gestor</span>}
                   {stats.descartada > 0 && <span style={{background:"#fef2f2",color:"#b91c1c",padding:"3px 10px",borderRadius:99,fontSize:11,fontWeight:600}}>🚫 {stats.descartada} descartada{stats.descartada===1?'':'s'}</span>}
+                  {stats.nueva > 0 && (() => {
+                    const sinTriar = ds.results.filter(r => r.codigo && getEstadoEnGestor(r.codigo)==='nueva' && !triajes.has(r.codigo)).length;
+                    if (sinTriar === 0) return null;
+                    return (
+                      <button onClick={dispararTriaje} disabled={triajeLoading}
+                        style={{background: triajeLoading?"#cbd5e1":"#1E2D5A", color:"white", border:"none", padding:"5px 12px", borderRadius:99, fontSize:11, fontWeight:700, cursor: triajeLoading?"wait":"pointer"}}>
+                        {triajeLoading ? "⏳ Analizando..." : `🔍 Triaje (${sinTriar} nuevas)`}
+                      </button>
+                    );
+                  })()}
                   <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",marginLeft:"auto",fontSize:12,color:"#475569",userSelect:"none"}}>
                     <input type="checkbox" checked={soloNuevas} onChange={e => setSoloNuevas(e.target.checked)} style={{cursor:"pointer"}} />
                     Solo nuevas
@@ -1183,8 +1234,25 @@ function App() {
                   }[estadoGestor];
                   return (
                   <div key={i} style={{background:"white",border:`1px solid ${cardCfg.borderColor}`,borderRadius:10,padding:16,marginBottom:10,boxShadow:"0 1px 3px rgba(0,0,0,.05)",opacity:cardCfg.opacity}}>
-                    <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
+                    <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap",alignItems:"center"}}>
                       <span style={{background:cardCfg.badge.bg,color:cardCfg.badge.color,fontSize:11,padding:"3px 10px",borderRadius:12,fontWeight:700,boxShadow:cardCfg.badge.shadow}}>{cardCfg.badge.text}</span>
+                      {(() => {
+                        // Badge de triaje (solo para las nuevas que ya fueron triadas)
+                        if (estadoGestor !== 'nueva') return null;
+                        const t = triajes.get(r.codigo);
+                        if (!t) return null;
+                        const triajeCfg = {
+                          "🟢": { bg:"#dcfce7", color:"#15803d", border:"#86efac" },
+                          "🟡": { bg:"#fef3c7", color:"#a16207", border:"#fde68a" },
+                          "🔴": { bg:"#fee2e2", color:"#b91c1c", border:"#fca5a5" },
+                          "⚪": { bg:"#f1f5f9", color:"#64748b", border:"#cbd5e1" }
+                        }[t.veredicto] || { bg:"#f1f5f9", color:"#64748b", border:"#cbd5e1" };
+                        return (
+                          <span title={t.razon} style={{background:triajeCfg.bg, color:triajeCfg.color, border:`1px solid ${triajeCfg.border}`, fontSize:11, padding:"2px 8px", borderRadius:12, fontWeight:700, cursor:"help"}}>
+                            {t.veredicto} {t.razon ? t.razon.substring(0, 50) + (t.razon.length > 50 ? "…" : "") : ""}
+                          </span>
+                        );
+                      })()}
                       <span style={{background:"#eff6ff",color:"#2563eb",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>🏛️ Mercado Público</span>
                       {r.estado && <span style={{background:"#f0fdf4",color:"#15803d",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>● {r.estado}</span>}
                       <span style={{background:"#fefce8",color:"#854d0e",fontSize:11,padding:"2px 8px",borderRadius:12,fontWeight:600}}>📍 {r.region||"Cargando región..."}</span>
