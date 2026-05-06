@@ -315,7 +315,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   <!-- TABS NIVEL 2: ESTADO -->
   <div class="tabs-bar">
     <button class="tab-btn active" id="tab-proceso" onclick="setTab('proceso')">⚙️ En Proceso <span class="tab-count" id="cnt-proceso">0</span></button>
-    <button class="tab-btn" id="tab-enviadas" onclick="setTab('enviadas')">📤 Enviadas <span class="tab-count" id="cnt-enviadas">0</span></button>
+    <button class="tab-btn" id="tab-urgentes" onclick="setTab('urgentes')">⚠️ Urgentes <span class="tab-count" id="cnt-urgentes" style="background:#fee2e2;color:#dc2626">0</span></button>
+    <button class="tab-btn" id="tab-enviadas" onclick="setTab('enviadas')">📤 Postuladas <span class="tab-count" id="cnt-enviadas">0</span></button>
     <button class="tab-btn" id="tab-descartadas" onclick="setTab('descartadas')">🚫 Descartadas <span class="tab-count" id="cnt-descartadas">0</span></button>
     <button class="tab-btn" id="tab-historico" onclick="setTab('historico')">📊 Histórico</button>
   </div>
@@ -872,7 +873,16 @@ function setTab(tab) {
 // ═══════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════
-function isEnviada(lic)    { const sj=getSJ(lic); return !!(sj[13]&&sj[13].done); }
+function isEnviada(lic)    {
+  // Una licitación está en pestaña "Postuladas" si:
+  // 1) Tiene el paso 14 (envío) marcado, O
+  // 2) El estado_proceso está en uno de los terminales o postulada
+  // Esto sincroniza el dropdown de Gestión Interna con la pestaña visible.
+  const sj = getSJ(lic);
+  if (sj[13] && sj[13].done) return true;
+  const ep = lic.estado_proceso;
+  return ep === 'Postulada' || ep === 'Adjudicada' || ep === 'Perdida' || ep === 'Desierta' || ep === 'Revocada';
+}
 function isDescartada(lic) { return !!(getMeta(lic).descartada); }
 function isEnProceso(lic)  { return !isEnviada(lic) && !isDescartada(lic); }
 
@@ -976,9 +986,12 @@ function renderDash() {
   document.getElementById('statsBar').innerHTML = `
     <div class="stat"><div class="stat-num">${lics.length}</div><div class="stat-label">Total</div></div>
     <div class="stat"><div class="stat-num">${enProceso.length}</div><div class="stat-label">En proceso</div></div>
-    <div class="stat"><div class="stat-num" style="color:#16a34a">${enviadas.length}</div><div class="stat-label">Enviadas</div></div>
+    <div class="stat"><div class="stat-num" style="color:#16a34a">${enviadas.length}</div><div class="stat-label">Postuladas</div></div>
     <div class="stat"><div class="stat-num" style="color:#dc2626">${urgentes.length}</div><div class="stat-label">Urgentes</div></div>
     <div class="stat"><div class="stat-num" style="color:#64748b">${descartadas.length}</div><div class="stat-label">Descartadas</div></div>`;
+
+  // Actualizar contador de tab Urgentes
+  document.getElementById('cnt-urgentes').textContent = urgentes.length;
 
   // Renderizar pestañas de división con conteos actualizados
   renderDivTabs();
@@ -993,10 +1006,15 @@ function renderDash() {
     emptyTitle = 'No hay licitaciones en proceso';
     emptyMsg = 'Las licitaciones activas aparecerán aquí';
     showBtn = true;
+  } else if (currentTab === 'urgentes') {
+    filtradas = urgentes;
+    emptyTitle = 'No hay licitaciones urgentes 🎉';
+    emptyMsg = 'Las licitaciones con cierre en 3 días o menos aparecerán aquí';
+    showBtn = false;
   } else if (currentTab === 'enviadas') {
     filtradas = enviadas;
-    emptyTitle = 'No hay licitaciones enviadas';
-    emptyMsg = 'Las licitaciones con paso 14 completado aparecerán aquí';
+    emptyTitle = 'No hay licitaciones postuladas';
+    emptyMsg = 'Las licitaciones que LEN ya envió aparecerán aquí';
     showBtn = false;
   } else if (currentTab === 'descartadas') {
     filtradas = descartadas;
@@ -1011,7 +1029,13 @@ function renderDash() {
   // Si no hay coincidencias por división, mostrar mensaje específico
   if (currentDivision !== 'all' && filtradas.length === 0) {
     const divInfo = currentDivision === 'sin-clasificar' ? 'sin clasificar' : divLabel(currentDivision);
-    emptyTitle = `No hay licitaciones ${currentTab==='proceso'?'en proceso':currentTab==='enviadas'?'enviadas':'descartadas'} en ${divInfo}`;
+    const tabLabel = {
+      'proceso': 'en proceso',
+      'urgentes': 'urgentes',
+      'enviadas': 'postuladas',
+      'descartadas': 'descartadas'
+    }[currentTab] || '';
+    emptyTitle = `No hay licitaciones ${tabLabel} en ${divInfo}`;
     emptyMsg = currentDivision === 'sin-clasificar'
       ? 'Todas las licitaciones tienen división asignada o sugerida 🎉'
       : `Cambiá a otra división arriba o presioná "Todas" para ver el conjunto completo`;
