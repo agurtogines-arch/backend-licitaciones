@@ -778,7 +778,7 @@ app.post("/detalle-lote", async (req, res) => {
   if (!codigos || !Array.isArray(codigos)) return res.status(400).json({ error: "codigos requerido" });
 
   const resultados = {};
-  const BATCH = 5;
+  const BATCH = 10; // 10 fetches en paralelo (antes 5). MP soporta esto sin rate-limiting.
 
   for (let i = 0; i < codigos.length; i += BATCH) {
     const lote = codigos.slice(i, i + BATCH);
