@@ -545,14 +545,31 @@ function App() {
   const enriquecerRegiones = async (items, divId) => {
     const { regionDesde, regionHasta } = divStates[divId];
     const sinRegion = items.filter(r => !r.region && r.codigo);
-    if(!sinRegion.length) return;
+    if(!sinRegion.length) {
+      console.log("[enriquecer] Todos los items ya tienen región, no hace falta enriquecer");
+      return;
+    }
+    // Marcar todos los items como "cargando descripción" para feedback visual
+    updateDs(divId, ds => ({
+      ...ds,
+      results: ds.results.map(r => r.codigo && !r.descripcion ? { ...r, _enriching: true } : r)
+    }));
+    console.log(`[enriquecer] Pidiendo detalles de ${sinRegion.length} licitaciones a /detalle-lote...`);
+    const t0 = Date.now();
     try {
       const res = await fetch(`${BACKEND_URL}/detalle-lote`, {
         method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({ codigos: sinRegion.map(r => r.codigo) })
       });
-      if(!res.ok) return;
+      const elapsed = Math.round((Date.now() - t0) / 1000);
+      if(!res.ok) {
+        console.error(`[enriquecer] Backend respondió ${res.status} después de ${elapsed}s`);
+        updateDs(divId, ds => ({ ...ds, results: ds.results.map(r => ({ ...r, _enriching: false })) }));
+        return;
+      }
       const data = await res.json();
+      const conDescr = Object.values(data.resultados || {}).filter(d => d?.descripcion).length;
+      console.log(`[enriquecer] OK en ${elapsed}s. Recibidos ${Object.keys(data.resultados||{}).length} detalles, ${conDescr} con descripción.`);
       let codigosValidos = null;
       if(regionDesde !== "todas" || regionHasta !== "todas") {
         const idxD = regionDesde === "todas" ? 1 : REGIONES.findIndex(r => r.value === regionDesde);
@@ -564,7 +581,7 @@ function App() {
       updateDs(divId, ds => {
         const actualizados = ds.results.map(r => {
           const d = data.resultados[r.codigo];
-          return d ? { ...r, region: d.region||r.region||"Región no disponible", organismo: d.organismo||r.organismo, monto: d.monto||r.monto, descripcion: d.descripcion||r.descripcion } : r;
+          return d ? { ...r, _enriching: false, region: d.region||r.region||"Región no disponible", organismo: d.organismo||r.organismo, monto: d.monto||r.monto, descripcion: d.descripcion||r.descripcion } : { ...r, _enriching: false };
         });
         if(!codigosValidos) return { ...ds, results: actualizados };
         const norm = s => s.toLowerCase().replace(/[áàä]/g,"a").replace(/[éèë]/g,"e").replace(/[íìï]/g,"i").replace(/[óòö]/g,"o").replace(/[úùü]/g,"u").replace(/ñ/g,"n").replace(/['''`´]/g,"").replace(/\s+/g," ").trim();
@@ -576,7 +593,10 @@ function App() {
         });
         return { ...ds, results: filtrados };
       });
-    } catch(e) {}
+    } catch(e) {
+      console.error("[enriquecer] Error de red:", e.message);
+      updateDs(divId, ds => ({ ...ds, results: ds.results.map(r => ({ ...r, _enriching: false })) }));
+    }
   };
 
   const buscar = async () => {
@@ -1108,7 +1128,7 @@ function App() {
                       {r.fechaCierre      && <span>⏰ Cierre: {r.fechaCierre}</span>}
                       {r.monto            && <span>💰 {r.monto}</span>}
                     </div>
-                    {r.descripcion && (
+                    {r.descripcion ? (
                       <div style={{
                         fontSize:12.5, color:"#334155", marginTop:10, lineHeight:1.55,
                         background:"#f8fafc", padding:"8px 12px", borderRadius:6,
@@ -1116,7 +1136,13 @@ function App() {
                         display:"-webkit-box", WebkitLineClamp:4, WebkitBoxOrient:"vertical",
                         overflow:"hidden", textOverflow:"ellipsis"
                       }}>{r.descripcion}</div>
-                    )}
+                    ) : r._enriching ? (
+                      <div style={{
+                        fontSize:12, color:"#94a3b8", marginTop:10, lineHeight:1.55,
+                        background:"#f8fafc", padding:"8px 12px", borderRadius:6,
+                        borderLeft:"3px solid #e2e8f0", fontStyle:"italic"
+                      }}>⏳ Cargando descripción del proyecto...</div>
+                    ) : null}
                     <div style={{display:"flex",gap:8,marginTop:10,flexWrap:"wrap"}}>
                       <button onClick={() => verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>🤖 Analizar con IA</button>
                       {r.url && <a href={r.url} target="_blank" rel="noreferrer" style={{background:"#f8fafc",color:"#475569",border:"1px solid #e2e8f0",padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600}}>🔗 Ver en MP</a>}
