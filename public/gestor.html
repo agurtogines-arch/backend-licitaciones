@@ -1435,6 +1435,64 @@ function renderGestionInterna() {
 
       ${resultadoBlock}
     </div>
+    ${renderAnalisisIA(lic)}
+  `;
+}
+
+// ── Render del análisis IA con secciones por emoji (mismo estilo del agente) ──
+function renderAnalisisIA(lic) {
+  if (!lic.analisis_ia_completo) {
+    return `
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:18px;margin-bottom:16px">
+        <h3 style="font-size:14px;font-weight:700;margin-bottom:10px;color:#1e293b">📊 Análisis IA</h3>
+        <div style="font-size:13px;color:#94a3b8;font-style:italic">No hay análisis guardado para esta licitación. Generá un análisis desde el agente para verlo acá.</div>
+      </div>
+    `;
+  }
+  // Configuración por emoji (idéntica a la del agente para consistencia visual)
+  const config = {
+    "📋": { bg:"#f0f9ff", border:"#bae6fd", titleColor:"#0369a1" },
+    "🧭": { bg:"#fef3c7", border:"#fde68a", titleColor:"#a16207" },
+    "🏛️": { bg:"#fdf2f8", border:"#fbcfe8", titleColor:"#9d174d" },
+    "💰": { bg:"#ecfdf5", border:"#a7f3d0", titleColor:"#065f46" },
+    "🏢": { bg:"#f5f3ff", border:"#ddd6fe", titleColor:"#6d28d9" },
+    "📅": { bg:"#f0fdf4", border:"#bbf7d0", titleColor:"#15803d" },
+    "📊": { bg:"#f8fafc", border:"#e2e8f0", titleColor:"#1e293b" },
+    "🎯": { bg:"#fefce8", border:"#fde047", titleColor:"#854d0e" },
+    "⚠️": { bg:"#fffbeb", border:"#fde68a", titleColor:"#92400e" }
+  };
+  // Partir por los emojis y renderizar cada sección
+  const regex = /(📋|🧭|🏛️|💰|🏢|📅|📊|🎯|⚠️)/g;
+  const partes = lic.analisis_ia_completo.split(regex).filter(p => p.trim());
+  const secciones = [];
+  for (let i = 0; i < partes.length; i++) {
+    if (regex.test(partes[i]) || ["📋","🧭","🏛️","💰","🏢","📅","📊","🎯","⚠️"].includes(partes[i])) {
+      const emoji = partes[i];
+      const contenido = (partes[i+1] || "").trim();
+      if (contenido) {
+        secciones.push({ emoji, contenido });
+        i++;
+      }
+    }
+  }
+  let seccionesHTML = '';
+  for (const s of secciones) {
+    const cfg = config[s.emoji] || config["📊"];
+    const lineas = s.contenido.split('\n');
+    const titulo = lineas[0] || '';
+    const cuerpo = lineas.slice(1).join('\n').trim();
+    seccionesHTML += `
+      <div style="background:${cfg.bg};border:1px solid ${cfg.border};border-radius:8px;padding:12px 14px;margin-bottom:10px">
+        <div style="font-size:13px;font-weight:700;color:${cfg.titleColor};margin-bottom:6px">${s.emoji} ${esc(titulo)}</div>
+        <div style="font-size:13px;color:#334155;line-height:1.5;white-space:pre-wrap">${esc(cuerpo)}</div>
+      </div>
+    `;
+  }
+  return `
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:18px;margin-bottom:16px">
+      <h3 style="font-size:14px;font-weight:700;margin-bottom:14px;color:#1e293b">📊 Análisis IA</h3>
+      ${seccionesHTML || `<div style="font-size:13px;color:#475569;white-space:pre-wrap">${esc(lic.analisis_ia_completo)}</div>`}
+    </div>
   `;
 }
 
