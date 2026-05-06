@@ -525,7 +525,7 @@ app.get("/buscar", async (req, res) => {
         fechaPublicacion: formatFecha(l.FechaPublicacion),
         fechaCierre:      formatFecha(l.FechaCierre),
         monto:            null,
-        descripcion:      "",
+        descripcion:      l.Descripcion || "",
         url:              `https://www.mercadopublico.cl/Procurement/Modules/RFB/DetailsAcquisition.aspx?idlicitacion=${l.CodigoExterno}`,
         fuente:           "Mercado Público",
         divisiones:       clasificarDivisiones(titulo, regionExtraida?.codigo || null)
@@ -626,7 +626,7 @@ app.post("/buscar-general", async (req, res) => {
         fechaPublicacion: formatFecha(l.FechaPublicacion),
         fechaCierre:     formatFecha(l.FechaCierre),
         monto:           null,
-        descripcion:     "",
+        descripcion:     l.Descripcion || "",
         url:             `https://www.mercadopublico.cl/Procurement/Modules/RFB/DetailsAcquisition.aspx?idlicitacion=${l.CodigoExterno}`,
         fuente:          "Mercado Público",
         divisiones:      clasificarDivisiones(titulo, regionExtraida?.codigo || null)
@@ -753,7 +753,7 @@ app.get("/buscar-organismo", async (req, res) => {
         fechaPublicacion: formatFecha(l.FechaPublicacion),
         fechaCierre:      formatFecha(l.FechaCierre),
         monto:            null,
-        descripcion:      "",
+        descripcion:      l.Descripcion || "",
         url:              `https://www.mercadopublico.cl/Procurement/Modules/RFB/DetailsAcquisition.aspx?idlicitacion=${l.CodigoExterno}`,
         fuente:           "Mercado Público",
         divisiones:       clasificarDivisiones(titulo, regionExtraida?.codigo || null)
