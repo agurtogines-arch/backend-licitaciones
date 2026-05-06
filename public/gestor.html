@@ -1481,10 +1481,14 @@ function renderAnalisisIA(lic) {
     const lineas = s.contenido.split('\n');
     const titulo = lineas[0] || '';
     const cuerpo = lineas.slice(1).join('\n').trim();
+    // Detectar si el cuerpo contiene una tabla markdown (varias líneas con |)
+    const lineasConPipe = cuerpo.split('\n').filter(l => l.includes('|')).length;
+    const esTabla = lineasConPipe > 2;
+    const cuerpoHTML = esTabla ? parseTablaHTML(cuerpo) : `<div style="font-size:13px;color:#334155;line-height:1.5;white-space:pre-wrap">${esc(cuerpo)}</div>`;
     seccionesHTML += `
       <div style="background:${cfg.bg};border:1px solid ${cfg.border};border-radius:8px;padding:12px 14px;margin-bottom:10px">
         <div style="font-size:13px;font-weight:700;color:${cfg.titleColor};margin-bottom:6px">${s.emoji} ${esc(titulo)}</div>
-        <div style="font-size:13px;color:#334155;line-height:1.5;white-space:pre-wrap">${esc(cuerpo)}</div>
+        ${cuerpoHTML}
       </div>
     `;
   }
@@ -1494,6 +1498,35 @@ function renderAnalisisIA(lic) {
       ${seccionesHTML || `<div style="font-size:13px;color:#475569;white-space:pre-wrap">${esc(lic.analisis_ia_completo)}</div>`}
     </div>
   `;
+}
+
+// Convierte una tabla markdown (con separadores |) a HTML real con estilos
+function parseTablaHTML(bloque) {
+  const lineas = bloque.split('\n').filter(l => l.includes('|'));
+  // Filtrar líneas separadoras (solo guiones, espacios y pipes)
+  const filas = lineas
+    .map(l => l.split('|').map(c => c.trim()).filter(Boolean))
+    .filter(f => f.length >= 2 && !f.every(c => /^[-\s]+$/.test(c)));
+  if (!filas.length) return `<div style="font-size:13px;color:#334155;line-height:1.5;white-space:pre-wrap">${esc(bloque)}</div>`;
+  const encabezado = filas[0];
+  const datos = filas.slice(1).filter(f => !f.every(c => /^[-\s]+$/.test(c)));
+  const headHTML = encabezado.map(h =>
+    `<th style="padding:8px 12px;text-align:left;font-weight:700;color:#475569;border-bottom:2px solid #e2e8f0;white-space:nowrap;font-size:12px">${esc(h)}</th>`
+  ).join('');
+  const bodyHTML = datos.map((fila, i) => {
+    const isTotal = (fila[0] || '').toUpperCase().includes('TOTAL');
+    const bg = isTotal ? '#f8fafc' : (i % 2 === 0 ? 'white' : '#f8fafc');
+    const cellsHTML = fila.map(celda =>
+      `<td style="padding:8px 12px;color:${isTotal?'#1e293b':'#334155'};font-weight:${isTotal?700:400};vertical-align:top;font-size:12px">${esc(celda)}</td>`
+    ).join('');
+    return `<tr style="background:${bg};border-bottom:1px solid #e2e8f0">${cellsHTML}</tr>`;
+  }).join('');
+  return `<div style="overflow-x:auto;margin-top:6px">
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr style="background:#f1f5f9">${headHTML}</tr></thead>
+      <tbody>${bodyHTML}</tbody>
+    </table>
+  </div>`;
 }
 
 // Helper para formato de fecha+hora
