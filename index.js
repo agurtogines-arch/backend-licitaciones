@@ -2679,19 +2679,30 @@ app.post("/mp/triaje", async (req, res) => {
   const OPENAI_KEY = process.env.OPENAI_API_KEY || "";
   if (!OPENAI_KEY) return res.status(500).json({ error: "OPENAI_API_KEY no configurada" });
 
-  const { codigos } = req.body || {};
-  if (!Array.isArray(codigos) || codigos.length === 0) {
-    return res.status(400).json({ error: "Debe enviar array de codigos" });
+  // Acepta dos formatos:
+  //   { codigos: ["X", "Y"] }                          ← solo códigos (legacy)
+  //   { items: [{codigo, titulo, organismo, ...}] }    ← con datos básicos del listado
+  // El segundo formato es preferible: si la API de MP falla con "parámetros no
+  // válidos" en algunas licitaciones, igual podemos triarlas con título+organismo.
+  const { codigos, items } = req.body || {};
+  const inputItems = Array.isArray(items) && items.length > 0
+    ? items
+    : Array.isArray(codigos) ? codigos.map(c => ({ codigo: c })) : null;
+  if (!inputItems || inputItems.length === 0) {
+    return res.status(400).json({ error: "Debe enviar 'items' (con codigo + datos básicos) o 'codigos'" });
   }
-  if (codigos.length > 100) {
-    return res.status(400).json({ error: "Máximo 100 códigos por request" });
+  if (inputItems.length > 100) {
+    return res.status(400).json({ error: "Máximo 100 licitaciones por request" });
   }
 
-  // 1) Deduplicar (puede venir el mismo código en varias divisiones)
-  const codigosUnicos = [...new Set(codigos.filter(Boolean))];
+  // 1) Deduplicar por código
+  const porCodigo = new Map();
+  for (const it of inputItems) {
+    if (it.codigo && !porCodigo.has(it.codigo)) porCodigo.set(it.codigo, it);
+  }
+  const codigosUnicos = [...porCodigo.keys()];
 
-  // 2) Cargar estado del gestor: las que ya están guardadas (activas o descartadas)
-  //    no necesitan triaje porque vos ya tomaste decisión humana.
+  // 2) Cargar estado del gestor: las que ya están guardadas no necesitan triaje
   let yaEnGestor = new Set();
   try {
     const r = await fetch(
@@ -2706,7 +2717,7 @@ app.post("/mp/triaje", async (req, res) => {
 
   const aTriar = codigosUnicos.filter(c => !yaEnGestor.has(c));
 
-  // 3) Cargar veredictos cacheados (clave = "triaje:" + codigo)
+  // 3) Cargar veredictos cacheados
   const resultados = {};
   let porCachear = [];
   if (aTriar.length > 0) {
@@ -2722,53 +2733,78 @@ app.post("/mp/triaje", async (req, res) => {
           const codigoReal = row.codigo.replace(/^triaje:/, "");
           try {
             resultados[codigoReal] = { ...JSON.parse(row.analisis), cached: true };
-          } catch(e) { /* JSON malformado, ignorar y reanalizar */ }
+          } catch(e) {}
         }
       }
     } catch(e) { console.warn("[triaje] Cache lookup falló:", e.message); }
     porCachear = aTriar.filter(c => !resultados[c]);
   }
 
-  console.log(`[triaje] codigos=${codigos.length} unicos=${codigosUnicos.length} en_gestor=${yaEnGestor.size > 0 ? codigosUnicos.length - aTriar.length : 0} cache_hits=${aTriar.length - porCachear.length} a_consultar_gpt=${porCachear.length}`);
+  console.log(`[triaje] codigos=${inputItems.length} unicos=${codigosUnicos.length} en_gestor=${codigosUnicos.length - aTriar.length} cache_hits=${aTriar.length - porCachear.length} a_consultar_gpt=${porCachear.length}`);
 
-  // 4) Para los que faltan, traer datos básicos desde la API de MP en paralelo
+  // 4) Para los que faltan, intentar enriquecer con la API de MP. Si falla,
+  //    usar los datos básicos del frontend como fallback.
   const datos = {};
   const BATCH_FETCH = 10;
   for (let i = 0; i < porCachear.length; i += BATCH_FETCH) {
     const lote = porCachear.slice(i, i + BATCH_FETCH);
     await Promise.all(lote.map(async cod => {
+      let datoApi = null;
       try {
         const apiUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?codigo=${cod}&ticket=${TICKET}`;
-        const r = await fetch(apiUrl, { signal: AbortSignal.timeout(8000) });
-        if (!r.ok) return;
-        const j = await r.json();
-        const lic = j.Listado?.[0];
-        if (lic) {
-          datos[cod] = {
-            nombre: lic.Nombre || "",
-            descripcion: lic.Descripcion || "",
-            organismo: lic.Comprador?.NombreOrganismo || "",
-            region: lic.Comprador?.RegionUnidad || "",
-            monto: parseFloat(lic.MontoEstimado) || 0
-          };
+        const r = await fetch(apiUrl, { signal: AbortSignal.timeout(10000) });
+        if (r.ok) {
+          const j = await r.json();
+          const lic = j.Listado?.[0];
+          if (lic) {
+            datoApi = {
+              nombre: lic.Nombre || "",
+              descripcion: lic.Descripcion || "",
+              organismo: lic.Comprador?.NombreOrganismo || "",
+              region: lic.Comprador?.RegionUnidad || "",
+              monto: parseFloat(lic.MontoEstimado) || 0
+            };
+          }
         }
       } catch(e) {}
+
+      // Fallback: si la API no devolvió nada, usar lo que mandó el frontend
+      const fallback = porCodigo.get(cod) || {};
+      datos[cod] = datoApi || {
+        nombre: fallback.titulo || fallback.nombre || "",
+        descripcion: fallback.descripcion || "",
+        organismo: fallback.organismo || "",
+        region: fallback.region || "",
+        monto: parseFloat(fallback.monto) || 0,
+        _fallback: true
+      };
+      // Si la API devolvió pero algunos campos están vacíos, completar con fallback
+      if (datoApi) {
+        if (!datoApi.nombre && fallback.titulo) datos[cod].nombre = fallback.titulo;
+        if (!datoApi.organismo && fallback.organismo) datos[cod].organismo = fallback.organismo;
+        if (!datoApi.region && fallback.region) datos[cod].region = fallback.region;
+      }
     }));
   }
 
-  // 5) Llamar a GPT en lote (una sola llamada con todas las licitaciones)
-  const sinDatos = porCachear.filter(c => !datos[c]);
+  // Si después del fallback aún no hay título ni organismo, marcar ⚪
+  const sinDatos = porCachear.filter(c => {
+    const d = datos[c];
+    return !d || (!d.nombre && !d.organismo);
+  });
   for (const c of sinDatos) {
-    resultados[c] = { veredicto: "⚪", razon: "No se pudo obtener información de la licitación", cached: false };
+    resultados[c] = { veredicto: "⚪", razon: "Sin información suficiente para evaluar", cached: false };
   }
-  const conDatos = porCachear.filter(c => datos[c]);
+  const conDatos = porCachear.filter(c => !resultados[c] && datos[c] && (datos[c].nombre || datos[c].organismo));
 
-  if (conDatos.length > 0) {
-    // Construir prompt en lote
-    const licitacionesTexto = conDatos.map((c, i) => {
+  // 5) Llamar a GPT en lotes de 20 (más rápido y resistente a timeouts)
+  const BATCH_GPT = 20;
+  for (let i = 0; i < conDatos.length; i += BATCH_GPT) {
+    const lote = conDatos.slice(i, i + BATCH_GPT);
+    const licitacionesTexto = lote.map((c, idx) => {
       const d = datos[c];
-      return `${i+1}. CÓDIGO: ${c}
-   Título: ${d.nombre}
+      return `${idx+1}. CÓDIGO: ${c}
+   Título: ${d.nombre || "(sin título)"}
    Descripción: ${(d.descripcion || "(sin descripción)").substring(0, 400)}
    Organismo: ${d.organismo || "(sin info)"}
    Región: ${d.region || "(sin info)"}
@@ -2794,67 +2830,71 @@ Tu tarea: para cada licitación, devolver UNO de estos 4 veredictos:
 
 REGLA CRÍTICA: ante CUALQUIER duda, usá ⚪, NUNCA 🔴. Es preferible que el usuario revise una indeterminada a que perdamos una licitación buena.
 
-Responde ÚNICAMENTE con un JSON array, una entrada por licitación, en el mismo orden recibido. Cada entrada: {"codigo":"...","veredicto":"🟢|🟡|🔴|⚪","razon":"breve frase de 5-15 palabras"}`;
+Responde ÚNICAMENTE con un JSON válido con clave "items" que sea un array, una entrada por licitación, en el mismo orden recibido. Cada entrada: {"codigo":"...","veredicto":"🟢|🟡|🔴|⚪","razon":"breve frase de 5-15 palabras"}`;
 
     try {
       const gptRes = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${OPENAI_KEY}` },
         body: JSON.stringify({
-          model: "gpt-4o-mini", // Modelo más barato (~10x más barato que gpt-4o) para tareas simples como triaje
-          max_tokens: Math.min(4000, conDatos.length * 60),
+          model: "gpt-4o-mini",
+          max_tokens: Math.min(4000, lote.length * 80),
           temperature: 0.1,
           messages: [
             { role: "system", content: systemPrompt },
-            { role: "user", content: `Evalúa estas ${conDatos.length} licitaciones:\n\n${licitacionesTexto}` }
+            { role: "user", content: `Evalúa estas ${lote.length} licitaciones:\n\n${licitacionesTexto}` }
           ],
           response_format: { type: "json_object" }
         }),
-        signal: AbortSignal.timeout(60000)
+        signal: AbortSignal.timeout(90000) // 90s en lugar de 60s
       });
       if (!gptRes.ok) {
         const err = await gptRes.text();
-        console.error(`[triaje] GPT error ${gptRes.status}:`, err.substring(0, 200));
-        for (const c of conDatos) {
-          resultados[c] = { veredicto: "⚪", razon: "Error de evaluación, requiere análisis manual", cached: false };
+        console.error(`[triaje] GPT error ${gptRes.status} en lote ${i}:`, err.substring(0, 200));
+        for (const c of lote) {
+          if (!resultados[c]) {
+            resultados[c] = { veredicto: "⚪", razon: "Error de evaluación, requiere análisis manual", cached: false };
+          }
         }
-      } else {
-        const gptData = await gptRes.json();
-        const content = gptData.choices[0].message.content;
-        // Esperamos JSON tipo {"items": [...]} o array directamente
-        let parsed;
-        try {
-          const obj = JSON.parse(content);
-          parsed = Array.isArray(obj) ? obj : (obj.items || obj.licitaciones || obj.resultados || Object.values(obj)[0]);
-        } catch(e) {
-          console.error("[triaje] Parse JSON falló:", content.substring(0, 200));
-          for (const c of conDatos) {
+        continue;
+      }
+      const gptData = await gptRes.json();
+      const content = gptData.choices[0].message.content;
+      let parsed;
+      try {
+        const obj = JSON.parse(content);
+        parsed = Array.isArray(obj) ? obj : (obj.items || obj.licitaciones || obj.resultados || Object.values(obj)[0]);
+      } catch(e) {
+        console.error("[triaje] Parse JSON falló en lote " + i + ":", content.substring(0, 200));
+        for (const c of lote) {
+          if (!resultados[c]) {
             resultados[c] = { veredicto: "⚪", razon: "No se pudo parsear veredicto", cached: false };
           }
-          parsed = null;
         }
-        if (Array.isArray(parsed)) {
-          for (const item of parsed) {
-            if (item.codigo && item.veredicto) {
-              resultados[item.codigo] = {
-                veredicto: item.veredicto,
-                razon: item.razon || "",
-                cached: false
-              };
-            }
+        continue;
+      }
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) {
+          if (item.codigo && item.veredicto) {
+            resultados[item.codigo] = {
+              veredicto: item.veredicto,
+              razon: item.razon || "",
+              cached: false
+            };
           }
-          // Códigos que GPT no devolvió → ⚪
-          for (const c of conDatos) {
-            if (!resultados[c]) {
-              resultados[c] = { veredicto: "⚪", razon: "No incluido en respuesta GPT", cached: false };
-            }
+        }
+        for (const c of lote) {
+          if (!resultados[c]) {
+            resultados[c] = { veredicto: "⚪", razon: "No incluido en respuesta GPT", cached: false };
           }
         }
       }
     } catch(e) {
-      console.error("[triaje] Error llamando GPT:", e.message);
-      for (const c of conDatos) {
-        resultados[c] = { veredicto: "⚪", razon: `Error: ${e.message}`, cached: false };
+      console.error("[triaje] Error en lote " + i + ":", e.message);
+      for (const c of lote) {
+        if (!resultados[c]) {
+          resultados[c] = { veredicto: "⚪", razon: `Error: ${e.message}`, cached: false };
+        }
       }
     }
   }
@@ -2876,10 +2916,9 @@ Responde ÚNICAMENTE con un JSON array, una entrada por licitación, en el mismo
     } catch(e) {}
   }
 
-  // 7) Para las que ya están en gestor, no devolver triaje
   res.json({
     ok: true,
-    total_recibidos: codigos.length,
+    total_recibidos: inputItems.length,
     total_unicos: codigosUnicos.length,
     en_gestor: codigosUnicos.length - aTriar.length,
     triados: Object.keys(resultados).length,
