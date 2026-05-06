@@ -2275,14 +2275,16 @@ async function limpiarVencidas() {
   limpiezaState.ultimo_error  = null;
 
   try {
-    // Calcular fecha de corte: hoy - 1 día (gracia)
+    // Calcular "hoy" como YYYY-MM-DD: las que cierran antes de hoy están vencidas.
+    // Eso da 1 día de gracia natural: una licitación que cierra HOY no se descarta
+    // (todavía podría postularse hasta su hora de cierre); solo cuando llegue el
+    // día siguiente se descartará.
     const ahora = new Date();
-    const corte = new Date(ahora.getTime() - 24 * 60 * 60 * 1000);
-    const corteStr = corte.toISOString().split("T")[0]; // YYYY-MM-DD
+    const hoyStr = ahora.toISOString().split("T")[0]; // YYYY-MM-DD UTC
 
-    // Listar licitaciones que: (a) están Detectada o En análisis y (b) cierran <= ayer
+    // Listar licitaciones que: (a) están Detectada o En análisis y (b) cerraron antes de hoy
     const filtroEstados = `estado_proceso=in.("Detectada","En análisis")`;
-    const filtroFecha   = `fecha_cierre=lt.${corteStr}`;
+    const filtroFecha   = `fecha_cierre=lt.${hoyStr}`;
     const url = `${SUPABASE_URL}/rest/v1/licitaciones?${filtroEstados}&${filtroFecha}&select=id,codigo,nombre,fecha_cierre,estado_proceso`;
 
     const r = await fetch(url, { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(15000) });
@@ -2292,7 +2294,8 @@ async function limpiarVencidas() {
     let totalDescartadas = 0;
     for (const lic of vencidas) {
       const diasVencida = Math.floor((ahora - new Date(lic.fecha_cierre)) / (24 * 60 * 60 * 1000));
-      const motivoTexto = `Vencida sin postulación (auto-cierre, ${diasVencida} días después del cierre del ${lic.fecha_cierre}). Estado anterior: ${lic.estado_proceso}.`;
+      const sufijoTiempo = diasVencida <= 0 ? "ayer" : `hace ${diasVencida} días`;
+      const motivoTexto = `Vencida sin postulación (auto-cierre, cerró ${sufijoTiempo} el ${lic.fecha_cierre}). Estado anterior: ${lic.estado_proceso}.`;
 
       const patchRes = await fetch(
         `${SUPABASE_URL}/rest/v1/licitaciones?id=eq.${encodeURIComponent(lic.id)}`,
@@ -2308,7 +2311,7 @@ async function limpiarVencidas() {
       );
       if (patchRes.ok) {
         totalDescartadas++;
-        console.log(`[limpiar-vencidas] ${lic.codigo} → Descartada (${diasVencida}d vencida)`);
+        console.log(`[limpiar-vencidas] ${lic.codigo} → Descartada (cerró ${sufijoTiempo})`);
       }
     }
 
