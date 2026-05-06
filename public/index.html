@@ -1108,7 +1108,15 @@ function App() {
                       {r.fechaCierre      && <span>⏰ Cierre: {r.fechaCierre}</span>}
                       {r.monto            && <span>💰 {r.monto}</span>}
                     </div>
-                    {r.descripcion && <div style={{fontSize:12,color:"#475569",marginTop:8,lineHeight:1.5}}>{r.descripcion}</div>}
+                    {r.descripcion && (
+                      <div style={{
+                        fontSize:12.5, color:"#334155", marginTop:10, lineHeight:1.55,
+                        background:"#f8fafc", padding:"8px 12px", borderRadius:6,
+                        borderLeft:"3px solid #cbd5e1",
+                        display:"-webkit-box", WebkitLineClamp:4, WebkitBoxOrient:"vertical",
+                        overflow:"hidden", textOverflow:"ellipsis"
+                      }}>{r.descripcion}</div>
+                    )}
                     <div style={{display:"flex",gap:8,marginTop:10,flexWrap:"wrap"}}>
                       <button onClick={() => verDetalle(r)} style={{background:"#eff6ff",color:"#2563eb",border:"none",padding:"6px 14px",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>🤖 Analizar con IA</button>
                       {r.url && <a href={r.url} target="_blank" rel="noreferrer" style={{background:"#f8fafc",color:"#475569",border:"1px solid #e2e8f0",padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600}}>🔗 Ver en MP</a>}
