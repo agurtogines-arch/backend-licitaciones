@@ -479,20 +479,27 @@ function App() {
   // Disparar triaje sobre todas las licitaciones del activeDivId que aún no
   // fueron triadas y no están en el gestor.
   const dispararTriaje = useCallback(async () => {
-    const codigosATriar = ds.results
+    const itemsATriar = ds.results
       .filter(r => r.codigo && getEstadoEnGestor(r.codigo) === 'nueva' && !triajes.has(r.codigo))
-      .map(r => r.codigo);
-    if (codigosATriar.length === 0) {
+      .map(r => ({
+        codigo: r.codigo,
+        titulo: r.titulo || "",
+        descripcion: r.descripcion || "",
+        organismo: r.organismo || "",
+        region: r.region || "",
+        monto: r.monto || ""
+      }));
+    if (itemsATriar.length === 0) {
       console.log("[triaje] Nada por triar (todas ya triadas o en gestor)");
       return;
     }
     setTriajeLoading(true);
-    console.log(`[triaje] Disparando triaje sobre ${codigosATriar.length} licitaciones...`);
+    console.log(`[triaje] Disparando triaje sobre ${itemsATriar.length} licitaciones (con datos básicos)...`);
     try {
       const res = await fetch(`${BACKEND_URL}/mp/triaje`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ codigos: codigosATriar })
+        body: JSON.stringify({ items: itemsATriar })
       });
       if (!res.ok) {
         console.error("[triaje] Error backend:", await res.text());
@@ -501,7 +508,6 @@ function App() {
       }
       const data = await res.json();
       console.log(`[triaje] OK. GPT consultados: ${data.gpt_consultados}, cache hits: ${data.cache_hits}`);
-      // Mergear nuevos veredictos en el Map global
       setTriajes(prev => {
         const next = new Map(prev);
         Object.entries(data.resultados || {}).forEach(([cod, v]) => next.set(cod, v));
