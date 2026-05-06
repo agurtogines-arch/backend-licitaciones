@@ -2666,13 +2666,230 @@ app.get("/mp/listar-gestor", async (req, res) => {
   }
 });
 
+// ── Endpoint de triaje rápido en lote ──────────────────────────────────────
+// Recibe lista de códigos de licitaciones y devuelve un veredicto por cada una:
+//   🟢 ALTA:   calza claramente con LEN, vale la pena análisis completo
+//   🟡 MEDIA:  podría servir, evaluar
+//   🔴 BAJA:   claramente fuera de scope (rechazar)
+//   ⚪ INDET:  datos insuficientes, requiere análisis IA para decidir
+// Cachea cada veredicto en analisis_cache (con prefijo "triaje:") para no
+// gastar tokens dos veces sobre la misma licitación.
+// Costo: ~200-300 tokens por licitación (~$0.001 USD = ~$1 CLP cada una).
+app.post("/mp/triaje", async (req, res) => {
+  const OPENAI_KEY = process.env.OPENAI_API_KEY || "";
+  if (!OPENAI_KEY) return res.status(500).json({ error: "OPENAI_API_KEY no configurada" });
+
+  const { codigos } = req.body || {};
+  if (!Array.isArray(codigos) || codigos.length === 0) {
+    return res.status(400).json({ error: "Debe enviar array de codigos" });
+  }
+  if (codigos.length > 100) {
+    return res.status(400).json({ error: "Máximo 100 códigos por request" });
+  }
+
+  // 1) Deduplicar (puede venir el mismo código en varias divisiones)
+  const codigosUnicos = [...new Set(codigos.filter(Boolean))];
+
+  // 2) Cargar estado del gestor: las que ya están guardadas (activas o descartadas)
+  //    no necesitan triaje porque vos ya tomaste decisión humana.
+  let yaEnGestor = new Set();
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/licitaciones?select=codigo`,
+      { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(8000) }
+    );
+    if (r.ok) {
+      const data = await r.json();
+      yaEnGestor = new Set(data.map(l => l.codigo).filter(Boolean));
+    }
+  } catch(e) { console.warn("[triaje] No se pudo cargar gestor:", e.message); }
+
+  const aTriar = codigosUnicos.filter(c => !yaEnGestor.has(c));
+
+  // 3) Cargar veredictos cacheados (clave = "triaje:" + codigo)
+  const resultados = {};
+  let porCachear = [];
+  if (aTriar.length > 0) {
+    try {
+      const inList = aTriar.map(c => `triaje:${c}`).map(k => `"${k}"`).join(",");
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/analisis_cache?codigo=in.(${encodeURIComponent(inList)})&select=codigo,analisis`,
+        { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(8000) }
+      );
+      if (r.ok) {
+        const cached = await r.json();
+        for (const row of cached) {
+          const codigoReal = row.codigo.replace(/^triaje:/, "");
+          try {
+            resultados[codigoReal] = { ...JSON.parse(row.analisis), cached: true };
+          } catch(e) { /* JSON malformado, ignorar y reanalizar */ }
+        }
+      }
+    } catch(e) { console.warn("[triaje] Cache lookup falló:", e.message); }
+    porCachear = aTriar.filter(c => !resultados[c]);
+  }
+
+  console.log(`[triaje] codigos=${codigos.length} unicos=${codigosUnicos.length} en_gestor=${yaEnGestor.size > 0 ? codigosUnicos.length - aTriar.length : 0} cache_hits=${aTriar.length - porCachear.length} a_consultar_gpt=${porCachear.length}`);
+
+  // 4) Para los que faltan, traer datos básicos desde la API de MP en paralelo
+  const datos = {};
+  const BATCH_FETCH = 10;
+  for (let i = 0; i < porCachear.length; i += BATCH_FETCH) {
+    const lote = porCachear.slice(i, i + BATCH_FETCH);
+    await Promise.all(lote.map(async cod => {
+      try {
+        const apiUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?codigo=${cod}&ticket=${TICKET}`;
+        const r = await fetch(apiUrl, { signal: AbortSignal.timeout(8000) });
+        if (!r.ok) return;
+        const j = await r.json();
+        const lic = j.Listado?.[0];
+        if (lic) {
+          datos[cod] = {
+            nombre: lic.Nombre || "",
+            descripcion: lic.Descripcion || "",
+            organismo: lic.Comprador?.NombreOrganismo || "",
+            region: lic.Comprador?.RegionUnidad || "",
+            monto: parseFloat(lic.MontoEstimado) || 0
+          };
+        }
+      } catch(e) {}
+    }));
+  }
+
+  // 5) Llamar a GPT en lote (una sola llamada con todas las licitaciones)
+  const sinDatos = porCachear.filter(c => !datos[c]);
+  for (const c of sinDatos) {
+    resultados[c] = { veredicto: "⚪", razon: "No se pudo obtener información de la licitación", cached: false };
+  }
+  const conDatos = porCachear.filter(c => datos[c]);
+
+  if (conDatos.length > 0) {
+    // Construir prompt en lote
+    const licitacionesTexto = conDatos.map((c, i) => {
+      const d = datos[c];
+      return `${i+1}. CÓDIGO: ${c}
+   Título: ${d.nombre}
+   Descripción: ${(d.descripcion || "(sin descripción)").substring(0, 400)}
+   Organismo: ${d.organismo || "(sin info)"}
+   Región: ${d.region || "(sin info)"}
+   Monto estimado: ${d.monto > 0 ? `$${Number(d.monto).toLocaleString("es-CL")} CLP` : "(no publicado)"}`;
+    }).join("\n\n");
+
+    const systemPrompt = `Eres un evaluador de oportunidades de licitaciones para LEN Ingeniería, consultora chilena de ingeniería con 7 divisiones:
+- Zona Sur (regiones VII a XII): vial, puentes, hidráulica, hidrología, sanitario, APR, drenaje
+- Infraestructura de Transporte (centro/norte): vial, puentes, conservación
+- ITO (nacional): inspección técnica, supervisión de obras
+- Medio Ambiente y Territorio: SEIA, declaraciones de impacto
+- Energía: ERNC, fotovoltaico, eólico, BESS
+- Proyectos Civiles (centro/norte): obras civiles, estructural, paralelismos
+- Minería (en formación)
+
+LEN NO TOMA: edificación habitacional, salud, educación pura, consultoría administrativa, RRHH, marketing, software de gestión, servicios de aseo, alimentación, vigilancia.
+
+Tu tarea: para cada licitación, devolver UNO de estos 4 veredictos:
+🟢 ALTA: Está claramente alineada con alguna división de LEN. Tema técnico claro y dentro del scope.
+🟡 MEDIA: Podría servir pero hay dudas (monto chico, organismo nuevo, scope mixto).
+🔴 BAJA: Claramente fuera del scope de LEN (ej: salud, educación, alimentación, etc.).
+⚪ INDETERMINADO: Título genérico o datos insuficientes para decidir. NO uses 🔴 si tenés dudas — usá ⚪.
+
+REGLA CRÍTICA: ante CUALQUIER duda, usá ⚪, NUNCA 🔴. Es preferible que el usuario revise una indeterminada a que perdamos una licitación buena.
+
+Responde ÚNICAMENTE con un JSON array, una entrada por licitación, en el mismo orden recibido. Cada entrada: {"codigo":"...","veredicto":"🟢|🟡|🔴|⚪","razon":"breve frase de 5-15 palabras"}`;
+
+    try {
+      const gptRes = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${OPENAI_KEY}` },
+        body: JSON.stringify({
+          model: "gpt-4o-mini", // Modelo más barato (~10x más barato que gpt-4o) para tareas simples como triaje
+          max_tokens: Math.min(4000, conDatos.length * 60),
+          temperature: 0.1,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: `Evalúa estas ${conDatos.length} licitaciones:\n\n${licitacionesTexto}` }
+          ],
+          response_format: { type: "json_object" }
+        }),
+        signal: AbortSignal.timeout(60000)
+      });
+      if (!gptRes.ok) {
+        const err = await gptRes.text();
+        console.error(`[triaje] GPT error ${gptRes.status}:`, err.substring(0, 200));
+        for (const c of conDatos) {
+          resultados[c] = { veredicto: "⚪", razon: "Error de evaluación, requiere análisis manual", cached: false };
+        }
+      } else {
+        const gptData = await gptRes.json();
+        const content = gptData.choices[0].message.content;
+        // Esperamos JSON tipo {"items": [...]} o array directamente
+        let parsed;
+        try {
+          const obj = JSON.parse(content);
+          parsed = Array.isArray(obj) ? obj : (obj.items || obj.licitaciones || obj.resultados || Object.values(obj)[0]);
+        } catch(e) {
+          console.error("[triaje] Parse JSON falló:", content.substring(0, 200));
+          for (const c of conDatos) {
+            resultados[c] = { veredicto: "⚪", razon: "No se pudo parsear veredicto", cached: false };
+          }
+          parsed = null;
+        }
+        if (Array.isArray(parsed)) {
+          for (const item of parsed) {
+            if (item.codigo && item.veredicto) {
+              resultados[item.codigo] = {
+                veredicto: item.veredicto,
+                razon: item.razon || "",
+                cached: false
+              };
+            }
+          }
+          // Códigos que GPT no devolvió → ⚪
+          for (const c of conDatos) {
+            if (!resultados[c]) {
+              resultados[c] = { veredicto: "⚪", razon: "No incluido en respuesta GPT", cached: false };
+            }
+          }
+        }
+      }
+    } catch(e) {
+      console.error("[triaje] Error llamando GPT:", e.message);
+      for (const c of conDatos) {
+        resultados[c] = { veredicto: "⚪", razon: `Error: ${e.message}`, cached: false };
+      }
+    }
+  }
+
+  // 6) Cachear los resultados nuevos (no cached)
+  const aCachear = Object.entries(resultados).filter(([_, v]) => !v.cached && v.veredicto !== "⚪");
+  for (const [cod, vrd] of aCachear) {
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/analisis_cache`, {
+        method: "POST",
+        headers: { ...SUPABASE_HEADERS, "Prefer": "resolution=merge-duplicates" },
+        body: JSON.stringify({
+          codigo: `triaje:${cod}`,
+          analisis: JSON.stringify({ veredicto: vrd.veredicto, razon: vrd.razon }),
+          creado_en: new Date().toISOString()
+        }),
+        signal: AbortSignal.timeout(3000)
+      });
+    } catch(e) {}
+  }
+
+  // 7) Para las que ya están en gestor, no devolver triaje
+  res.json({
+    ok: true,
+    total_recibidos: codigos.length,
+    total_unicos: codigosUnicos.length,
+    en_gestor: codigosUnicos.length - aTriar.length,
+    triados: Object.keys(resultados).length,
+    cache_hits: aTriar.length - porCachear.length,
+    gpt_consultados: conDatos.length,
+    resultados
+  });
+});
+
 // ── Endpoint liviano: códigos + estado de las licitaciones guardadas ────────
-// El agente lo consulta cada vez que muestra resultados de búsqueda para
-// detectar cuáles ya están en el gestor y en qué estado:
-//   - Activa (Detectada/En análisis/Postulada) → badge "✓ En gestor"
-//   - Descartada/Desierta/Revocada            → badge "🚫 Descartada"
-//   - No existe                                → badge "🆕 Nueva"
-// Devuelve objetos {codigo, estado_proceso}.
 app.get("/mp/codigos-gestor", async (req, res) => {
   try {
     const r = await fetch(
