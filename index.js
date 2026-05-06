@@ -121,10 +121,15 @@ function matchDivKw(titulo, kw) {
 }
 
 function clasificarDivisiones(titulo, codigoRegion) {
-  // Orden de evaluación: de más específico a más genérico (Zona Sur al final
-  // porque su keyword "vial" es muy amplia y mataría matches más precisos como
-  // "inspección fiscal" → ITO).
-  const ORDEN_CLASIFICACION = ["ito","medioambiente","energia","mineria","civil","infra","zonasur"];
+  // Orden de evaluación: de más específico a más genérico.
+  // ZONA SUR se evalúa ANTES que civil e infra porque sus keywords core
+  // (puentes, caminos, vial, hidráulica, sanitario) son MUY específicas.
+  // Si la licitación es de zona sur (por keywords) Y la región es del sur,
+  // gana zonasur sin que civil o infra puedan robarle el match por keywords
+  // genéricas como "obras civiles" que aparecen en cualquier base.
+  // La validación de región (codigoRegion ∈ CODIGOS_ZONA_SUR) impide que
+  // zonasur gane en licitaciones del centro/norte.
+  const ORDEN_CLASIFICACION = ["ito","medioambiente","energia","mineria","zonasur","civil","infra"];
   const divisiones = [];
   const divsById = Object.fromEntries(DIVISIONES_LEN.map(d => [d.id, d]));
   for (const id of ORDEN_CLASIFICACION) {
@@ -1336,8 +1341,8 @@ Si tras la verificación manual confirmas que LEN califica, podemos analizar la 
 
 PERFIL DE LA EMPRESA:
 - Es consultora, NO constructora. Realiza estudios, diseños, inspecciones técnicas (ITO) y asesorías de ingeniería.
-- Divisiones: Infraestructura de Transporte, ITO (opera desde Santiago), Obras Hidráulicas y Riego, Proyectos Civiles, Medio Ambiente y Territorio, Energía, Minería (en etapa de entrada), Ingeniería Zona Sur.
-- Zona de operación principal: Maule → Magallanes. Oficina central en Santiago, oficina Zona Sur en Concepción.
+- Divisiones reales (7): Zona Sur (regiones VII a XII, oficina Concepción), Infraestructura de Transporte (centro/norte), ITO (Santiago, opera nacional), Medio Ambiente y Territorio, Energía (ERNC), Proyectos Civiles (centro/norte), Minería (en etapa de entrada).
+- Zona de operación principal: Maule → Magallanes para Zona Sur; resto del país para las demás divisiones.
 - Experiencia en proyectos de gran escala (ej. Costanera Chiguayante, Concepción).
 - Clientes principales: MOP Vialidad, DOH, GORE, Municipios zona sur, SERVIU, concesionarias viales.
 - LEN está entrando en minería solo en: diseño de calles, saneamiento, hidráulica, hidrología y seguridad vial en contextos mineros.
@@ -1374,18 +1379,26 @@ VEREDICTO FINAL según puntaje total:
    5-7  pts → 🟡 EVALUAR
    0-4  pts → 🔴 DESCARTAR
 
-REGLAS DE ASIGNACIÓN DE DIVISIÓN LEN:
-Asigna la división según la especialidad principal del contrato:
-- Cauces, hidráulica, hidrología, APR, drenaje, aguas lluvias, 
-  cuencas, inundaciones, saneamiento → Obras Hidráulicas y Riego
-- Vial, puentes, caminos, diseño geométrico, seguridad vial, 
-  pavimentos, tránsito → Infraestructura de Transporte
-- Inspección técnica en terreno, supervisión de obras → ITO (Santiago)
-- Impacto ambiental, estudios territoriales → Medio Ambiente y Territorio
-- Minería en contexto hidráulico o vial → Minería (en formación)
-- Proyectos civiles generales sin especialidad clara → Proyectos Civiles
-Si el contrato mezcla dos especialidades, indica la división principal 
-y menciona la secundaria entre paréntesis.
+REGLAS DE ASIGNACIÓN DE DIVISIÓN LEN (alineadas con las 7 divisiones reales):
+
+REGLA REGIONAL CRÍTICA:
+- ZONA SUR opera desde Maule (VII) hasta Magallanes (XII), incluyendo Ñuble (XVI), Biobío (VIII), La Araucanía (IX), Los Ríos (XIV), Los Lagos (X), Aysén (XI).
+- Si la licitación está en cualquiera de esas regiones Y el alcance técnico calza con Zona Sur, va a ZONA SUR (no a otra división de la misma especialidad técnica).
+- Si la licitación está fuera de esas regiones, va a la división correspondiente del centro/norte (Infraestructura de Transporte / Proyectos Civiles).
+
+ALCANCES POR DIVISIÓN:
+- ZONA SUR (regiones VII a XII): cualquier obra civil/hidráulica/sanitaria/vial dentro de su zona geográfica. Incluye: puentes, caminos, vial, diseño geométrico, hidráulica, hidrología, APR, drenaje, aguas lluvias, cauces, cuencas, inundaciones, saneamiento, alcantarillado, agua potable, obras civiles.
+- INFRAESTRUCTURA DE TRANSPORTE (regiones I a VI + Metropolitana): proyectos viales, puentes, caminos, conservación vial, obras portuarias en zona centro/norte. Si el proyecto vial está en zona sur, va a Zona Sur.
+- ITO (oficina Santiago, opera nacionalmente): inspección técnica de obras, supervisión, fiscalización, contraparte técnica.
+- MEDIO AMBIENTE Y TERRITORIO: SEIA, declaraciones e impacto ambiental, monitoreos ambientales, estudios territoriales.
+- ENERGÍA: ERNC, fotovoltaico, eólico, hidrógeno verde, BESS, eficiencia energética, electromovilidad.
+- PROYECTOS CIVILES (regiones I a VI + Metropolitana): obras civiles generales sin alcance vial/hidráulico/sanitario claro. Estructural, paralelismos, atraviesos, urbanización en zona centro/norte.
+- MINERÍA: licitaciones mineras (CODELCO, ENAMI, mineras privadas) o atraviesos en faenas mineras.
+
+INSTRUCCIÓN ANTI-ERROR FRECUENTE:
+- NO sugieras "Obras Hidráulicas y Riego" — esa división no existe; lo hidráulico en zona sur va a Zona Sur, lo hidráulico en centro/norte va a Proyectos Civiles.
+- NO sugieras "Infraestructura de Transporte" para una licitación de puentes/caminos/vial en regiones del sur — eso va a Zona Sur.
+- En la sección "EVALUACIÓN DE FACTIBILIDAD", al evaluar el criterio "Región", aplicá los rangos geográficos de la división seleccionada. Si la división es Zona Sur y la licitación está entre Maule y Magallanes, la región está DENTRO del área de operación (2/2). NO penalices por estar en Magallanes o Los Ríos cuando la división es Zona Sur.
 
 INSTRUCCIÓN IMPORTANTE: Si tienes el contenido completo de la página de MP, úsalo para extraer requisitos reales, experiencia exigida, criterios de evaluación y plazos de ejecución. Prioriza esa información sobre los metadatos básicos.`
           },
@@ -2653,21 +2666,33 @@ app.get("/mp/listar-gestor", async (req, res) => {
   }
 });
 
-// ── Endpoint liviano: solo códigos de las licitaciones guardadas ────────────
+// ── Endpoint liviano: códigos + estado de las licitaciones guardadas ────────
 // El agente lo consulta cada vez que muestra resultados de búsqueda para
-// detectar cuáles ya están en el gestor (badge "✓ En gestor") vs cuáles son
-// nuevas (badge "🆕 Nueva"). Mucho más rápido que /listar-gestor porque solo
-// devuelve un array de strings, no el objeto completo.
+// detectar cuáles ya están en el gestor y en qué estado:
+//   - Activa (Detectada/En análisis/Postulada) → badge "✓ En gestor"
+//   - Descartada/Desierta/Revocada            → badge "🚫 Descartada"
+//   - No existe                                → badge "🆕 Nueva"
+// Devuelve objetos {codigo, estado_proceso}.
 app.get("/mp/codigos-gestor", async (req, res) => {
   try {
     const r = await fetch(
-      `${SUPABASE_URL}/rest/v1/licitaciones?select=codigo`,
+      `${SUPABASE_URL}/rest/v1/licitaciones?select=codigo,estado_proceso`,
       { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(10000) }
     );
     if (!r.ok) return res.status(502).json({ error: `Supabase ${r.status}` });
     const data = await r.json();
-    const codigos = data.map(l => l.codigo).filter(Boolean);
-    res.json({ ok: true, total: codigos.length, codigos });
+    const items = data.filter(l => l.codigo).map(l => ({
+      codigo: l.codigo,
+      estado_proceso: l.estado_proceso || "Detectada"
+    }));
+    // Mantenemos también `codigos` (array de strings) para compatibilidad con
+    // versiones anteriores del frontend que solo usan los códigos.
+    res.json({
+      ok: true,
+      total: items.length,
+      codigos: items.map(i => i.codigo),
+      items
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
