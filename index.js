@@ -1494,6 +1494,18 @@ Si no hay alertas relevantes, indica "Sin alertas críticas".`
           }
         );
         console.log(`[analizar] Análisis cacheado para ${item.codigo}`);
+
+        // Si la licitación ya está en el gestor, sincronizar el campo analisis_ia_completo
+        // Esto cubre el caso de re-análisis o licitaciones guardadas antes de tener cache.
+        await fetch(
+          `${SUPABASE_URL}/rest/v1/licitaciones?codigo=eq.${encodeURIComponent(item.codigo)}`,
+          {
+            method: "PATCH",
+            headers: SUPABASE_HEADERS,
+            body: JSON.stringify({ analisis_ia_completo: text }),
+            signal: AbortSignal.timeout(5000)
+          }
+        );
       } catch (e) {
         console.warn(`[analizar] No se pudo cachear ${item.codigo}: ${e.message}`);
       }
@@ -2569,6 +2581,64 @@ app.get("/mp/exportar-excel", async (req, res) => {
 });
 
 // ── Listar licitaciones del gestor (frontend) ────────────────────────────────
+// ── Sincronizar análisis IA: copia desde cache a licitaciones para las que ─
+// están en el gestor con analisis_ia_completo NULL pero tienen análisis cacheado.
+// Útil para arreglar de una vez las licitaciones guardadas antes de implementar
+// el cache, o para recuperar cualquier desincronización.
+app.get("/mp/sincronizar-analisis", async (req, res) => {
+  try {
+    // Listar licitaciones del gestor que no tienen análisis guardado
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/licitaciones?select=id,codigo&analisis_ia_completo=is.null`,
+      { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(15000) }
+    );
+    if (!r.ok) return res.status(502).json({ error: `Supabase ${r.status}` });
+    const sinAnalisis = await r.json();
+
+    let actualizadas = 0;
+    const detalles = [];
+
+    for (const lic of sinAnalisis) {
+      if (!lic.codigo) continue;
+      // Buscar en cache
+      const cacheRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/analisis_cache?codigo=eq.${encodeURIComponent(lic.codigo)}&select=analisis`,
+        { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(5000) }
+      );
+      if (!cacheRes.ok) continue;
+      const cacheData = await cacheRes.json();
+      if (cacheData.length === 0) {
+        detalles.push({ codigo: lic.codigo, status: "sin-cache" });
+        continue;
+      }
+      // Copiar análisis a la licitación
+      const patchRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/licitaciones?id=eq.${encodeURIComponent(lic.id)}`,
+        {
+          method: "PATCH",
+          headers: SUPABASE_HEADERS,
+          body: JSON.stringify({ analisis_ia_completo: cacheData[0].analisis }),
+          signal: AbortSignal.timeout(5000)
+        }
+      );
+      if (patchRes.ok) {
+        actualizadas++;
+        detalles.push({ codigo: lic.codigo, status: "sincronizado" });
+      }
+    }
+
+    res.json({
+      ok: true,
+      total_sin_analisis: sinAnalisis.length,
+      actualizadas,
+      sin_cache: sinAnalisis.length - actualizadas,
+      detalles
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get("/mp/listar-gestor", async (req, res) => {
   try {
     const r = await fetch(
