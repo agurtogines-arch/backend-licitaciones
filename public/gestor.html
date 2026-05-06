@@ -873,17 +873,27 @@ function setTab(tab) {
 // ═══════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════
-function isEnviada(lic)    {
-  // Una licitación está en pestaña "Postuladas" si:
+function isDescartada(lic) {
+  // Una licitación está descartada si:
+  // 1) Tiene flag manual `_meta.descartada` (botón "Descartar" del gestor), O
+  // 2) `estado_proceso` es Descartada / Desierta / Revocada
+  // Esto sincroniza el descarte automático del backend con la vista del gestor.
+  if (getMeta(lic).descartada) return true;
+  const ep = lic.estado_proceso;
+  return ep === 'Descartada' || ep === 'Desierta' || ep === 'Revocada';
+}
+function isEnviada(lic) {
+  // Si está descartada/desierta/revocada, NO está en pestaña Postuladas
+  // (mutuamente excluyentes para que no aparezca en dos pestañas)
+  if (isDescartada(lic)) return false;
+  // Está en Postuladas si:
   // 1) Tiene el paso 14 (envío) marcado, O
-  // 2) El estado_proceso está en uno de los terminales o postulada
-  // Esto sincroniza el dropdown de Gestión Interna con la pestaña visible.
+  // 2) `estado_proceso` es Postulada / Adjudicada / Perdida
   const sj = getSJ(lic);
   if (sj[13] && sj[13].done) return true;
   const ep = lic.estado_proceso;
-  return ep === 'Postulada' || ep === 'Adjudicada' || ep === 'Perdida' || ep === 'Desierta' || ep === 'Revocada';
+  return ep === 'Postulada' || ep === 'Adjudicada' || ep === 'Perdida';
 }
-function isDescartada(lic) { return !!(getMeta(lic).descartada); }
 function isEnProceso(lic)  { return !isEnviada(lic) && !isDescartada(lic); }
 
 function getResultado(lic) { return getMeta(lic).resultado || null; }
