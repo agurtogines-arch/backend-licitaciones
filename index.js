@@ -2256,8 +2256,95 @@ async function pollingAdjudicaciones() {
 
 // Disparar cada 12 horas + 1 minuto después del arranque (para no esperar 12h)
 const POLLING_INTERVAL_MS = 12 * 60 * 60 * 1000;
-setInterval(pollingAdjudicaciones, POLLING_INTERVAL_MS);
-setTimeout(pollingAdjudicaciones, 60 * 1000);
+
+// ── Auto-descarte de licitaciones vencidas (Detectada / En análisis) ────────
+// Si una licitación cerró hace más de 1 día y LEN nunca llegó a postular,
+// se mueve automáticamente a "Descartada" para que no quede en En Proceso
+// indefinidamente. Las que están "Postulada" NO se tocan (siguen esperando
+// adjudicación vía polling).
+let limpiezaState = {
+  ultimo_inicio: null,
+  ultimo_fin:    null,
+  ultimo_revisadas:    0,
+  ultimo_descartadas:  0,
+  ultimo_error:        null
+};
+
+async function limpiarVencidas() {
+  limpiezaState.ultimo_inicio = new Date().toISOString();
+  limpiezaState.ultimo_error  = null;
+
+  try {
+    // Calcular fecha de corte: hoy - 1 día (gracia)
+    const ahora = new Date();
+    const corte = new Date(ahora.getTime() - 24 * 60 * 60 * 1000);
+    const corteStr = corte.toISOString().split("T")[0]; // YYYY-MM-DD
+
+    // Listar licitaciones que: (a) están Detectada o En análisis y (b) cierran <= ayer
+    const filtroEstados = `estado_proceso=in.("Detectada","En análisis")`;
+    const filtroFecha   = `fecha_cierre=lt.${corteStr}`;
+    const url = `${SUPABASE_URL}/rest/v1/licitaciones?${filtroEstados}&${filtroFecha}&select=id,codigo,nombre,fecha_cierre,estado_proceso`;
+
+    const r = await fetch(url, { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(15000) });
+    if (!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`);
+    const vencidas = await r.json();
+
+    let totalDescartadas = 0;
+    for (const lic of vencidas) {
+      const diasVencida = Math.floor((ahora - new Date(lic.fecha_cierre)) / (24 * 60 * 60 * 1000));
+      const motivoTexto = `Vencida sin postulación (auto-cierre, ${diasVencida} días después del cierre del ${lic.fecha_cierre}). Estado anterior: ${lic.estado_proceso}.`;
+
+      const patchRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/licitaciones?id=eq.${encodeURIComponent(lic.id)}`,
+        {
+          method: "PATCH",
+          headers: SUPABASE_HEADERS,
+          body: JSON.stringify({
+            estado_proceso:  "Descartada",
+            razon_resultado: motivoTexto
+          }),
+          signal: AbortSignal.timeout(8000)
+        }
+      );
+      if (patchRes.ok) {
+        totalDescartadas++;
+        console.log(`[limpiar-vencidas] ${lic.codigo} → Descartada (${diasVencida}d vencida)`);
+      }
+    }
+
+    limpiezaState.ultimo_revisadas   = vencidas.length;
+    limpiezaState.ultimo_descartadas = totalDescartadas;
+    limpiezaState.ultimo_fin         = new Date().toISOString();
+    console.log(`[limpiar-vencidas] Revisadas=${vencidas.length} descartadas=${totalDescartadas}`);
+    return { revisadas: vencidas.length, descartadas: totalDescartadas };
+  } catch (e) {
+    limpiezaState.ultimo_error = e.message;
+    limpiezaState.ultimo_fin   = new Date().toISOString();
+    console.error("[limpiar-vencidas] Error:", e.message);
+    throw e;
+  }
+}
+
+// Endpoint manual para disparar la limpieza sin esperar al ciclo de 12h
+app.get("/mp/limpiar-vencidas", async (req, res) => {
+  try {
+    const result = await limpiarVencidas();
+    res.json({ ok: true, ...result, state: limpiezaState });
+  } catch (e) {
+    res.status(500).json({ error: e.message, state: limpiezaState });
+  }
+});
+
+// Endpoint para ver estado de la última limpieza
+app.get("/mp/limpiar-vencidas-status", (req, res) => res.json(limpiezaState));
+
+// Polling cada 12h: ejecuta primero la limpieza de vencidas, después el polling de adjudicaciones
+async function ciclo12h() {
+  await limpiarVencidas().catch(e => console.warn("[ciclo12h] limpiar-vencidas falló:", e.message));
+  await pollingAdjudicaciones().catch(e => console.warn("[ciclo12h] polling-adjudicaciones falló:", e.message));
+}
+setInterval(ciclo12h, POLLING_INTERVAL_MS);
+setTimeout(ciclo12h, 60 * 1000);
 
 // Endpoint manual para disparar el polling (también usable por cron externo
 // tipo UptimeRobot para mantener el servidor despierto en Render Free)
