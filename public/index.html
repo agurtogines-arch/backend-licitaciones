@@ -58,6 +58,7 @@ const DIVISIONS = [
     color: "#0891b2",
     bg: "#ecfeff",
     border: "#06b6d4",
+    activa: true,
     defaultRegionDesde: "7",
     defaultRegionHasta: "12",
     grupos: [
@@ -93,6 +94,7 @@ const DIVISIONS = [
     color: "#7c3aed",
     bg: "#f5f3ff",
     border: "#7c3aed",
+    activa: true,
     defaultRegionDesde: "todas",
     defaultRegionHasta: "todas",
     grupos: [
@@ -120,6 +122,7 @@ const DIVISIONS = [
     color: "#15803d",
     bg: "#f0fdf4",
     border: "#15803d",
+    activa: false, // Desactivada: no salen este tipo de proyectos en MP
     defaultRegionDesde: "todas",
     defaultRegionHasta: "todas",
     grupos: [
@@ -147,6 +150,7 @@ const DIVISIONS = [
     color: "#b45309",
     bg: "#fffbeb",
     border: "#b45309",
+    activa: true,
     defaultRegionDesde: "todas",
     defaultRegionHasta: "todas",
     grupos: [
@@ -174,6 +178,7 @@ const DIVISIONS = [
     color: "#dc2626",
     bg: "#fef2f2",
     border: "#dc2626",
+    activa: true,
     defaultRegionDesde: "todas",
     defaultRegionHasta: "todas",
     grupos: [
@@ -201,6 +206,7 @@ const DIVISIONS = [
     color: "#475569",
     bg: "#f8fafc",
     border: "#475569",
+    activa: false, // Desactivada: PPCC trabaja con privados, no con MP
     defaultRegionDesde: "todas",
     defaultRegionHasta: "todas",
     grupos: [
@@ -228,6 +234,7 @@ const DIVISIONS = [
     color: "#92400e",
     bg: "#fef3c7",
     border: "#92400e",
+    activa: true,
     defaultRegionDesde: "todas",
     defaultRegionHasta: "todas",
     grupos: [
@@ -970,7 +977,7 @@ function App() {
               <div style={{marginBottom:20}}>
                 <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>🏛️ LEN — Mercado Público</div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:8}}>
-                  {DIVISIONS.map(div => {
+                  {DIVISIONS.filter(div => div.activa !== false).map(div => {
                     const count = (generalResults[div.id]||[]).length;
                     return (
                       <button key={div.id}
@@ -1004,9 +1011,9 @@ function App() {
 
       {/* ── PORTAL MP ── */}
       {activePortal==="mp" && <>
-      {/* Tabs de divisiones */}
+      {/* Tabs de divisiones (solo las activas) */}
       <div style={{background:"white",borderRadius:12,padding:6,marginBottom:16,display:"flex",flexWrap:"wrap",gap:4,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
-        {DIVISIONS.map(div => {
+        {DIVISIONS.filter(div => div.activa !== false).map(div => {
           const isActive = div.id === activeDivId2;
           const divResults = divStates[div.id].results.length;
           return (
