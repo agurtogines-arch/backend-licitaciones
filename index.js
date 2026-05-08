@@ -60,44 +60,133 @@ function extraerRegionDeTexto(texto) {
 }
 
 // ── Clasificador de divisiones LEN ────────────────────────────────────────
+// ── DIVISIONES LEN ─────────────────────────────────────────────────────────
+// Cada división tiene:
+// - activa: si está habilitada (false = no aparece en pestañas, no se asigna)
+// - keywords: términos técnicos que matchean para esta división
+// - exclusiones: criterios para descartar a pesar de matchear keywords
+//   - organismos: lista de strings (lowercase) en mandante → descarta
+//   - keywords: lista de strings → descarta si aparecen en título/desc
+//   - organismosCondicionales: [{si_organismo, excluir_si_keywords}]
+//     Ej: SERVIU está OK pero SI hay "camino" en el texto → descarta
+//   - combinados: [{todas: [k1,k2]}] → descarta si aparecen TODAS juntas
 const DIVISIONES_LEN = [
   {
     id: "zonasur", label: "Zona Sur", icon: "🌊", color: "#0369a1",
+    activa: true,
     keywords: ["vial","seguridad vial","puentes","caminos","transito","pavimento","diseño geometrico","prefactibilidad vial","factibilidad vial","prefactibilidad hidraulica","factibilidad hidraulica","hidraulica","hidrologia","aguas lluvias","cauces","apr","saneamiento","alcantarillado","planta de tratamiento","planta elevadora","conducciones","inundaciones","drenaje","cuencas","aguas servidas","agua potable","sanitario","ssr","rural"],
     servicios: ["estudio","consultoria","asesoria","diseno","inspeccion","levantamiento"],
-    regiones: ["7","16","8","9","14","10","11","12"] // Maule → Magallanes
+    regiones: ["7","16","8","9","14","10","11","12"], // Maule → Magallanes
+    exclusiones: {
+      // Excluir si título tiene "actualizacion sanitario rural" + "hidrogeologia" juntas
+      combinados: [
+        { todas: ["actualizacion sanitario rural", "hidrogeologia"] },
+        { todas: ["actualizacion ssr", "hidrogeologia"] }
+      ]
+    }
   },
   {
     id: "infra", label: "Infraestructura", icon: "🛣️", color: "#7c3aed",
+    activa: true,
     keywords: ["ingenieria de detalle","ingenieria basica","estudio de factibilidad","anteproyecto","preinversion","iluminacion vial","conservacion vial","infraestructura vial","ingenieria vial","transporte vial","proteccion costera","obras portuarias","infraestructura portuaria","obras maritimas"],
-    servicios: ["estudio","consultoria","diseno","prefactibilidad","factibilidad","asesoria","anteproyecto","inspeccion"]
+    servicios: ["estudio","consultoria","diseno","prefactibilidad","factibilidad","asesoria","anteproyecto","inspeccion"],
+    exclusiones: {
+      organismos: ["serviu", "municipalidad", "ilustre municipalidad", "i. municipalidad"],
+      keywords: ["arquitectura", "edificacion", "edificaciones"]
+    }
   },
   {
     id: "medioambiente", label: "Medio Ambiente", icon: "🌿", color: "#15803d",
+    activa: false, // Desactivada: no salen este tipo de proyectos en MP
     keywords: ["ambiental","seia","impacto ambiental","pertinencia ambiental","linea de base","monitoreo ambiental","seguimiento ambiental","declaracion de impacto"],
-    servicios: ["estudio","consultoria","monitoreo","asesoria","levantamiento"]
+    servicios: ["estudio","consultoria","monitoreo","asesoria","levantamiento"],
+    exclusiones: {
+      organismos: ["mop", "minvu", "municipalidad", "universidad"]
+    }
   },
   {
     id: "energia", label: "Energía", icon: "⚡", color: "#b45309",
+    activa: true,
     keywords: ["fotovoltaico","eolico","solar","ernc","bess","eficiencia energetica","hidrogeno verde","electromovilidad","energia renovable","descarbonizacion","autogeneracion","energetico"],
-    servicios: ["estudio","consultoria","diseno","asesoria","diagnostico","prefactibilidad","factibilidad","ingenieria"]
+    servicios: ["estudio","consultoria","diseno","asesoria","diagnostico","prefactibilidad","factibilidad","ingenieria"],
+    exclusiones: {
+      organismos: ["minvu", "ministerio de vivienda"]
+    }
   },
   {
     id: "ito", label: "Inspección Técnica", icon: "🔍", color: "#dc2626",
+    activa: true,
     keywords: ["ito","inspeccion tecnica","supervision de obras","contraparte tecnica","fiscalizacion de obras","control de obras","auditoria tecnica de obras","geomensura","supervision tecnica","acompanamiento a la construccion","inspeccion fiscal","asistencia tecnica en obra","inspeccion de obras"],
-    servicios: []
+    servicios: [],
+    exclusiones: {
+      organismos: ["municipalidad", "ilustre municipalidad", "i. municipalidad"],
+      // SERVIU está OK pero SI hay "camino" en el texto → excluir
+      organismosCondicionales: [
+        { si_organismo: "serviu", excluir_si_keywords: ["camino", "caminos"] }
+      ]
+    }
   },
   {
     id: "civil", label: "Proyectos Civiles", icon: "🏗️", color: "#475569",
+    activa: false, // Desactivada: PPCC trabaja con privados, no con MP
     keywords: ["paralelismo","atraviesos","movimiento de tierras","pavimentacion","permisos dga","hidrogeologia","obras tempranas","ingenieria estructural","obras civiles","urbanizacion","observaciones del proyecto"],
-    servicios: ["estudio","diseno","consultoria","ingenieria civil","asesoria"]
+    servicios: ["estudio","diseno","consultoria","ingenieria civil","asesoria"],
+    exclusiones: {} // PPCC no trabaja con organismos públicos en general
   },
   {
     id: "mineria", label: "Minería", icon: "⛏️", color: "#92400e",
+    activa: true,
     keywords: ["mineria","minera","minero","mina","expropiaciones","descarbonizacion","hoja de ruta","faena"],
-    servicios: ["estudio","consultoria","ingenieria","asesoria","diseno"]
+    servicios: ["estudio","consultoria","ingenieria","asesoria","diseno"],
+    exclusiones: {
+      keywords: ["geologia", "hidrogeologia", "hidrociclones", "geotecnica", "geotecnia",
+                 "lixiviacion", "procesos de planta", "sulfuros", "chancado", "molienda",
+                 "flotacion"]
+    }
   }
 ];
+
+// Helper: aplica las exclusiones de una división dado el organismo y el texto.
+// Devuelve true si la licitación DEBE excluirse (no asignar a esta división).
+function aplicaExclusiones(division, organismo, textoCompleto) {
+  const exc = division.exclusiones;
+  if (!exc) return false;
+  const orgN = (organismo || "").toLowerCase();
+
+  // 1) Organismos condicionales (acepta SI excepto cuando keyword aparece)
+  if (exc.organismosCondicionales) {
+    for (const cond of exc.organismosCondicionales) {
+      if (orgN.includes(cond.si_organismo.toLowerCase())) {
+        const tieneKwExclusion = cond.excluir_si_keywords.some(k => matchDivKw(textoCompleto, k));
+        if (tieneKwExclusion) return true; // organismo OK pero contexto excluyente → excluir
+        return false; // organismo OK y sin keywords excluyentes → NO excluir (acepta)
+      }
+    }
+  }
+
+  // 2) Organismos directamente excluidos
+  if (exc.organismos) {
+    for (const org of exc.organismos) {
+      if (orgN.includes(org.toLowerCase())) return true;
+    }
+  }
+
+  // 3) Keywords negativas (uso matchDivKw para stemming: "geotécnico" matchea "geotecnica")
+  if (exc.keywords) {
+    for (const kw of exc.keywords) {
+      if (matchDivKw(textoCompleto, kw)) return true;
+    }
+  }
+
+  // 4) Combinados (TODAS las palabras del set deben aparecer juntas para excluir)
+  if (exc.combinados) {
+    for (const combo of exc.combinados) {
+      if (combo.todas.every(k => matchDivKw(textoCompleto, k))) return true;
+    }
+  }
+
+  return false;
+}
 
 const CODIGOS_ZONA_SUR = new Set(["7","16","8","9","14","10","11","12"]);
 
@@ -120,7 +209,7 @@ function matchDivKw(titulo, kw) {
   return kwNorm.split(/\s+/).filter(t=>t.length>=3).every(t=>tNorm.includes(stemDiv(t)));
 }
 
-function clasificarDivisiones(titulo, codigoRegion) {
+function clasificarDivisiones(titulo, codigoRegion, organismo) {
   // Orden de evaluación: de más específico a más genérico.
   // ZONA SUR se evalúa ANTES que civil e infra porque sus keywords core
   // (puentes, caminos, vial, hidráulica, sanitario) son MUY específicas.
@@ -129,16 +218,21 @@ function clasificarDivisiones(titulo, codigoRegion) {
   // genéricas como "obras civiles" que aparecen en cualquier base.
   // La validación de región (codigoRegion ∈ CODIGOS_ZONA_SUR) impide que
   // zonasur gane en licitaciones del centro/norte.
+  // Cada división puede tener `activa:false` (no se asigna nunca) y
+  // `exclusiones` (no se asigna si match contra organismo o keywords negativas).
   const ORDEN_CLASIFICACION = ["ito","medioambiente","energia","mineria","zonasur","civil","infra"];
   const divisiones = [];
   const divsById = Object.fromEntries(DIVISIONES_LEN.map(d => [d.id, d]));
   for (const id of ORDEN_CLASIFICACION) {
     const div = divsById[id];
     if (!div) continue;
+    if (div.activa === false) continue; // saltar divisiones desactivadas
     const matchTec = div.keywords.some(kw => matchDivKw(titulo, kw));
     if (!matchTec) continue;
     // Para Zona Sur verificar región si está disponible
     if (div.id === "zonasur" && codigoRegion && !CODIGOS_ZONA_SUR.has(codigoRegion)) continue;
+    // Aplicar exclusiones específicas de la división
+    if (aplicaExclusiones(div, organismo, titulo)) continue;
     divisiones.push({ id: div.id, label: div.label, icon: div.icon, color: div.color });
   }
   return divisiones;
@@ -168,9 +262,10 @@ const MOP_A_DIVISION = {
 
 // Sugiere división combinando especialidades MOP + clasificador por título.
 // Devuelve el id de la división (string) o null si no se pudo sugerir.
-function sugerirDivision(titulo, especialidadesMOP, codigoRegion) {
-  // Señal A: divisiones según keywords del título (ya existe)
-  const porKeywords = clasificarDivisiones(titulo || "", codigoRegion);
+// `organismo` opcional: si se provee, las exclusiones por organismo se aplican.
+function sugerirDivision(titulo, especialidadesMOP, codigoRegion, organismo) {
+  // Señal A: divisiones según keywords del título (con exclusiones aplicadas)
+  const porKeywords = clasificarDivisiones(titulo || "", codigoRegion, organismo || "");
 
   // Señal B: divisiones según especialidades MOP requeridas
   const conteoMOP = {};
@@ -182,7 +277,12 @@ function sugerirDivision(titulo, especialidadesMOP, codigoRegion) {
     }
     if (div) conteoMOP[div] = (conteoMOP[div] || 0) + 1;
   }
-  const divPorMOP = Object.entries(conteoMOP).sort((a,b) => b[1]-a[1])[0]?.[0] || null;
+  // Filtrar las MOP para no sugerir divisiones desactivadas
+  const divsActivas = new Set(DIVISIONES_LEN.filter(d => d.activa !== false).map(d => d.id));
+  const conteoMOPActivo = Object.fromEntries(
+    Object.entries(conteoMOP).filter(([d]) => divsActivas.has(d))
+  );
+  const divPorMOP = Object.entries(conteoMOPActivo).sort((a,b) => b[1]-a[1])[0]?.[0] || null;
 
   // Combinar: si hay coincidencia entre MOP y keywords → doble confirmación
   if (divPorMOP && porKeywords.some(d => d.id === divPorMOP)) return divPorMOP;
@@ -533,7 +633,7 @@ app.get("/buscar", async (req, res) => {
         descripcion:      l.Descripcion || "",
         url:              `https://www.mercadopublico.cl/Procurement/Modules/RFB/DetailsAcquisition.aspx?idlicitacion=${l.CodigoExterno}`,
         fuente:           "Mercado Público",
-        divisiones:       clasificarDivisiones(titulo, regionExtraida?.codigo || null)
+        divisiones:       clasificarDivisiones(titulo, regionExtraida?.codigo || null, "")
       };
     });
 
@@ -634,7 +734,7 @@ app.post("/buscar-general", async (req, res) => {
         descripcion:     l.Descripcion || "",
         url:             `https://www.mercadopublico.cl/Procurement/Modules/RFB/DetailsAcquisition.aspx?idlicitacion=${l.CodigoExterno}`,
         fuente:          "Mercado Público",
-        divisiones:      clasificarDivisiones(titulo, regionExtraida?.codigo || null)
+        divisiones:      clasificarDivisiones(titulo, regionExtraida?.codigo || null, "")
       };
     };
 
@@ -761,7 +861,7 @@ app.get("/buscar-organismo", async (req, res) => {
         descripcion:      l.Descripcion || "",
         url:              `https://www.mercadopublico.cl/Procurement/Modules/RFB/DetailsAcquisition.aspx?idlicitacion=${l.CodigoExterno}`,
         fuente:           "Mercado Público",
-        divisiones:       clasificarDivisiones(titulo, regionExtraida?.codigo || null)
+        divisiones:       clasificarDivisiones(titulo, regionExtraida?.codigo || null, "")
       };
     });
 
@@ -1310,7 +1410,7 @@ Si tras la verificación manual confirmas que LEN califica, podemos analizar la 
     const r = REGIONES.find(reg => item.region.toLowerCase().includes(reg.oficial));
     if (r) codigoRegionAnalizar = r.codigo;
   }
-  const divisionPreCalc = sugerirDivision(textoParaClasif, requisitosMOP, codigoRegionAnalizar);
+  const divisionPreCalc = sugerirDivision(textoParaClasif, requisitosMOP, codigoRegionAnalizar, item.organismo || "");
   const divisionPreCalcLabel = divisionPreCalc
     ? (DIVISIONES_LEN.find(d => d.id === divisionPreCalc)?.label || divisionPreCalc)
     : "Sin clasificar (GPT debe sugerir)";
@@ -1622,7 +1722,7 @@ app.post("/mp/guardar-gestor", async (req, res) => {
     item.descripcion || "",
     item.objetivos   || ""
   ].filter(Boolean).join(" | ");
-  const divisionSugerida = sugerirDivision(textoEnriquecido, especialidadesMOP, codigoRegion);
+  const divisionSugerida = sugerirDivision(textoEnriquecido, especialidadesMOP, codigoRegion, item.organismo || "");
 
   // ── Payload completo ──────────────────────────────────────────────────────
   const payload = {
@@ -2171,7 +2271,55 @@ Responde ÚNICAMENTE con JSON válido sin markdown.`;
       const archivo = `Resumen_${(metadata.codigo||"LIC").replace(/[^a-zA-Z0-9]/g,"_")}_${new Date().toISOString().split("T")[0]}.xlsx`;
       const confianza = escaneadosCount===0 ? "completa" : escaneadosCount < archivosAuditoria.filter(a=>a.tipo==="Escaneado"||a.tipo==="Texto").length ? "parcial" : "fallida";
 
-      res.json({ ok:true, excelBase64:b64, nombreArchivo:archivo, confianza, escaneados:escaneadosCount, totalArchivos:archivosAuditoria.length, auditoria:archivosAuditoria });
+      // ── Persistir: subir Excel a Supabase Storage + actualizar licitación ─
+      let excelPath = null;
+      if (metadata.codigo && metadata.licitacionId) {
+        try {
+          const storagePath = `${metadata.codigo.replace(/[^a-zA-Z0-9_-]/g, "_")}/${archivo}`;
+          // Subir a Supabase Storage (upsert para sobreescribir si re-analizan)
+          const upRes = await fetch(
+            `${SUPABASE_URL}/storage/v1/object/bases-resumenes/${storagePath}`,
+            {
+              method: "POST",
+              headers: {
+                "Authorization": SUPABASE_HEADERS.Authorization,
+                "apikey": SUPABASE_HEADERS.apikey,
+                "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "x-upsert": "true"
+              },
+              body: buf,
+              signal: AbortSignal.timeout(20000)
+            }
+          );
+          if (upRes.ok) {
+            excelPath = storagePath;
+            console.log(`[analizar-bases] Excel subido a Storage: ${storagePath}`);
+          } else {
+            console.warn(`[analizar-bases] Subida a Storage falló ${upRes.status}: ${await upRes.text()}`);
+          }
+
+          // Actualizar la licitación con el path del Excel y metadatos
+          await fetch(
+            `${SUPABASE_URL}/rest/v1/licitaciones?id=eq.${encodeURIComponent(metadata.licitacionId)}`,
+            {
+              method: "PATCH",
+              headers: SUPABASE_HEADERS,
+              body: JSON.stringify({
+                resumen_bases_excel_path: excelPath,
+                resumen_bases_creado_at: new Date().toISOString(),
+                resumen_bases_archivos_originales: archivosAuditoria.map(a => ({
+                  nombre: a.nombre, tipo: a.tipo, paginas: a.paginas, estado: a.estado
+                }))
+              }),
+              signal: AbortSignal.timeout(8000)
+            }
+          );
+        } catch(e) {
+          console.warn(`[analizar-bases] No se pudo persistir: ${e.message}`);
+        }
+      }
+
+      res.json({ ok:true, excelBase64:b64, nombreArchivo:archivo, excelPath, confianza, escaneados:escaneadosCount, totalArchivos:archivosAuditoria.length, auditoria:archivosAuditoria });
 
     } catch(err) {
       console.error("[analizar-bases]", err.message);
@@ -2180,8 +2328,44 @@ Responde ÚNICAMENTE con JSON válido sin markdown.`;
   });
 });
 
+// ── GET /mp/descargar-resumen-bases/:licitacionId ──────────────────────────
+// Genera signed URL de 5 minutos para descargar el Excel resumen de bases
+// que está guardado en Supabase Storage (bucket privado bases-resumenes).
+app.get("/mp/descargar-resumen-bases/:licitacionId", async (req, res) => {
+  const { licitacionId } = req.params;
+  try {
+    // 1) Buscar el path del Excel en la licitación
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/licitaciones?id=eq.${encodeURIComponent(licitacionId)}&select=resumen_bases_excel_path`,
+      { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(5000) }
+    );
+    if (!r.ok) return res.status(502).json({ error: `Supabase ${r.status}` });
+    const data = await r.json();
+    if (!data.length || !data[0].resumen_bases_excel_path) {
+      return res.status(404).json({ error: "Esta licitación aún no tiene resumen de bases generado" });
+    }
+    const path = data[0].resumen_bases_excel_path;
+
+    // 2) Crear signed URL para descarga (válida 5 minutos)
+    const signRes = await fetch(
+      `${SUPABASE_URL}/storage/v1/object/sign/bases-resumenes/${path}`,
+      {
+        method: "POST",
+        headers: SUPABASE_HEADERS,
+        body: JSON.stringify({ expiresIn: 300 }),
+        signal: AbortSignal.timeout(5000)
+      }
+    );
+    if (!signRes.ok) return res.status(502).json({ error: `Storage signing falló: ${await signRes.text()}` });
+    const signed = await signRes.json();
+    const fullUrl = `${SUPABASE_URL}/storage/v1${signed.signedURL || signed.signedUrl}`;
+    res.json({ ok: true, url: fullUrl });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── PATCH /mp/actualizar-licitacion/:id — edición desde el gestor ─────────────
-// Permite al frontend editar campos editables (whitelist) de una licitación.
 app.patch("/mp/actualizar-licitacion/:id", async (req, res) => {
   const id = req.params.id;
   const allowedFields = [
@@ -3013,7 +3197,7 @@ app.get("/mp/clasificar-existentes", async (req, res) => {
 
       // Sugerir basándose en texto enriquecido + especialidades MOP si están
       const especialidadesMOP = Array.isArray(lic.especialidades_mop_json) ? lic.especialidades_mop_json : [];
-      const divisionSugerida = sugerirDivision(textoEnriquecido, especialidadesMOP, codigoRegion);
+      const divisionSugerida = sugerirDivision(textoEnriquecido, especialidadesMOP, codigoRegion, lic.mandante || "");
 
       if (!divisionSugerida) {
         sinClasificar++;
