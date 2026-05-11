@@ -59,15 +59,26 @@ function extraerRegionDeTexto(texto) {
   return null;
 }
 
+// ── Clasificador de divisiones LEN ────────────────────────────────────────
 // ── DIVISIONES LEN ─────────────────────────────────────────────────────────
+// Cada división tiene:
+// - activa: si está habilitada (false = no aparece en pestañas, no se asigna)
+// - keywords: términos técnicos que matchean para esta división
+// - exclusiones: criterios para descartar a pesar de matchear keywords
+//   - organismos: lista de strings (lowercase) en mandante → descarta
+//   - keywords: lista de strings → descarta si aparecen en título/desc
+//   - organismosCondicionales: [{si_organismo, excluir_si_keywords}]
+//     Ej: SERVIU está OK pero SI hay "camino" en el texto → descarta
+//   - combinados: [{todas: [k1,k2]}] → descarta si aparecen TODAS juntas
 const DIVISIONES_LEN = [
   {
     id: "zonasur", label: "Zona Sur", icon: "🌊", color: "#0369a1",
     activa: true,
     keywords: ["vial","seguridad vial","puentes","caminos","transito","pavimento","diseño geometrico","prefactibilidad vial","factibilidad vial","prefactibilidad hidraulica","factibilidad hidraulica","hidraulica","hidrologia","aguas lluvias","cauces","apr","saneamiento","alcantarillado","planta de tratamiento","planta elevadora","conducciones","inundaciones","drenaje","cuencas","aguas servidas","agua potable","sanitario","ssr","rural"],
     servicios: ["estudio","consultoria","asesoria","diseno","inspeccion","levantamiento"],
-    regiones: ["7","16","8","9","14","10","11","12"],
+    regiones: ["7","16","8","9","14","10","11","12"], // Maule → Magallanes
     exclusiones: {
+      // Excluir si título tiene "actualizacion sanitario rural" + "hidrogeologia" juntas
       combinados: [
         { todas: ["actualizacion sanitario rural", "hidrogeologia"] },
         { todas: ["actualizacion ssr", "hidrogeologia"] }
@@ -86,17 +97,21 @@ const DIVISIONES_LEN = [
   },
   {
     id: "medioambiente", label: "Medio Ambiente", icon: "🌿", color: "#15803d",
-    activa: false,
+    activa: false, // Desactivada: no salen este tipo de proyectos en MP
     keywords: ["ambiental","seia","impacto ambiental","pertinencia ambiental","linea de base","monitoreo ambiental","seguimiento ambiental","declaracion de impacto"],
     servicios: ["estudio","consultoria","monitoreo","asesoria","levantamiento"],
-    exclusiones: { organismos: ["mop", "minvu", "municipalidad", "universidad"] }
+    exclusiones: {
+      organismos: ["mop", "minvu", "municipalidad", "universidad"]
+    }
   },
   {
     id: "energia", label: "Energía", icon: "⚡", color: "#b45309",
     activa: true,
     keywords: ["fotovoltaico","eolico","solar","ernc","bess","eficiencia energetica","hidrogeno verde","electromovilidad","energia renovable","descarbonizacion","autogeneracion","energetico"],
     servicios: ["estudio","consultoria","diseno","asesoria","diagnostico","prefactibilidad","factibilidad","ingenieria"],
-    exclusiones: { organismos: ["minvu", "ministerio de vivienda"] }
+    exclusiones: {
+      organismos: ["minvu", "ministerio de vivienda"]
+    }
   },
   {
     id: "ito", label: "Inspección Técnica", icon: "🔍", color: "#dc2626",
@@ -105,15 +120,18 @@ const DIVISIONES_LEN = [
     servicios: [],
     exclusiones: {
       organismos: ["municipalidad", "ilustre municipalidad", "i. municipalidad"],
-      organismosCondicionales: [{ si_organismo: "serviu", excluir_si_keywords: ["camino", "caminos"] }]
+      // SERVIU está OK pero SI hay "camino" en el texto → excluir
+      organismosCondicionales: [
+        { si_organismo: "serviu", excluir_si_keywords: ["camino", "caminos"] }
+      ]
     }
   },
   {
     id: "civil", label: "Proyectos Civiles", icon: "🏗️", color: "#475569",
-    activa: false,
+    activa: false, // Desactivada: PPCC trabaja con privados, no con MP
     keywords: ["paralelismo","atraviesos","movimiento de tierras","pavimentacion","permisos dga","hidrogeologia","obras tempranas","ingenieria estructural","obras civiles","urbanizacion","observaciones del proyecto"],
     servicios: ["estudio","diseno","consultoria","ingenieria civil","asesoria"],
-    exclusiones: {}
+    exclusiones: {} // PPCC no trabaja con organismos públicos en general
   },
   {
     id: "mineria", label: "Minería", icon: "⛏️", color: "#92400e",
@@ -122,35 +140,51 @@ const DIVISIONES_LEN = [
     servicios: ["estudio","consultoria","ingenieria","asesoria","diseno"],
     exclusiones: {
       keywords: ["geologia", "hidrogeologia", "hidrociclones", "geotecnica", "geotecnia",
-                 "lixiviacion", "procesos de planta", "sulfuros", "chancado", "molienda", "flotacion"]
+                 "lixiviacion", "procesos de planta", "sulfuros", "chancado", "molienda",
+                 "flotacion"]
     }
   }
 ];
 
+// Helper: aplica las exclusiones de una división dado el organismo y el texto.
+// Devuelve true si la licitación DEBE excluirse (no asignar a esta división).
 function aplicaExclusiones(division, organismo, textoCompleto) {
   const exc = division.exclusiones;
   if (!exc) return false;
   const orgN = (organismo || "").toLowerCase();
+
+  // 1) Organismos condicionales (acepta SI excepto cuando keyword aparece)
   if (exc.organismosCondicionales) {
     for (const cond of exc.organismosCondicionales) {
       if (orgN.includes(cond.si_organismo.toLowerCase())) {
         const tieneKwExclusion = cond.excluir_si_keywords.some(k => matchDivKw(textoCompleto, k));
-        if (tieneKwExclusion) return true;
-        return false;
+        if (tieneKwExclusion) return true; // organismo OK pero contexto excluyente → excluir
+        return false; // organismo OK y sin keywords excluyentes → NO excluir (acepta)
       }
     }
   }
+
+  // 2) Organismos directamente excluidos
   if (exc.organismos) {
-    for (const org of exc.organismos) { if (orgN.includes(org.toLowerCase())) return true; }
+    for (const org of exc.organismos) {
+      if (orgN.includes(org.toLowerCase())) return true;
+    }
   }
+
+  // 3) Keywords negativas (uso matchDivKw para stemming: "geotécnico" matchea "geotecnica")
   if (exc.keywords) {
-    for (const kw of exc.keywords) { if (matchDivKw(textoCompleto, kw)) return true; }
+    for (const kw of exc.keywords) {
+      if (matchDivKw(textoCompleto, kw)) return true;
+    }
   }
+
+  // 4) Combinados (TODAS las palabras del set deben aparecer juntas para excluir)
   if (exc.combinados) {
     for (const combo of exc.combinados) {
       if (combo.todas.every(k => matchDivKw(textoCompleto, k))) return true;
     }
   }
+
   return false;
 }
 
@@ -162,60 +196,106 @@ function normDiv(s) {
     .replace(/[óòö]/g,"o").replace(/[úùü]/g,"u").replace(/ñ/g,"n")
     .replace(/['''`´]/g,"").trim();
 }
+
 function stemDiv(t) { return t.length >= 6 ? t.slice(0,-2) : t; }
+
 function matchDivKw(titulo, kw) {
   const tNorm = normDiv(titulo);
   const kwNorm = normDiv(kw);
-  if (kwNorm.length <= 4) return new RegExp(`(?<![a-z])${kwNorm}(?![a-z])`).test(tNorm);
+  // Para keywords cortas (≤4 chars) verificar que sea palabra completa
+  if (kwNorm.length <= 4) {
+    return new RegExp(`(?<![a-z])${kwNorm}(?![a-z])`).test(tNorm);
+  }
   return kwNorm.split(/\s+/).filter(t=>t.length>=3).every(t=>tNorm.includes(stemDiv(t)));
 }
 
 function clasificarDivisiones(titulo, codigoRegion, organismo) {
+  // Orden de evaluación: de más específico a más genérico.
+  // ZONA SUR se evalúa ANTES que civil e infra porque sus keywords core
+  // (puentes, caminos, vial, hidráulica, sanitario) son MUY específicas.
+  // Si la licitación es de zona sur (por keywords) Y la región es del sur,
+  // gana zonasur sin que civil o infra puedan robarle el match por keywords
+  // genéricas como "obras civiles" que aparecen en cualquier base.
+  // La validación de región (codigoRegion ∈ CODIGOS_ZONA_SUR) impide que
+  // zonasur gane en licitaciones del centro/norte.
+  // Cada división puede tener `activa:false` (no se asigna nunca) y
+  // `exclusiones` (no se asigna si match contra organismo o keywords negativas).
   const ORDEN_CLASIFICACION = ["ito","medioambiente","energia","mineria","zonasur","civil","infra"];
   const divisiones = [];
   const divsById = Object.fromEntries(DIVISIONES_LEN.map(d => [d.id, d]));
   for (const id of ORDEN_CLASIFICACION) {
     const div = divsById[id];
     if (!div) continue;
-    if (div.activa === false) continue;
+    if (div.activa === false) continue; // saltar divisiones desactivadas
     const matchTec = div.keywords.some(kw => matchDivKw(titulo, kw));
     if (!matchTec) continue;
+    // Para Zona Sur verificar región si está disponible
     if (div.id === "zonasur" && codigoRegion && !CODIGOS_ZONA_SUR.has(codigoRegion)) continue;
+    // Aplicar exclusiones específicas de la división
     if (aplicaExclusiones(div, organismo, titulo)) continue;
     divisiones.push({ id: div.id, label: div.label, icon: div.icon, color: div.color });
   }
   return divisiones;
 }
 
+// ── Mapeo MOP → División sugerida ─────────────────────────────────────────────
+// Para cada especialidad MOP que LEN puede tomar, define la división interna
+// más probable. La función sugerirDivision combina esto con el clasificador
+// por keywords del título, para mayor robustez.
 const MOP_A_DIVISION = {
-  "1.1": "civil", "1.2": "civil", "1.3": "civil", "2.2": "civil",
-  "3.1": "ito", "3.2": "ito", "3.3": "ito", "3.6": "ito",
-  "3.7": "zonasur",
-  "4.1": "civil", "4.2": "civil", "4.3": "zonasur",
-  "4.4": "energia", "4.5": "civil", "4.6": "civil",
-  "4.7": "energia", "4.8": "zonasur", "4.10": "infra",
-  "7.1": "ito", "7.4": "ito", "7.8": "ito",
-  "8.3": "ito", "8.5": "ito", "8.6": "ito",
-  "9.1": "medioambiente"
+  "1.1": "civil",        "1.2": "civil",        "1.3": "civil",
+  "2.2": "civil",
+  "3.1": "ito",          "3.2": "ito",          "3.3": "ito",   "3.6": "ito",
+  "3.7": "zonasur",      // Estudios Hidrológicos
+  "4.1": "civil",        "4.2": "civil",
+  "4.3": "zonasur",      // Obras Hidráulicas y Riego
+  "4.4": "energia",      // Obras Eléctricas
+  "4.5": "civil",        "4.6": "civil",
+  "4.7": "energia",      // Obras Térmicas
+  "4.8": "zonasur",      // Obras Sanitarias
+  // 4.9 Vial → depende de región (zonasur si sur, infra si centro/norte)
+  "4.10": "infra",       // Vialidad Urbana
+  "7.1": "ito",          "7.4": "ito",          "7.8": "ito",
+  "8.3": "ito",          "8.5": "ito",          "8.6": "ito",
+  "9.1": "medioambiente" // Estudios de Impacto Ambiental
 };
 
+// Sugiere división combinando especialidades MOP + clasificador por título.
+// Devuelve el id de la división (string) o null si no se pudo sugerir.
+// `organismo` opcional: si se provee, las exclusiones por organismo se aplican.
 function sugerirDivision(titulo, especialidadesMOP, codigoRegion, organismo) {
+  // Señal A: divisiones según keywords del título (con exclusiones aplicadas)
   const porKeywords = clasificarDivisiones(titulo || "", codigoRegion, organismo || "");
+
+  // Señal B: divisiones según especialidades MOP requeridas
   const conteoMOP = {};
   for (const esp of (especialidadesMOP || [])) {
     let div = MOP_A_DIVISION[esp.codigo];
-    if (esp.codigo === "4.9") div = CODIGOS_ZONA_SUR.has(String(codigoRegion)) ? "zonasur" : "infra";
+    // Caso especial: 4.9 Vial depende de región
+    if (esp.codigo === "4.9") {
+      div = CODIGOS_ZONA_SUR.has(String(codigoRegion)) ? "zonasur" : "infra";
+    }
     if (div) conteoMOP[div] = (conteoMOP[div] || 0) + 1;
   }
+  // Filtrar las MOP para no sugerir divisiones desactivadas
   const divsActivas = new Set(DIVISIONES_LEN.filter(d => d.activa !== false).map(d => d.id));
-  const conteoMOPActivo = Object.fromEntries(Object.entries(conteoMOP).filter(([d]) => divsActivas.has(d)));
+  const conteoMOPActivo = Object.fromEntries(
+    Object.entries(conteoMOP).filter(([d]) => divsActivas.has(d))
+  );
   const divPorMOP = Object.entries(conteoMOPActivo).sort((a,b) => b[1]-a[1])[0]?.[0] || null;
+
+  // Combinar: si hay coincidencia entre MOP y keywords → doble confirmación
   if (divPorMOP && porKeywords.some(d => d.id === divPorMOP)) return divPorMOP;
+  // Si solo hay MOP, usar MOP
   if (divPorMOP) return divPorMOP;
+  // Si solo hay keywords, usar la primera
   if (porKeywords.length > 0) return porKeywords[0].id;
   return null;
 }
 
+// ── Registro Consultores MOP de LEN (Cert. N° 264614) ─────────────────────
+// Rank: 1 = Primera Superior, 2 = Primera, 3 = Segunda, 4 = Tercera
+// Una licitación que pide "2da" la cumple quien tenga rank ≤ 3.
 const LEN_REGISTRO_MOP = {
   certificado: "264614",
   rut: "83.665.200-2",
@@ -242,14 +322,22 @@ function validarRegistroMOP(requisitos) {
   const hoy = new Date();
   const vence = new Date(LEN_REGISTRO_MOP.vigente_hasta);
   const dias = Math.ceil((vence - hoy) / 86400000);
-  if (dias < 0) return { califica: false, fallas: ["⛔ Registro MOP vencido"], diasVigencia: dias, avisoVigencia: "⛔ Registro vencido — renovar urgente" };
+
+  if (dias < 0) {
+    return { califica: false, fallas: ["⛔ Registro MOP vencido"], diasVigencia: dias, avisoVigencia: "⛔ Registro vencido — renovar urgente" };
+  }
+
   const fallas = [];
   for (const req of (requisitos || [])) {
     const rankLEN = LEN_REGISTRO_MOP.especialidades[req.codigo];
     const rankReq = RANK_CATEGORIA[(req.categoria || "").toLowerCase().trim()];
-    if (rankLEN === undefined) fallas.push(`Falta especialidad ${req.codigo} (${req.descripcion || ""})`);
-    else if (rankReq && rankLEN > rankReq) fallas.push(`${req.codigo}: requiere ${req.categoria}, LEN tiene ${NOMBRE_CATEGORIA[rankLEN]}`);
+    if (rankLEN === undefined) {
+      fallas.push(`Falta especialidad ${req.codigo} (${req.descripcion || ""})`);
+    } else if (rankReq && rankLEN > rankReq) {
+      fallas.push(`${req.codigo}: requiere ${req.categoria}, LEN tiene ${NOMBRE_CATEGORIA[rankLEN]}`);
+    }
   }
+
   return {
     califica: fallas.length === 0,
     fallas,
@@ -258,35 +346,66 @@ function validarRegistroMOP(requisitos) {
   };
 }
 
+// Extrae los requisitos del recuadro "Especialidades y categorías" del HTML de MP
+// Devuelve: [{ codigo: "4.8", descripcion: "Obras Sanitarias", categoria: "2da" }, ...]
+//
+// El HTML de mercadopublico.cl usa <table id="tblEspecialidades"> con estructura:
+//   <tr><td>Ingeniería Civil</td><td>4.8 Obras Sanitarias.</td><td>2da</td></tr>
+// Así que parseamos la tabla celda por celda en lugar de regex sobre texto plano.
 function extraerEspecialidadesMOP(html) {
   if (!html) return [];
+
+  // Localizar la tabla específica de especialidades MOP
   const tablaMatch = html.match(/<table[^>]*id\s*=\s*["']tblEspecialidades["'][^>]*>([\s\S]*?)<\/table>/i);
   if (!tablaMatch) return [];
+
   const tablaHTML = tablaMatch[1];
+
+  // Si hay <tbody> usarlo, sino trabajar con todo el contenido de la tabla
   const tbodyMatch = tablaHTML.match(/<tbody[^>]*>([\s\S]*?)<\/tbody>/i);
   const filasHTML = tbodyMatch ? tbodyMatch[1] : tablaHTML;
+
+  // Extraer cada <tr>
   const filas = filasHTML.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
-  const cleanCell = s => s.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+
+  const cleanCell = s => s
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&")
+    .replace(/\s+/g, " ").trim();
+
   const requisitos = [];
   const seen = new Set();
+
   for (const filaHTML of filas) {
+    // Skip filas del thead (header)
     if (/<th[\s>]/i.test(filaHTML)) continue;
+
     const celdas = filaHTML.match(/<td[^>]*>[\s\S]*?<\/td>/gi) || [];
     if (celdas.length < 3) continue;
-    const especialidad    = cleanCell(celdas[0]);
-    const subEspecialidad = cleanCell(celdas[1]);
-    const categoria       = cleanCell(celdas[2]);
+
+    const especialidad    = cleanCell(celdas[0]);  // "Ingeniería Civil"
+    const subEspecialidad = cleanCell(celdas[1]);  // "4.8 Obras Sanitarias."
+    const categoria       = cleanCell(celdas[2]);  // "2da"
+
+    // Extraer código N.N y descripción de la sub-especialidad
     const m = subEspecialidad.match(/^(\d{1,2}\.\d{1,2})\s+(.+?)\.?\s*$/);
     if (!m) continue;
+
     const codigo = m[1];
     const descripcion = m[2].trim();
+
     if (seen.has(codigo)) continue;
     seen.add(codigo);
+
     requisitos.push({ codigo, descripcion, categoria, especialidad });
   }
+
   return requisitos;
 }
 
+// Detecta si la licitación REQUIERE Registro MOP, leyendo el flag IndicadorEsMOP
+// que mercadopublico.cl pone en el HTML inicial. Devuelve true/false.
+// Útil cuando los datos específicos de la tabla no están disponibles (cargan por AJAX).
 function requiereRegistroMOP(html) {
   if (!html) return false;
   const match = html.match(/<input[^>]*id\s*=\s*["']IndicadorEsMOP["'][^>]*value\s*=\s*["']([^"']*)["']/i);
@@ -295,6 +414,12 @@ function requiereRegistroMOP(html) {
   return v === "1" || v === "true" || v === "si" || v === "sí";
 }
 
+// Llama al WebMethod ObtenerEspecialidades de mercadopublico.cl para obtener
+// las especialidades MOP de una licitación. MP las carga por AJAX (no en SSR),
+// así que esta es la única forma de obtenerlas desde el backend.
+//
+// Requiere la cookie de sesión ASP.NET capturada del GET previo a la página.
+// Devuelve [{ codigo, descripcion, categoria, especialidad }, ...]
 async function obtenerEspecialidadesMOPviaAjax(codigo, cookieHeader) {
   if (!codigo || !cookieHeader) return [];
   const referer = `https://www.mercadopublico.cl/Procurement/Modules/RFB/DetailsAcquisition.aspx?idlicitacion=${codigo}`;
@@ -306,32 +431,47 @@ async function obtenerEspecialidadesMOPviaAjax(codigo, cookieHeader) {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Content-Type": "application/json; charset=utf-8",
         "X-Requested-With": "XMLHttpRequest",
-        "Referer": referer, "Origin": "https://www.mercadopublico.cl",
+        "Referer": referer,
+        "Origin": "https://www.mercadopublico.cl",
         "Accept": "application/json, text/javascript, */*; q=0.01",
         "Cookie": cookieHeader
       },
       body: JSON.stringify({}),
       signal: AbortSignal.timeout(10000)
     });
-    if (!r.ok) { console.warn(`[ObtenerEspecialidades] WebMethod respondió ${r.status} para ${codigo}`); return []; }
+    if (!r.ok) {
+      console.warn(`[ObtenerEspecialidades] WebMethod respondió ${r.status} para ${codigo}`);
+      return [];
+    }
     const data = await r.json();
     const items = Array.isArray(data?.d) ? data.d : [];
+
     const requisitos = [];
     const seen = new Set();
+
     for (const it of items) {
+      // Descripcion tiene formato: "Especialidad|SubEspecialidad|Categoria"
+      // Ej: "Ingeniería Civil|4.8 Obras Sanitarias.|2da"
       const partes = (it.Descripcion || "").split("|").map(s => s.trim());
       if (partes.length < 3) continue;
+
       const especialidad    = partes[0];
       const subEspecialidad = partes[1];
       const categoria       = partes[2];
+
+      // Extraer código N.N y descripción de la sub-especialidad
       const m = subEspecialidad.match(/^(\d{1,2}\.\d{1,2})\s+(.+?)\.?\s*$/);
       if (!m) continue;
+
       const codigoEspec = m[1];
       const descripcion = m[2].trim();
+
       if (seen.has(codigoEspec)) continue;
       seen.add(codigoEspec);
+
       requisitos.push({ codigo: codigoEspec, descripcion, categoria, especialidad });
     }
+
     return requisitos;
   } catch (e) {
     console.warn(`[ObtenerEspecialidades] Error para ${codigo}:`, e.message);
@@ -352,7 +492,10 @@ function formatFecha(str) {
   return String(str).substring(0, 10);
 }
 
-app.get("/", (req, res) => { res.sendFile(path.join(__dirname, "public", "index.html")); });
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
 app.get("/regiones", (req, res) => res.json(REGIONES));
 
 // ── Búsqueda Mercado Público ──────────────────────────────────────────────────
@@ -361,9 +504,16 @@ app.get("/buscar", async (req, res) => {
   const serviciosParam = (req.query.servicios || "").trim();
   const desdeParam     = req.query.desde || "todas";
   const hastaParam     = req.query.hasta || "todas";
-  if (!keywordsParam) return res.status(400).json({ error: "Parámetro keywords requerido" });
+
+  if (!keywordsParam) {
+    return res.status(400).json({ error: "Parámetro keywords requerido" });
+  }
+
   const keywords  = keywordsParam.split(",").map(k => k.trim()).filter(Boolean);
-  const servicios = serviciosParam ? serviciosParam.split(",").map(k => k.trim()).filter(Boolean) : [];
+  const servicios = serviciosParam
+    ? serviciosParam.split(",").map(k => k.trim()).filter(Boolean)
+    : [];
+
   let codigosValidos = null;
   if (desdeParam !== "todas" || hastaParam !== "todas") {
     const idxDesde = desdeParam === "todas" ? 0 : REGIONES.findIndex(r => r.codigo === desdeParam);
@@ -372,9 +522,12 @@ app.get("/buscar", async (req, res) => {
     const end   = Math.max(idxDesde < 0 ? 0 : idxDesde, idxHasta < 0 ? REGIONES.length - 1 : idxHasta);
     codigosValidos = new Set(REGIONES.slice(start, end + 1).map(r => r.codigo));
   }
+
   try {
     const controller = new AbortController();
     const timeoutId  = setTimeout(() => controller.abort(), 90000);
+
+    // UNA SOLA llamada al API — todas las licitaciones activas
     const fetchAll = async (extraParams) => {
       const usaEstado = !extraParams.includes("tipo=SC");
       const mpUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json` +
@@ -384,28 +537,49 @@ app.get("/buscar", async (req, res) => {
         if (!mpRes.ok) return [];
         const data = await mpRes.json();
         return data.Listado || [];
-      } catch (e) { if (e.name === "AbortError") throw e; return []; }
+      } catch (e) {
+        if (e.name === "AbortError") throw e;
+        return [];
+      }
     };
-    const [sinTipo, conSC] = await Promise.all([fetchAll(""), fetchAll("&tipo=SC")]);
+
+    const [sinTipo, conSC] = await Promise.all([
+      fetchAll(""),
+      fetchAll("&tipo=SC")
+    ]);
     clearTimeout(timeoutId);
+
     console.log(`[buscar] sinTipo=${sinTipo.length} conSC=${conSC.length}`);
+
+    // Fusionar y deduplicar
     const vistos = new Set();
     const licitaciones = [];
     for (const l of [...sinTipo, ...conSC]) {
       const cod = l.CodigoExterno || JSON.stringify(l);
       if (!vistos.has(cod)) { vistos.add(cod); licitaciones.push(l); }
     }
+
+    // ── Normalización ──────────────────────────────────────────────────────
     const norm = s => (s || "").toLowerCase()
       .replace(/[áàä]/g, "a").replace(/[éèë]/g, "e").replace(/[íìï]/g, "i")
       .replace(/[óòö]/g, "o").replace(/[úùü]/g, "u").replace(/ñ/g, "n")
       .replace(/['''`´]/g, "").trim();
+
+    // Stemming: cortar últimas 2 letras para palabras de 6+ chars
+    // hidráulica → hidraul | cauces → cauc | modificación → modificaci
     const stem = t => t.length >= 6 ? t.slice(0, -2) : t;
+
+    // ¿El título contiene TODOS los términos de una keyword?
     const matchesKeyword = (titulo, keyword) => {
       const tNorm = norm(titulo);
-      const terms = norm(keyword).split(/\s+/).filter(t => t.length >= 3);
+      const terms = norm(keyword)
+        .split(/\s+/)
+        .filter(t => t.length >= 3); // ignorar "de", "y", "el", etc.
       if (!terms.length) return false;
       return terms.every(t => tNorm.includes(stem(t)));
     };
+
+    // ── Palabras de exclusión — licitaciones de obras/suministros ─────────────
     const EXCLUSION = [
       "construccion de ","construcción de ","ejecucion de obras","ejecución de obras",
       "suministro de materiales","suministro e instalacion","suministro e instalación",
@@ -413,17 +587,25 @@ app.get("/buscar", async (req, res) => {
       "contrato de obras","compra de ","adquisicion de ","adquisición de ",
       "arriendo de ","arriendo de maquinaria","provision de ","provisión de "
     ];
+    // Palabras que salvan de la exclusión (son consultoría aunque digan "construcción")
     const SALVAVIDAS = [
       "inspeccion","inspección","supervision","supervisión","asesoria","asesoría",
       "estudio","consultoria","consultoría","contraparte","auditoria","auditoría",
       "diseño","proyecto de ingenieria","proyecto de ingeniería","ito"
     ];
+
     const esBloqueada = (titulo) => {
       const t = norm(titulo);
       const tieneExclusion = EXCLUSION.some(ex => t.includes(ex));
       if (!tieneExclusion) return false;
+      // Si tiene palabra de exclusión pero también de consultoría → no bloquear
       return !SALVAVIDAS.some(sv => t.includes(sv));
     };
+
+    // ── Filtro principal sobre título completo ─────────────────────────────
+    // Condición: AL MENOS UNA keyword técnica
+    //            Y AL MENOS UN tipo de servicio (si hay activos)
+    //            Y NO es licitación de obra/suministro puro
     const filtradas = licitaciones.filter(l => {
       const titulo = `${l.Nombre || ""} ${l.Descripcion || ""}`;
       if (esBloqueada(titulo)) return false;
@@ -432,6 +614,7 @@ app.get("/buscar", async (req, res) => {
       if (servicios.length === 0) return true;
       return servicios.some(s => matchesKeyword(titulo, s));
     });
+
     console.log(`[buscar] licitaciones=${licitaciones.length} filtradas=${filtradas.length} keywords=${keywords} servicios=${servicios}`);
     let resultado = filtradas.map(l => {
       const textoCompleto  = `${l.Nombre || ""} ${l.Descripcion || ""}`;
@@ -453,8 +636,14 @@ app.get("/buscar", async (req, res) => {
         divisiones:       clasificarDivisiones(titulo, regionExtraida?.codigo || null, "")
       };
     });
-    if (codigosValidos) resultado = resultado.filter(r => !r.codigoRegion || codigosValidos.has(r.codigoRegion));
+
+    // Filtrar por rango de regiones sobre lo identificado en el título
+    if (codigosValidos) {
+      resultado = resultado.filter(r => !r.codigoRegion || codigosValidos.has(r.codigoRegion));
+    }
+
     res.json({ total: resultado.length, resultados: resultado });
+
   } catch (err) {
     if (err.name === "AbortError") return res.status(504).json({ error: "Tiempo de espera agotado" });
     console.error("[buscar] Error:", err.message);
@@ -462,13 +651,16 @@ app.get("/buscar", async (req, res) => {
   }
 });
 
-// ── Búsqueda General MP ───
+// ── Búsqueda General MP (una sola llamada, filtra por todas las divisiones) ───
 app.post("/buscar-general", async (req, res) => {
-  const divisiones = req.body.divisiones || [];
+  const divisiones = req.body.divisiones || []; // [{id, keywords, servicios, regionDesde, regionHasta}]
   if (!divisiones.length) return res.status(400).json({ error: "Divisiones requeridas" });
+
   try {
     const controller = new AbortController();
     const timeoutId  = setTimeout(() => controller.abort(), 90000);
+
+    // UNA SOLA descarga de todas las licitaciones activas
     const fetchAll = async (extraParams) => {
       const usaEstado = !extraParams.includes("tipo=SC");
       const mpUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json` +
@@ -480,14 +672,19 @@ app.post("/buscar-general", async (req, res) => {
         return data.Listado || [];
       } catch(e) { if(e.name==="AbortError") throw e; return []; }
     };
+
     const [sinTipo, conSC] = await Promise.all([fetchAll(""), fetchAll("&tipo=SC")]);
     clearTimeout(timeoutId);
+
+    // Deduplicar pool total
     const vistos = new Set();
     const pool   = [];
     for (const l of [...sinTipo, ...conSC]) {
       const cod = l.CodigoExterno || JSON.stringify(l);
       if (!vistos.has(cod)) { vistos.add(cod); pool.push(l); }
     }
+
+    // Normalización y stemming
     const norm = s => (s || "").toLowerCase()
       .replace(/[áàä]/g,"a").replace(/[éèë]/g,"e").replace(/[íìï]/g,"i")
       .replace(/[óòö]/g,"o").replace(/[úùü]/g,"u").replace(/ñ/g,"n")
@@ -499,6 +696,8 @@ app.post("/buscar-general", async (req, res) => {
       if (!terms.length) return false;
       return terms.every(t => tNorm.includes(stem(t)));
     };
+
+    // ── Exclusión obras/suministros ───────────────────────────────────────
     const EXCLUSION = [
       "construccion de ","construcción de ","ejecucion de obras","ejecución de obras",
       "suministro de materiales","suministro e instalacion","suministro e instalación",
@@ -517,27 +716,35 @@ app.post("/buscar-general", async (req, res) => {
       if (!tieneExclusion) return false;
       return !SALVAVIDAS.some(sv => t.includes(sv));
     };
+
     const mapItem = l => {
       const textoCompleto  = `${l.Nombre || ""} ${l.Descripcion || ""}`;
       const regionExtraida = extraerRegionDeTexto(textoCompleto);
       const titulo = l.Nombre || "Sin título";
       return {
-        titulo, codigo: l.CodigoExterno || "", organismo: "–",
-        region: regionExtraida?.nombre || null,
-        codigoRegion: regionExtraida?.codigo || null,
-        estado: estadoTexto(l.CodigoEstado),
+        titulo,
+        codigo:          l.CodigoExterno || "",
+        organismo:       "–",
+        region:          regionExtraida?.nombre || null,
+        codigoRegion:    regionExtraida?.codigo || null,
+        estado:          estadoTexto(l.CodigoEstado),
         fechaPublicacion: formatFecha(l.FechaPublicacion),
-        fechaCierre: formatFecha(l.FechaCierre),
-        monto: null, descripcion: l.Descripcion || "",
-        url: `https://www.mercadopublico.cl/Procurement/Modules/RFB/DetailsAcquisition.aspx?idlicitacion=${l.CodigoExterno}`,
-        fuente: "Mercado Público",
-        divisiones: clasificarDivisiones(titulo, regionExtraida?.codigo || null, "")
+        fechaCierre:     formatFecha(l.FechaCierre),
+        monto:           null,
+        descripcion:     l.Descripcion || "",
+        url:             `https://www.mercadopublico.cl/Procurement/Modules/RFB/DetailsAcquisition.aspx?idlicitacion=${l.CodigoExterno}`,
+        fuente:          "Mercado Público",
+        divisiones:      clasificarDivisiones(titulo, regionExtraida?.codigo || null, "")
       };
     };
+
+    // Filtrar pool por cada división
     const resultados = {};
     for (const div of divisiones) {
       const { id, keywords, servicios, regionDesde, regionHasta } = div;
       if (!keywords?.length) { resultados[id] = []; continue; }
+
+      // Filtro región
       let codigosValidos = null;
       if (regionDesde !== "todas" || regionHasta !== "todas") {
         const idxD = regionDesde === "todas" ? 0 : REGIONES.findIndex(r => r.codigo === regionDesde);
@@ -546,6 +753,8 @@ app.post("/buscar-general", async (req, res) => {
         const e = Math.max(idxD<0?0:idxD, idxH<0?REGIONES.length-1:idxH);
         codigosValidos = new Set(REGIONES.slice(s,e+1).map(r => r.codigo));
       }
+
+      // Filtro keywords + exclusión
       const filtradas = pool.filter(l => {
         const titulo = `${l.Nombre || ""} ${l.Descripcion || ""}`;
         if (esBloqueada(titulo)) return false;
@@ -554,8 +763,13 @@ app.post("/buscar-general", async (req, res) => {
         if (!servicios?.length) return true;
         return servicios.some(s => matchKw(titulo, s));
       });
+
       let mapped = filtradas.map(mapItem);
-      if (codigosValidos) mapped = mapped.filter(r => !r.codigoRegion || codigosValidos.has(r.codigoRegion));
+      if (codigosValidos) {
+        mapped = mapped.filter(r => !r.codigoRegion || codigosValidos.has(r.codigoRegion));
+      }
+
+      // Deduplicar por título normalizado
       const seen = new Set();
       resultados[id] = mapped.filter(r => {
         const k = norm(r.titulo);
@@ -563,12 +777,15 @@ app.post("/buscar-general", async (req, res) => {
         seen.add(k); return true;
       });
     }
+
     res.json({ ok: true, resultados, total: pool.length });
+
   } catch(err) {
     if(err.name==="AbortError") return res.status(504).json({ error:"Tiempo de espera agotado" });
     res.status(500).json({ error: err.message });
   }
 });
+
 
 app.get("/buscar-organismo", async (req, res) => {
   const codigoOrganismo = (req.query.organismo || "").trim();
@@ -576,7 +793,9 @@ app.get("/buscar-organismo", async (req, res) => {
   const servicios       = (req.query.servicios || "").trim().split(",").map(k => k.trim()).filter(Boolean);
   const desdeParam      = req.query.desde || "todas";
   const hastaParam      = req.query.hasta || "todas";
+
   if (!codigoOrganismo) return res.status(400).json({ error: "Parámetro organismo requerido" });
+
   let codigosValidos = null;
   if (desdeParam !== "todas" || hastaParam !== "todas") {
     const idxDesde = desdeParam === "todas" ? 0 : REGIONES.findIndex(r => r.codigo === desdeParam);
@@ -585,16 +804,21 @@ app.get("/buscar-organismo", async (req, res) => {
     const end   = Math.max(idxDesde < 0 ? 0 : idxDesde, idxHasta < 0 ? REGIONES.length - 1 : idxHasta);
     codigosValidos = new Set(REGIONES.slice(start, end + 1).map(r => r.codigo));
   }
+
   try {
     const controller = new AbortController();
     const timeoutId  = setTimeout(() => controller.abort(), 90000);
+
     const mpUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json` +
                   `?estado=activas&codigoOrganismo=${codigoOrganismo}&ticket=${TICKET}`;
+
     const mpRes = await fetch(mpUrl, { signal: controller.signal });
     clearTimeout(timeoutId);
     if (!mpRes.ok) return res.json({ total: 0, resultados: [] });
     const data = await mpRes.json();
     let licitaciones = data.Listado || [];
+
+    // Normalización y filtro por keywords si se proporcionan
     const norm = s => (s || "").toLowerCase()
       .replace(/[áàä]/g, "a").replace(/[éèë]/g, "e").replace(/[íìï]/g, "i")
       .replace(/[óòö]/g, "o").replace(/[úùü]/g, "u").replace(/ñ/g, "n")
@@ -606,6 +830,8 @@ app.get("/buscar-organismo", async (req, res) => {
       if (!terms.length) return false;
       return terms.every(t => tNorm.includes(stem(t)));
     };
+
+    // Si hay keywords, filtrar — si no, devolver todas las del organismo
     let filtradas = licitaciones;
     if (keywords.length > 0) {
       filtradas = licitaciones.filter(l => {
@@ -616,36 +842,49 @@ app.get("/buscar-organismo", async (req, res) => {
         return servicios.some(s => matchesKw(titulo, s));
       });
     }
+
+    // Mapear resultados
     let resultado = filtradas.map(l => {
       const textoCompleto  = `${l.Nombre || ""} ${l.Descripcion || ""}`;
       const regionExtraida = extraerRegionDeTexto(textoCompleto);
       const titulo         = l.Nombre || "Sin título";
       return {
-        titulo, codigo: l.CodigoExterno || "", organismo: "–",
-        region: regionExtraida?.nombre || null,
-        codigoRegion: regionExtraida?.codigo || null,
-        estado: estadoTexto(l.CodigoEstado),
+        titulo,
+        codigo:           l.CodigoExterno || "",
+        organismo:        "–",
+        region:           regionExtraida?.nombre || null,
+        codigoRegion:     regionExtraida?.codigo || null,
+        estado:           estadoTexto(l.CodigoEstado),
         fechaPublicacion: formatFecha(l.FechaPublicacion),
-        fechaCierre: formatFecha(l.FechaCierre),
-        monto: null, descripcion: l.Descripcion || "",
-        url: `https://www.mercadopublico.cl/Procurement/Modules/RFB/DetailsAcquisition.aspx?idlicitacion=${l.CodigoExterno}`,
-        fuente: "Mercado Público",
-        divisiones: clasificarDivisiones(titulo, regionExtraida?.codigo || null, "")
+        fechaCierre:      formatFecha(l.FechaCierre),
+        monto:            null,
+        descripcion:      l.Descripcion || "",
+        url:              `https://www.mercadopublico.cl/Procurement/Modules/RFB/DetailsAcquisition.aspx?idlicitacion=${l.CodigoExterno}`,
+        fuente:           "Mercado Público",
+        divisiones:       clasificarDivisiones(titulo, regionExtraida?.codigo || null, "")
       };
     });
-    if (codigosValidos) resultado = resultado.filter(r => !r.codigoRegion || codigosValidos.has(r.codigoRegion));
+
+    if (codigosValidos) {
+      resultado = resultado.filter(r => !r.codigoRegion || codigosValidos.has(r.codigoRegion));
+    }
+
     res.json({ total: resultado.length, resultados: resultado });
+
   } catch (err) {
     if (err.name === "AbortError") return res.status(504).json({ error: "Tiempo de espera agotado" });
     res.status(500).json({ error: err.message });
   }
 });
 
+
 app.post("/detalle-lote", async (req, res) => {
   const { codigos } = req.body;
   if (!codigos || !Array.isArray(codigos)) return res.status(400).json({ error: "codigos requerido" });
+
   const resultados = {};
-  const BATCH = 10;
+  const BATCH = 10; // 10 fetches en paralelo (antes 5). MP soporta esto sin rate-limiting.
+
   for (let i = 0; i < codigos.length; i += BATCH) {
     const lote = codigos.slice(i, i + BATCH);
     await Promise.all(lote.map(async codigo => {
@@ -657,7 +896,8 @@ app.post("/detalle-lote", async (req, res) => {
         const l = data.Listado?.[0];
         if (!l) return;
         const regionTexto = l.Comprador?.RegionUnidad || "";
-        const regionExtraida = extraerRegionDeTexto(regionTexto) || extraerRegionDeTexto(`${l.Nombre||""} ${l.Descripcion||""}`);
+        const regionExtraida = extraerRegionDeTexto(regionTexto) ||
+                               extraerRegionDeTexto(`${l.Nombre||""} ${l.Descripcion||""}`);
         resultados[codigo] = {
           organismo:  l.Comprador?.NombreOrganismo || null,
           region:     regionTexto || regionExtraida?.nombre || null,
@@ -667,6 +907,7 @@ app.post("/detalle-lote", async (req, res) => {
       } catch(e) {}
     }));
   }
+
   res.json({ resultados });
 });
 
@@ -683,7 +924,8 @@ app.get("/detalle/:codigo", async (req, res) => {
     const l = data.Listado?.[0];
     if (!l) return res.status(404).json({ error: "No encontrada" });
     const regionTexto    = l.Comprador?.RegionUnidad || "";
-    const regionExtraida = extraerRegionDeTexto(regionTexto) || extraerRegionDeTexto(`${l.Nombre || ""} ${l.Descripcion || ""}`);
+    const regionExtraida = extraerRegionDeTexto(regionTexto) ||
+                           extraerRegionDeTexto(`${l.Nombre || ""} ${l.Descripcion || ""}`);
     res.json({
       organismo:     l.Comprador?.NombreOrganismo || "–",
       region:        regionTexto || regionExtraida?.nombre || null,
@@ -691,9 +933,12 @@ app.get("/detalle/:codigo", async (req, res) => {
       monto:         l.MontoEstimado ? `$${Number(l.MontoEstimado).toLocaleString("es-CL")} CLP` : null,
       descripcion:   l.Descripcion || ""
     });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
+// ── DEBUG: devuelve el JSON crudo del API de MP para inspeccionar campos ─────
 app.get("/detalle-raw/:codigo", async (req, res) => {
   try {
     const url = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?codigo=${req.params.codigo}&ticket=${TICKET}`;
@@ -701,18 +946,27 @@ app.get("/detalle-raw/:codigo", async (req, res) => {
     if (!r.ok) return res.status(r.status).json({ error: `API MP ${r.status}` });
     const data = await r.json();
     res.json(data.Listado?.[0] || { error: "No encontrada", raw: data });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
+// ── DEBUG: probar el WebMethod ObtenerEspecialidades con varios payloads ─────
+// Captura cookies de sesión primero (haciendo GET a la página principal),
+// luego POST al WebMethod con 6 formatos típicos de ASP.NET para descubrir
+// cuál responde con los datos reales de especialidades.
 app.get("/debug-ajax-mop/:codigo", async (req, res) => {
   const codigo = req.params.codigo;
   const base = "https://www.mercadopublico.cl";
   const referer = `${base}/Procurement/Modules/RFB/DetailsAcquisition.aspx?idlicitacion=${codigo}`;
   const ajaxUrl = `${base}/Procurement/Modules/RFB/DetailsAcquisition.aspx/ObtenerEspecialidades`;
+
   const browserHeaders = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Accept-Language": "es-CL,es;q=0.9",
   };
+
+  // Paso 1: GET a la página principal para obtener cookies de sesión
   let cookieHeader = "";
   let getStatus = null;
   try {
@@ -722,42 +976,55 @@ app.get("/debug-ajax-mop/:codigo", async (req, res) => {
     });
     getStatus = pageRes.status;
     const setCookies = pageRes.headers.raw ? pageRes.headers.raw()["set-cookie"] : null;
-    if (setCookies && setCookies.length) cookieHeader = setCookies.map(c => c.split(";")[0]).join("; ");
-  } catch (e) { return res.status(500).json({ error: `GET inicial falló: ${e.message}` }); }
+    if (setCookies && setCookies.length) {
+      cookieHeader = setCookies.map(c => c.split(";")[0]).join("; ");
+    }
+  } catch (e) {
+    return res.status(500).json({ error: `GET inicial falló: ${e.message}` });
+  }
+
+  // Paso 2: POST al WebMethod con varios payloads
   const ajaxHeaders = {
     ...browserHeaders,
     "Content-Type": "application/json; charset=utf-8",
     "X-Requested-With": "XMLHttpRequest",
-    "Referer": referer, "Origin": base,
+    "Referer": referer,
+    "Origin": base,
     "Accept": "application/json, text/javascript, */*; q=0.01",
     ...(cookieHeader ? { "Cookie": cookieHeader } : {})
   };
+
   const payloads = [
-    { nombre: "vacio", data: {} },
-    { nombre: "codigo", data: { codigo } },
-    { nombre: "idLicitacion", data: { idLicitacion: codigo } },
-    { nombre: "id", data: { id: codigo } },
+    { nombre: "vacio",         data: {} },
+    { nombre: "codigo",        data: { codigo } },
+    { nombre: "idLicitacion",  data: { idLicitacion: codigo } },
+    { nombre: "id",            data: { id: codigo } },
     { nombre: "codigoExterno", data: { codigoExterno: codigo } },
-    { nombre: "_id", data: { _id: codigo } }
+    { nombre: "_id",           data: { _id: codigo } }
   ];
+
   const resultados = [];
   for (const p of payloads) {
     try {
       const r = await fetch(ajaxUrl, {
-        method: "POST", headers: ajaxHeaders,
+        method: "POST",
+        headers: ajaxHeaders,
         body: JSON.stringify(p.data),
         signal: AbortSignal.timeout(10000)
       });
       const text = await r.text();
       resultados.push({
-        variante: p.nombre, body_enviado: p.data,
-        status: r.status, content_type: r.headers.get("content-type"),
+        variante: p.nombre,
+        body_enviado: p.data,
+        status: r.status,
+        content_type: r.headers.get("content-type"),
         respuesta_primeros_800_chars: text.substring(0, 800)
       });
     } catch (e) {
       resultados.push({ variante: p.nombre, body_enviado: p.data, error: e.message });
     }
   }
+
   res.json({
     paso1_get_pagina: { url: referer, status: getStatus, cookies_capturadas: cookieHeader || "(ninguna)" },
     paso2_post_webmethod: { url: ajaxUrl, headers_enviados: ajaxHeaders },
@@ -765,6 +1032,8 @@ app.get("/debug-ajax-mop/:codigo", async (req, res) => {
   });
 });
 
+// ── DEBUG: descarga el HTML de la ficha de MP y diagnostica el extractor ─────
+// Uso: abrir https://backend-licitaciones.onrender.com/debug-mop/1063487-10-O126
 app.get("/debug-mop/:codigo", async (req, res) => {
   const codigo = req.params.codigo;
   const url = `https://www.mercadopublico.cl/Procurement/Modules/RFB/DetailsAcquisition.aspx?idlicitacion=${codigo}`;
@@ -775,6 +1044,10 @@ app.get("/debug-mop/:codigo", async (req, res) => {
     });
     const status = mpRes.status;
     const html = await mpRes.text();
+
+    // ── Búsquedas de texto en TODO el HTML ─────────────────────────────────
+    // Si los datos están escondidos en cualquier parte (script, hidden, otra
+    // tabla), aparecerán aquí. Si NO aparecen, confirma que es AJAX.
     const buscarEnHTML = (termino) => {
       const lower = html.toLowerCase();
       const t = termino.toLowerCase();
@@ -783,39 +1056,61 @@ app.get("/debug-mop/:codigo", async (req, res) => {
       while ((idx = lower.indexOf(t, idx)) !== -1 && matches.length < 5) {
         const inicio = Math.max(0, idx - 80);
         const fin = Math.min(html.length, idx + termino.length + 80);
-        matches.push({ posicion: idx, contexto: html.substring(inicio, fin).replace(/\s+/g, " ").trim() });
+        matches.push({
+          posicion: idx,
+          contexto: html.substring(inicio, fin).replace(/\s+/g, " ").trim()
+        });
         idx += termino.length;
       }
       return { ocurrencias: matches.length, matches };
     };
+
+    // ── Listar scripts grandes (>1KB) que podrían contener datos ──────────
     const scriptMatches = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)];
     const scriptsRelevantes = scriptMatches
       .map(m => ({ tamaño: m[1].length, primeros300: m[1].substring(0, 300).replace(/\s+/g, " ").trim() }))
       .filter(s => s.tamaño > 1000)
-      .sort((a, b) => b.tamaño - a.tamaño).slice(0, 5);
+      .sort((a, b) => b.tamaño - a.tamaño)
+      .slice(0, 5);
+
+    // ── Scripts COMPLETOS que mencionan tblEspecialidades (clave para encontrar el endpoint AJAX) ──
     const scriptsConTabla = scriptMatches
       .map(m => m[1])
       .filter(s => s.includes("tblEspecialidades") || s.includes("MostrarEsp") || /especialidad/i.test(s))
       .map(s => s.length > 8000 ? s.substring(0, 8000) + "...[TRUNCADO]" : s);
+
+    // ── Extraer URLs y endpoints AJAX de los scripts ─────────────────────
     const allScriptsText = scriptMatches.map(m => m[1]).join("\n");
     const urlsAjax = new Set();
+    // Patrón 1: url: "..." o url:'...'
     [...allScriptsText.matchAll(/url\s*:\s*['"]([^'"]+)['"]/gi)].forEach(m => urlsAjax.add(m[1]));
+    // Patrón 2: cualquier .aspx/Method o webservice path
     [...allScriptsText.matchAll(/['"]([^'"]*\.aspx\/[A-Za-z0-9_]+)['"]/gi)].forEach(m => urlsAjax.add(m[1]));
     [...allScriptsText.matchAll(/['"]([^'"]*\.asmx\/[A-Za-z0-9_]+)['"]/gi)].forEach(m => urlsAjax.add(m[1]));
     [...allScriptsText.matchAll(/['"]([^'"]*WebService[^'"]*)['"]/gi)].forEach(m => urlsAjax.add(m[1]));
+    // Patrón 3: PageMethods (típico de ASP.NET ScriptManager)
     [...allScriptsText.matchAll(/PageMethods\.([A-Za-z0-9_]+)/g)].forEach(m => urlsAjax.add("PageMethods." + m[1]));
+
+    // ── Buscar campos hidden con datos ─────────────────────────────────────
     const inputsHidden = [...html.matchAll(/<input[^>]+type\s*=\s*["']hidden["'][^>]*>/gi)]
       .map(m => m[0].substring(0, 200))
-      .filter(s => /especial|categor|mop/i.test(s)).slice(0, 10);
+      .filter(s => /especial|categor|mop/i.test(s))
+      .slice(0, 10);
+
+    // ── Diagnóstico de la tabla específica ────────────────────────────────
     const tablaMatch = html.match(/<table[^>]*id\s*=\s*["']tblEspecialidades["'][^>]*>([\s\S]*?)<\/table>/i);
     const requisitos = extraerEspecialidadesMOP(html);
+
     res.json({
-      url, status, tamaño_html: html.length,
+      url,
+      status,
+      tamaño_html: html.length,
+      // Lo más importante: ¿están los datos esperados en el HTML?
       busqueda_datos_esperados: {
-        "4.8": buscarEnHTML("4.8"),
+        "4.8":              buscarEnHTML("4.8"),
         "Obras Sanitarias": buscarEnHTML("Obras Sanitarias"),
-        "2da": buscarEnHTML("2da"),
-        "tblEspecialidades": buscarEnHTML("tblEspecialidades")
+        "2da":              buscarEnHTML("2da"),
+        "tblEspecialidades":buscarEnHTML("tblEspecialidades")
       },
       tabla_tblEspecialidades: tablaMatch ? tablaMatch[0] : null,
       requisitos_extraidos_por_extractor: requisitos,
@@ -826,23 +1121,35 @@ app.get("/debug-mop/:codigo", async (req, res) => {
       inputs_hidden_relacionados: inputsHidden,
       primeros_500_chars: html.substring(0, 500)
     });
-  } catch (err) { res.status(500).json({ error: err.message, url }); }
+  } catch (err) {
+    res.status(500).json({ error: err.message, url });
+  }
 });
 
+// ── Validar Registro de Consultores MOP de LEN ───────────────────────────────
+// Recibe { requisitos: [{ codigo: "4.8", descripcion: "Obras Sanitarias", categoria: "2da" }] }
+// Devuelve { califica, fallas, diasVigencia, avisoVigencia }
 app.post("/mp/validar-registro-mop", (req, res) => {
   res.json(validarRegistroMOP(req.body.requisitos || []));
 });
 
+// ── Helpers para extraer texto limpio del HTML de MP ─────────────────────────
 function extraerTextoMP(html) {
+  // Eliminar scripts, styles y comentarios
   let texto = html
     .replace(/<script[\s\S]*?<\/script>/gi, "")
     .replace(/<style[\s\S]*?<\/style>/gi, "")
     .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/<[^>]+>/g, " ")         // quitar tags HTML
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
-    .replace(/\s{2,}/g, " ").trim();
+    .replace(/\s{2,}/g, " ")          // colapsar espacios múltiples
+    .trim();
+
+  // Recortar a 6000 caracteres para no exceder contexto de GPT-4o
   return texto.length > 6000 ? texto.substring(0, 6000) + "..." : texto;
 }
 
@@ -855,6 +1162,9 @@ app.post("/mp/analizar", async (req, res) => {
   if (!item) return res.status(400).json({ error: "item requerido" });
 
   // ── Cache lookup ─────────────────────────────────────────────────────────
+  // Si la licitación ya fue analizada antes y no se pide reanálisis explícito,
+  // devolvemos el resultado cacheado sin llamar a GPT. Esto evita gastar
+  // tokens en la misma licitación múltiples veces.
   if (item.codigo && !forzarReanalisis) {
     try {
       const cacheRes = await fetch(
@@ -865,13 +1175,24 @@ app.post("/mp/analizar", async (req, res) => {
         const data = await cacheRes.json();
         if (data.length > 0) {
           console.log(`[analizar] Cache HIT para ${item.codigo} (creado ${data[0].creado_en})`);
-          return res.json({ analysis: data[0].analisis, cached: true, cacheCreadoEn: data[0].creado_en });
+          return res.json({
+            analysis: data[0].analisis,
+            cached: true,
+            cacheCreadoEn: data[0].creado_en
+          });
         }
       }
-    } catch (e) { console.warn(`[analizar] Cache lookup falló: ${e.message}`); }
+    } catch (e) {
+      console.warn(`[analizar] Cache lookup falló: ${e.message}`);
+      // Continuar con análisis normal si el cache falla
+    }
   }
 
   // ── Enriquecer datos desde el API de ChileCompra ─────────────────────────
+  // El item del frontend a veces no trae monto, organismo completo o región.
+  // El API de MP sí los tiene en campos confiables, así que los pedimos antes
+  // de armar el prompt para que GPT no diga "no especificado" cuando sí hay
+  // datos disponibles.
   let datosAPI = {};
   if (item.codigo) {
     try {
@@ -896,13 +1217,15 @@ app.post("/mp/analizar", async (req, res) => {
           };
         }
       }
-    } catch (e) { console.warn("[mp/analizar] No se pudo enriquecer desde API:", e.message); }
+    } catch (e) {
+      console.warn("[mp/analizar] No se pudo enriquecer desde API:", e.message);
+    }
   }
 
   // ── Paso 1: Fetch de la página de MP para obtener contenido completo ────────
   let contenidoMP = "";
   let htmlCompleto = "";
-  let cookieHeader = "";
+  let cookieHeader = "";  // Cookies de sesión ASP.NET, necesarias para el WebMethod AJAX
   if (item.url) {
     try {
       const mpPage = await fetch(item.url, {
@@ -916,23 +1239,40 @@ app.post("/mp/analizar", async (req, res) => {
       if (mpPage.ok) {
         htmlCompleto = await mpPage.text();
         contenidoMP = extraerTextoMP(htmlCompleto);
+        // Capturar cookies de sesión para llamar luego al WebMethod ObtenerEspecialidades
         const setCookies = mpPage.headers.raw ? mpPage.headers.raw()["set-cookie"] : null;
-        if (setCookies && setCookies.length) cookieHeader = setCookies.map(c => c.split(";")[0]).join("; ");
+        if (setCookies && setCookies.length) {
+          cookieHeader = setCookies.map(c => c.split(";")[0]).join("; ");
+        }
       }
-    } catch (e) { console.warn("[mp/analizar] No se pudo obtener página MP:", e.message); }
+    } catch (e) {
+      console.warn("[mp/analizar] No se pudo obtener página MP:", e.message);
+    }
   }
 
   // ── Paso 2: PRE-FILTRO Registro MOP ─────────────────────────────────────────
+  // Caso A: obtenemos las especialidades específicas (vía SSR o WebMethod AJAX)
+  //         → validar contra LEN_REGISTRO_MOP
+  // Caso B: no podemos extraer especialidades pero el flag IndicadorEsMOP está
+  //         activo → mostrar panel pendiente sin gastar tokens
+  // Caso C: no requiere MOP → seguir con análisis IA normal
+  //
+  // Estrategia para extraer: primero intentar desde el HTML (por si MP cambia
+  // y los datos vuelven a venir en SSR). Si no hay datos, llamar al WebMethod
+  // AJAX `ObtenerEspecialidades` con la cookie de sesión capturada.
   let requisitosMOP = extraerEspecialidadesMOP(htmlCompleto);
   if (requisitosMOP.length === 0 && cookieHeader && item.codigo) {
     requisitosMOP = await obtenerEspecialidadesMOPviaAjax(item.codigo, cookieHeader);
   }
   const requiereMOP = requiereRegistroMOP(htmlCompleto);
 
+  // Caso A: tenemos las especialidades específicas
   if (requisitosMOP.length > 0) {
     const validacion = validarRegistroMOP(requisitosMOP);
     if (!validacion.califica) {
-      const listaReq = requisitosMOP.map(r => `   • ${r.codigo} ${r.descripcion} — Categoría ${r.categoria}`).join("\n");
+      const listaReq = requisitosMOP
+        .map(r => `   • ${r.codigo} ${r.descripcion} — Categoría ${r.categoria}`)
+        .join("\n");
       const listaFallas = validacion.fallas.map(f => `   ⚠️ ${f}`).join("\n");
       const aviso = validacion.avisoVigencia ? `\n${validacion.avisoVigencia}\n` : "";
       const analysis =
@@ -949,13 +1289,23 @@ ${aviso}
 LEN quedaría fuera de bases automáticamente. El análisis IA fue omitido para no consumir tokens de OpenAI.
 
 Si crees que esto es un error o quieres revisar igualmente, abre la licitación con "Ver en MP" y verifica el recuadro "Especialidades y categorías".`;
-      return res.json({ descartado: true, motivo: "No cumple Registro MOP", requisitos_mop: requisitosMOP, validacion, analysis });
+
+      return res.json({
+        descartado: true,
+        motivo: "No cumple Registro MOP",
+        requisitos_mop: requisitosMOP,
+        validacion,
+        analysis
+      });
     }
-  } else if (requiereMOP) {
+  }
+  // Caso B: requiere MOP pero no podemos verificar especialidades específicas
+  else if (requiereMOP) {
     const especialidadesLEN = Object.keys(LEN_REGISTRO_MOP.especialidades)
       .sort((a, b) => parseFloat(a) - parseFloat(b))
       .map(c => `   • ${c} — ${NOMBRE_CATEGORIA[LEN_REGISTRO_MOP.especialidades[c]]}`)
       .join("\n");
+
     const analysis =
 `🟡 LICITACIÓN PENDIENTE DE VERIFICACIÓN MANUAL
 
@@ -976,17 +1326,36 @@ ${especialidadesLEN}
 ⏳ Vigencia del registro: hasta ${LEN_REGISTRO_MOP.vigente_hasta}
 
 Si tras la verificación manual confirmas que LEN califica, podemos analizar la licitación más adelante (cuando se implemente el extractor de bases PDF o se identifique el endpoint AJAX de MP).`;
-    return res.json({ descartado: true, motivo: "Requiere Registro MOP — verificación manual pendiente", requiere_mop: true, verificacion_pendiente: true, analysis });
+
+    return res.json({
+      descartado: true,
+      motivo: "Requiere Registro MOP — verificación manual pendiente",
+      requiere_mop: true,
+      verificacion_pendiente: true,
+      analysis
+    });
   }
+  // Caso C: no requiere MOP → seguir con análisis IA normal
 
   // ── Extraer monto desde el HTML del sitio MP (si la API no lo trajo) ────
+  // Busca patrones tipo "Monto Total Estimado: 347718000" o "Monto Total
+  // Estimado: $347.718.000". A veces la API devuelve 0 y este monto sí
+  // aparece en la sección "7. Montos y duración del contrato" del HTML.
   let montoExtraidoHTML = 0;
   let baseEstimacionHTML = null;
   if (htmlCompleto) {
+    // Limpiar HTML para texto plano
     const textoMP = htmlCompleto
       .replace(/<script[\s\S]*?<\/script>/gi, "")
       .replace(/<style[\s\S]*?<\/style>/gi, "")
-      .replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ");
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/g, " ")
+      .replace(/\s+/g, " ");
+    
+    // Patrones (ordenados de más específico a más genérico)
+    // 1) "Monto Total Estimado: 347718000" (sin formato)
+    // 2) "Monto Total Estimado: $347.718.000" (con formato CLP)
+    // 3) "Monto Total Estimado: 347.718.000"
     const patrones = [
       /Monto\s*Total\s*Estimado\s*[:.]?\s*\$?\s*([\d.,]+)/i,
       /Monto\s*Estimado\s*[:.]?\s*\$?\s*([\d.,]+)/i,
@@ -996,19 +1365,27 @@ Si tras la verificación manual confirmas que LEN califica, podemos analizar la 
     for (const pat of patrones) {
       const m = textoMP.match(pat);
       if (m) {
+        // Limpiar el número: quitar puntos como separador de miles, mantener dígitos
         const numStr = m[1].replace(/\./g, "").replace(/,/g, "");
         const num = parseInt(numStr, 10);
         if (!isNaN(num) && num > 0) {
           montoExtraidoHTML = num;
+          // Detectar la base de la estimación
           const ctx = textoMP.substring(Math.max(0, m.index - 200), m.index);
-          if (/Estimaci[oó]n\s*en\s*base\s*a\s*[:.]?\s*Presupuesto\s*Disponible/i.test(ctx)) baseEstimacionHTML = "Presupuesto Disponible";
-          else if (/Estimaci[oó]n\s*en\s*base\s*a\s*[:.]?\s*Monto\s*Referencial/i.test(ctx)) baseEstimacionHTML = "Monto Referencial";
-          else if (/Estimaci[oó]n\s*en\s*base\s*a\s*[:.]?\s*Monto\s*Estimado/i.test(ctx)) baseEstimacionHTML = "Monto Estimado";
+          if (/Estimaci[oó]n\s*en\s*base\s*a\s*[:.]?\s*Presupuesto\s*Disponible/i.test(ctx)) {
+            baseEstimacionHTML = "Presupuesto Disponible";
+          } else if (/Estimaci[oó]n\s*en\s*base\s*a\s*[:.]?\s*Monto\s*Referencial/i.test(ctx)) {
+            baseEstimacionHTML = "Monto Referencial";
+          } else if (/Estimaci[oó]n\s*en\s*base\s*a\s*[:.]?\s*Monto\s*Estimado/i.test(ctx)) {
+            baseEstimacionHTML = "Monto Estimado";
+          }
           break;
         }
       }
     }
   }
+
+  // Combinar: usar API primero, HTML después
   const montoFinal = datosAPI.montoEstimado > 0 ? datosAPI.montoEstimado : montoExtraidoHTML;
   const fuenteMonto = datosAPI.montoEstimado > 0
     ? `API ChileCompra (${datosAPI.tipoEstimacion})`
@@ -1017,9 +1394,17 @@ Si tras la verificación manual confirmas que LEN califica, podemos analizar la 
       : null;
 
   // ── Pre-cálculo de la división LEN sugerida (texto enriquecido) ─────────
+  // El clasificador del sistema mira título + organismo + región + texto del
+  // sitio + especialidades MOP. Esta división calculada se inyecta al prompt
+  // de GPT como dato fijo, para que GPT NO invente otra división arbitraria
+  // (lo cual generaba contradicciones entre la pestaña activa y el análisis).
   const textoParaClasif = [
-    item.titulo || "", item.organismo || "", item.region || "", contenidoMP || ""
-  ].filter(Boolean).join(" | ").substring(0, 6000);
+    item.titulo || "",
+    item.organismo || "",
+    item.region || "",
+    contenidoMP || ""
+  ].filter(Boolean).join(" | ").substring(0, 6000); // cap de seguridad
+  // Determinar codigoRegion si tenemos texto de región
   let codigoRegionAnalizar = item.codigoRegion || null;
   if (!codigoRegionAnalizar && item.region) {
     const r = REGIONES.find(reg => item.region.toLowerCase().includes(reg.oficial));
@@ -1042,7 +1427,10 @@ Si tras la verificación manual confirmas que LEN califica, podemos analizar la 
   try {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${OPENAI_KEY}` },
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${OPENAI_KEY}`
+      },
       body: JSON.stringify({
         model: "gpt-4o",
         max_tokens: 2000,
@@ -1205,33 +1593,38 @@ Si no hay alertas relevantes, indica "Sin alertas críticas".`
     const data = await response.json();
     const text = data.choices?.[0]?.message?.content || "No se pudo obtener el análisis.";
 
+    // Guardar en cache para evitar re-gastar tokens en futuras consultas
     if (item.codigo && text && !text.startsWith("No se pudo")) {
       try {
-        await fetch(`${SUPABASE_URL}/rest/v1/analisis_cache`, {
-          method: "POST",
-          headers: { ...SUPABASE_HEADERS, "Prefer": "resolution=merge-duplicates" },
-          body: JSON.stringify({ codigo: item.codigo, analisis: text, creado_en: new Date().toISOString() }),
-          signal: AbortSignal.timeout(5000)
-        });
+        // Upsert: crea si no existe, sobreescribe si ya existe (caso forzarReanalisis)
+        await fetch(
+          `${SUPABASE_URL}/rest/v1/analisis_cache`,
+          {
+            method: "POST",
+            headers: { ...SUPABASE_HEADERS, "Prefer": "resolution=merge-duplicates" },
+            body: JSON.stringify({ codigo: item.codigo, analisis: text, creado_en: new Date().toISOString() }),
+            signal: AbortSignal.timeout(5000)
+          }
+        );
         console.log(`[analizar] Análisis cacheado para ${item.codigo}`);
-        await fetch(`${SUPABASE_URL}/rest/v1/licitaciones?codigo=eq.${encodeURIComponent(item.codigo)}`, {
-          method: "PATCH",
-          headers: SUPABASE_HEADERS,
-          body: JSON.stringify({ analisis_ia_completo: text }),
-          signal: AbortSignal.timeout(5000)
-        });
-      } catch (e) { console.warn(`[analizar] No se pudo cachear ${item.codigo}: ${e.message}`); }
+
+        // Si la licitación ya está en el gestor, sincronizar el campo analisis_ia_completo
+        // Esto cubre el caso de re-análisis o licitaciones guardadas antes de tener cache.
+        await fetch(
+          `${SUPABASE_URL}/rest/v1/licitaciones?codigo=eq.${encodeURIComponent(item.codigo)}`,
+          {
+            method: "PATCH",
+            headers: SUPABASE_HEADERS,
+            body: JSON.stringify({ analisis_ia_completo: text }),
+            signal: AbortSignal.timeout(5000)
+          }
+        );
+      } catch (e) {
+        console.warn(`[analizar] No se pudo cachear ${item.codigo}: ${e.message}`);
+      }
     }
 
-    // ✦ CAMBIO: devolver también la división pre-calculada (con HTML completo)
-    // para que /mp/guardar-gestor pueda heredarla y mantener consistencia 1:1
-    // entre lo que el análisis IA muestra y lo que se guarda en el gestor.
-    res.json({
-      analysis: text,
-      cached: false,
-      divisionPreCalc,
-      divisionPreCalcLabel
-    });
+    res.json({ analysis: text, cached: false });
 
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1239,10 +1632,16 @@ Si no hay alertas relevantes, indica "Sin alertas críticas".`
 });
 
 // ── Guardar licitación en Gestor (Supabase) ───────────────────────────────────
+// ── Guardar licitación en Gestor (Supabase) ───────────────────────────────────
+// Enriquece automáticamente los datos consultando la API de MP para obtener
+// fechas, monto estimado, región. Sugiere división LEN basándose en título +
+// especialidades MOP (cuando aplica). Captura especialidades MOP via WebMethod
+// para guardarlas como JSON en la columna especialidades_mop_json.
 app.post("/mp/guardar-gestor", async (req, res) => {
   const { item } = req.body;
   if (!item) return res.status(400).json({ error: "item requerido" });
 
+  // ── Helpers locales ──────────────────────────────────────────────────────
   const parsearFecha = (str) => {
     if (!str || str === "–") return null;
     const p = str.split(/[-\/]/);
@@ -1256,7 +1655,7 @@ app.post("/mp/guardar-gestor", async (req, res) => {
   }
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
 
-  // ── Enriquecimiento desde API de MP ───────────────────────────────────
+  // ── Enriquecimiento desde API de MP (fecha estimada, monto, región, descripción) ────
   const datosExtra = {};
   let nombreCompletoMP = "";
   let descripcionMP    = "";
@@ -1272,55 +1671,60 @@ app.post("/mp/guardar-gestor", async (req, res) => {
           datosExtra.fecha_adjudicacion_estimada = lic.Fechas?.FechaEstimadaAdjudicacion || null;
           datosExtra.monto_estimado              = parseFloat(lic.MontoEstimado) || null;
           datosExtra.region                      = lic.Comprador?.RegionUnidad || null;
+          // Capturar nombre y descripción completos para clasificación enriquecida
           nombreCompletoMP                       = lic.Nombre || "";
           descripcionMP                          = lic.Descripcion || "";
         }
       }
-    } catch (e) { console.warn("[guardar-gestor] No se pudo enriquecer desde API:", e.message); }
+    } catch (e) {
+      console.warn("[guardar-gestor] No se pudo enriquecer desde API:", e.message);
+    }
   }
 
-  // ── Capturar especialidades MOP via WebMethod ──
+  // ── Capturar especialidades MOP via WebMethod (ya tenemos la función) ──
   let especialidadesMOP = Array.isArray(item.especialidadesMOP) ? item.especialidadesMOP : [];
   if (especialidadesMOP.length === 0 && item.url && item.codigo) {
     try {
       const mpPage = await fetch(item.url, {
         signal: AbortSignal.timeout(10000),
-        headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" }
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
       });
       if (mpPage.ok) {
         const setCookies = mpPage.headers.raw ? mpPage.headers.raw()["set-cookie"] : null;
         const cookieHeader = setCookies ? setCookies.map(c => c.split(";")[0]).join("; ") : "";
-        if (cookieHeader) especialidadesMOP = await obtenerEspecialidadesMOPviaAjax(item.codigo, cookieHeader);
+        if (cookieHeader) {
+          especialidadesMOP = await obtenerEspecialidadesMOPviaAjax(item.codigo, cookieHeader);
+        }
       }
-    } catch (e) { console.warn("[guardar-gestor] No se pudieron extraer especialidades MOP:", e.message); }
+    } catch (e) {
+      console.warn("[guardar-gestor] No se pudieron extraer especialidades MOP:", e.message);
+    }
   }
 
   // ── Sugerir división LEN ─────────────────────────────────────────────────
-  // ✦ CAMBIO: Prioridad 1 → heredar la división ya calculada por /mp/analizar
-  // (con acceso al HTML completo de mercadopublico.cl, donde aparecen
-  // comunas/regiones que NO están en el JSON del API, ej: "Ancud, Los Lagos").
-  // Esto garantiza consistencia 1:1 entre análisis IA y gestor.
-  // Prioridad 2 → fallback al cálculo con datos del API solamente.
-  const VALID_DIV_IDS = new Set(DIVISIONES_LEN.map(d => d.id));
-  let divisionSugerida;
-
-  if (item.divisionPreCalc && VALID_DIV_IDS.has(item.divisionPreCalc)) {
-    divisionSugerida = item.divisionPreCalc;
-    console.log(`[guardar-gestor] División heredada de /mp/analizar: ${divisionSugerida}`);
-  } else {
-    let codigoRegion = item.codigoRegion || null;
-    if (!codigoRegion && datosExtra.region) {
-      const r = REGIONES.find(reg => datosExtra.region.toLowerCase().includes(reg.oficial));
-      if (r) codigoRegion = r.codigo;
-    }
-    const textoEnriquecido = [
-      item.titulo || "", nombreCompletoMP, descripcionMP,
-      item.descripcion || "", item.objetivos || ""
-    ].filter(Boolean).join(" | ");
-    divisionSugerida = sugerirDivision(textoEnriquecido, especialidadesMOP, codigoRegion, item.organismo || "");
-    console.log(`[guardar-gestor] División calculada localmente: ${divisionSugerida || 'null'}`);
+  // Determinar codigoRegion para resolver el caso 4.9 Vial
+  let codigoRegion = item.codigoRegion || null;
+  if (!codigoRegion && datosExtra.region) {
+    const r = REGIONES.find(reg => datosExtra.region.toLowerCase().includes(reg.oficial));
+    if (r) codigoRegion = r.codigo;
   }
+  // Texto enriquecido: combinar TODAS las fuentes textuales disponibles para
+  // que el clasificador tenga máximo contexto. El título solo (que puede venir
+  // truncado o muy genérico como "DISEÑO DE INGENIERÍA") no alcanza —
+  // necesitamos también la descripción y objetivos para detectar palabras clave
+  // como "cauces", "saneamiento", "ITO", etc. que pueden no estar en el título.
+  const textoEnriquecido = [
+    item.titulo || "",
+    nombreCompletoMP,
+    descripcionMP,
+    item.descripcion || "",
+    item.objetivos   || ""
+  ].filter(Boolean).join(" | ");
+  const divisionSugerida = sugerirDivision(textoEnriquecido, especialidadesMOP, codigoRegion, item.organismo || "");
 
+  // ── Payload completo ──────────────────────────────────────────────────────
   const payload = {
     id:           uid(),
     nombre:       item.titulo || "Sin título",
@@ -1329,8 +1733,9 @@ app.post("/mp/guardar-gestor", async (req, res) => {
     fecha_cierre: parsearFecha(item.fechaCierre),
     responsable:  "Ginés Agurto / Karina Montecinos",
     steps_json:   stepsInit,
+    // Nuevos campos
     division_sugerida:        divisionSugerida,
-    division_len:             divisionSugerida,
+    division_len:             divisionSugerida, // pre-llenar con sugerencia (editable)
     estado_proceso:           "Detectada",
     especialidades_mop_json:  especialidadesMOP,
     descripcion:              item.descripcion || null,
@@ -1340,9 +1745,10 @@ app.post("/mp/guardar-gestor", async (req, res) => {
     fecha_adjudicacion_estimada: datosExtra.fecha_adjudicacion_estimada || null,
     monto_estimado:           datosExtra.monto_estimado || null,
     region:                   datosExtra.region || null,
-    analisis_ia_completo:     item.analysis || null
+    analisis_ia_completo:     item.analysis || null  // pre-llenar si viene del agente
   };
 
+  // Si no vino el análisis en el item pero existe en cache, recuperarlo
   if (!payload.analisis_ia_completo && item.codigo) {
     try {
       const cacheRes = await fetch(
@@ -1356,10 +1762,13 @@ app.post("/mp/guardar-gestor", async (req, res) => {
           console.log(`[guardar-gestor] Análisis recuperado del cache para ${item.codigo}`);
         }
       }
-    } catch (e) { console.warn(`[guardar-gestor] No se pudo recuperar análisis cache: ${e.message}`); }
+    } catch (e) {
+      console.warn(`[guardar-gestor] No se pudo recuperar análisis cache: ${e.message}`);
+    }
   }
 
   try {
+    // Verificar duplicados por código
     if (item.codigo) {
       const checkRes = await fetch(
         `${SUPABASE_URL}/rest/v1/licitaciones?codigo=eq.${encodeURIComponent(item.codigo)}&select=id`,
@@ -1370,15 +1779,18 @@ app.post("/mp/guardar-gestor", async (req, res) => {
         return res.json({ ok: false, mensaje: "La licitación ya existe en el gestor", id: existing[0].id });
       }
     }
+
     const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/licitaciones`, {
       method: "POST",
       headers: { ...SUPABASE_HEADERS, "Prefer": "return=representation" },
       body: JSON.stringify(payload)
     });
+
     if (!insertRes.ok) {
       const err = await insertRes.text();
       return res.status(502).json({ error: `Supabase respondió ${insertRes.status}: ${err.substring(0, 300)}` });
     }
+
     const data = await insertRes.json();
     res.json({
       ok: true,
@@ -1387,13 +1799,16 @@ app.post("/mp/guardar-gestor", async (req, res) => {
       division_sugerida: divisionSugerida,
       especialidades_mop: especialidadesMOP
     });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── Analizar Bases de Licitación (ZIP → Excel) ────────────────────────────────
 const uploadMiddleware = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 60 * 1024 * 1024 }
+  limits: { fileSize: 60 * 1024 * 1024 } // 60MB
 }).single("archivo");
 
 async function extraerTextoPDF(buffer) {
@@ -1401,22 +1816,33 @@ async function extraerTextoPDF(buffer) {
     const pdfParse = require("pdf-parse");
     const data = await pdfParse(buffer);
     const avgChars = data.numpages > 0 ? data.text.length / data.numpages : 0;
-    return { texto: data.text.substring(0, 40000), paginas: data.numpages, escaneado: avgChars < 50, ok: true };
-  } catch(e) { return { texto: "", paginas: 0, escaneado: true, ok: false, error: e.message }; }
+    return {
+      texto:     data.text.substring(0, 40000), // 40K por PDF
+      paginas:   data.numpages,
+      escaneado: avgChars < 50,
+      ok:        true
+    };
+  } catch(e) {
+    return { texto: "", paginas: 0, escaneado: true, ok: false, error: e.message };
+  }
 }
 
+// Detectar si un archivo es genérico/no relevante para priorización
 function esDocumentoGenerico(nombre) {
   const lower = nombre.toLowerCase();
   return lower.includes('sso') || lower.includes('seguridad') ||
          lower.includes('salud') || lower.includes('reglamento') ||
-         lower.includes('eeg') || lower.includes('estandar') || lower.includes('standard');
+         lower.includes('eeg') || lower.includes('estandar') ||
+         lower.includes('standard');
 }
 
 app.post("/mp/analizar-bases", (req, res) => {
+  // Timeout de 3 minutos para el análisis secuencial de 5 agentes
   req.setTimeout(180000);
   res.setTimeout(180000);
   uploadMiddleware(req, res, async (err) => {
     if (err) return res.status(400).json({ error: "Error al subir archivo: " + err.message });
+
     const OPENAI_KEY = process.env.OPENAI_API_KEY || "";
     if (!OPENAI_KEY) return res.status(500).json({ error: "OPENAI_API_KEY no configurada" });
     if (!req.file)   return res.status(400).json({ error: "Archivo ZIP requerido" });
@@ -1425,41 +1851,52 @@ app.post("/mp/analizar-bases", (req, res) => {
     try { metadata = JSON.parse(req.body.metadata || "{}"); } catch(e) {}
 
     const archivosAuditoria = [];
-    const textosRelevantes  = [];
-    const textosGenericos   = [];
+    const textosRelevantes  = []; // BA, TR, bases técnicas
+    const textosGenericos   = []; // SSO, reglamentos, estándares genéricos
     let escaneadosCount     = 0;
 
     try {
       const zip     = new AdmZip(req.file.buffer);
       const entradas = zip.getEntries();
+
       for (const entrada of entradas) {
         if (entrada.isDirectory) continue;
         const nombre = entrada.name;
         const ext    = nombre.split(".").pop().toLowerCase();
+
         if (ext === "pdf") {
           const buf       = entrada.getData();
           const resultado = await extraerTextoPDF(buf);
           archivosAuditoria.push({
-            nombre, tipo: resultado.escaneado ? "Escaneado" : "Texto",
-            paginas: resultado.paginas,
-            estado: resultado.ok ? (resultado.escaneado ? "⚠️ Escaneado" : "✅ Procesado") : "❌ Error",
+            nombre,
+            tipo:        resultado.escaneado ? "Escaneado" : "Texto",
+            paginas:     resultado.paginas,
+            estado:      resultado.ok ? (resultado.escaneado ? "⚠️ Escaneado" : "✅ Procesado") : "❌ Error",
             observacion: resultado.escaneado ? "Revisar manualmente" : (resultado.error || "")
           });
           if (resultado.escaneado) escaneadosCount++;
           if (resultado.texto.trim()) {
             const bloque = `=== ${nombre} ===\n${resultado.texto}`;
-            if (esDocumentoGenerico(nombre)) textosGenericos.push(bloque);
-            else textosRelevantes.push(bloque);
+            // Separar documentos relevantes de genéricos
+            if (esDocumentoGenerico(nombre)) {
+              textosGenericos.push(bloque);
+            } else {
+              textosRelevantes.push(bloque);
+            }
           }
+
         } else if (["docx","doc"].includes(ext)) {
           archivosAuditoria.push({ nombre, tipo:"Word", paginas:"–", estado:"⚠️ No procesado", observacion:"Revisar manualmente" });
         } else {
           archivosAuditoria.push({ nombre, tipo:ext.toUpperCase(), paginas:"–", estado:"⚪ Omitido", observacion:"Formato no soportado" });
         }
       }
+
       if (!textosRelevantes.length && !textosGenericos.length) {
         return res.status(422).json({ error: "No se pudo extraer texto de ningún PDF.", escaneados: escaneadosCount, auditoria: archivosAuditoria });
       }
+
+      // Límite total y por agente
       const LIMITE_TOTAL = 80000;
       let textoTotal = textosRelevantes.join("\n\n");
       if (textoTotal.length < LIMITE_TOTAL && textosGenericos.length) {
@@ -1468,11 +1905,16 @@ app.post("/mp/analizar-bases", (req, res) => {
       }
       textoTotal = textoTotal.substring(0, LIMITE_TOTAL);
 
+      // Cada agente recibe un fragmento distinto del texto para respetar el límite de tokens
+      // Agentes 1 y 2 leen el inicio (identificación, fechas suelen estar al principio)
+      // Agentes 3 y 4 leen la parte media (garantías, requisitos)
+      // Agente 5 lee el final (alcance técnico suele estar al final en TR)
       const FRAG = Math.floor(textoTotal.length / 3);
-      const textoInicio = textoTotal.substring(0, FRAG * 2);
-      const textoMedio  = textoTotal.substring(FRAG, FRAG * 3);
-      const textoFinal  = textoTotal.substring(FRAG * 2);
+      const textoInicio = textoTotal.substring(0, FRAG * 2);        // 0% - 67%
+      const textoMedio  = textoTotal.substring(FRAG, FRAG * 3);     // 33% - 100%
+      const textoFinal  = textoTotal.substring(FRAG * 2);           // 67% - 100%
 
+      // ── Helper para llamar GPT-4o ──────────────────────────────────────────
       const gpt = async (systemPrompt, userPrompt) => {
         const r = await fetch("https://api.openai.com/v1/chat/completions", {
           method: "POST",
@@ -1492,29 +1934,39 @@ app.post("/mp/analizar-bases", (req, res) => {
         const match = clean.match(/\{[\s\S]*\}/);
         return JSON.parse(match ? match[0] : clean);
       };
+
       const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
       const BASE_SYSTEM = `Eres un experto senior en licitaciones públicas chilenas para LEN Ingeniería.
 Extrae información TEXTUAL EXACTA de los documentos (montos exactos, fechas con hora, direcciones completas, porcentajes, secciones de referencia).
 NUNCA inventes — usa "[NO ENCONTRADO]" solo si genuinamente no existe.
 Responde ÚNICAMENTE con JSON válido sin markdown.`;
+
       const META = `METADATA MP: Título: ${metadata.titulo||""} | Código: ${metadata.codigo||""} | Mandante: ${metadata.organismo||""} | Región: ${metadata.region||""} | Monto: ${metadata.monto||""} | Cierre: ${metadata.fechaCierre||""} | URL: ${metadata.url||""}`;
 
+      // ── 5 Agentes especializados secuenciales ─────────────────────────────
       console.log("[analizar-bases] Iniciando agente 1: Identificación");
       const r1 = await gpt(BASE_SYSTEM, `${META}\n\nDOCUMENTOS:\n${textoInicio}\n\nExtrae SOLO identificación y descripción del proyecto. JSON:\n{"identificacion":{"nombre":"","codigo_mp":"","mandante":"","region":"","tipo_licitacion":"","monto_estimado":"","fecha_cierre":"","tipo_proceso":"","modalidad_contrato":"","moneda":"","vigencia_contrato":"","inicio_estimado":"","contacto":"","plataforma_envio":"","url_mp":"","documentos_licitacion":""},"proposito":{"objetivo_general":"","alcance_detallado":"","naturaleza_encargo":"","obras_principales":"","grupos_trabajo":"","especialidades_requeridas":""}}`);
       await sleep(15000);
+
       console.log("[analizar-bases] Iniciando agente 2: Calendario");
       const r2 = await gpt(BASE_SYSTEM, `${META}\n\nDOCUMENTOS:\n${textoInicio}\n\nExtrae TODAS las fechas y hitos del proceso. Para cada fecha incluye hora si existe, lugar si aplica, y observaciones importantes. JSON:\n{"calendario":[{"hito":"","fecha_plazo":"","observaciones":"","estado":"✔ Pasado o Próximo o —"}],"preguntas_sugeridas":[""]}`);
       await sleep(15000);
+
       console.log("[analizar-bases] Iniciando agente 3: Garantías y Pagos");
       const r3 = await gpt(BASE_SYSTEM, `${META}\n\nDOCUMENTOS:\n${textoMedio}\n\nExtrae garantías (monto exacto, forma, vigencia, lugar entrega, glosa), esquema de pagos por hitos (porcentaje exacto, descripción hito), condiciones de pago y multas. JSON:\n{"garantias":[{"tipo":"","monto":"","vigencia":"","forma":"","lugar_entrega":"","glosa":"","observaciones":""}],"esquema_pagos":[{"estado_pago":"","hito_etapa":"","porcentaje":"","descripcion":""}],"condiciones_pago":[{"condicion":"","descripcion":""}],"multas":[{"causal":"","monto":"","alcance":"","tope":""}]}`);
       await sleep(15000);
+
       console.log("[analizar-bases] Iniciando agente 4: Requisitos y Puntos Críticos");
       const r4 = await gpt(BASE_SYSTEM, `${META}\n\nDOCUMENTOS:\n${textoMedio}\n\nExtrae requisitos de empresa (con fuente y cómo acreditar), requisitos de profesionales (cargo, título, experiencia, dedicación) y puntos críticos (🔴 excluyentes/riesgosos, 🟡 importantes, 🟢 favorables, ℹ informativos). JSON:\n{"requisitos_empresa":[{"requisito":"","descripcion":"","fuente":"","como_acreditar":""}],"requisitos_profesionales":[{"cargo":"","titulo_requerido":"","experiencia":"","dedicacion":"","como_acreditar":""}],"puntos_criticos":[{"indicador":"🔴 o 🟡 o 🟢 o ℹ","punto":"","descripcion_detallada":""}]}`);
       await sleep(15000);
+
       console.log("[analizar-bases] Iniciando agente 5: Alcance Técnico");
       const r5 = await gpt(BASE_SYSTEM, `${META}\n\nDOCUMENTOS:\n${textoFinal}\n\nExtrae alcance técnico completo: etapas con duración y entregables específicos, especialidades requeridas, condiciones operativas, formatos de entrega y normativa aplicable. JSON:\n{"alcance_tecnico":{"etapas":[{"etapa":"","duracion":"","contenido":"","entregables":""}],"especialidades":[{"especialidad":"","alcance_principal":""}],"condiciones_operativas":"","formatos_entrega":"","normativa_aplicable":""}}`);
 
       console.log("[analizar-bases] Todos los agentes completados, consolidando resultados");
+
+      // ── Consolidar resultados de los 5 agentes ─────────────────────────────
       const analisis = {
         identificacion:        r1.identificacion        || {},
         proposito:             r1.proposito             || {},
@@ -1530,12 +1982,16 @@ Responde ÚNICAMENTE con JSON válido sin markdown.`;
         alcance_tecnico:       r5.alcance_tecnico       || {}
       };
 
+      // ── Generar Excel ──────────────────────────────────────────────────────
+      const ExcelJS = require("exceljs");
       const wb = new ExcelJS.Workbook();
       wb.creator = "LEN Ingeniería";
       wb.created = new Date();
+
       const C = { azulOscuro:"1E3A5F", azulMedio:"2563EB", azulClaro:"EFF6FF",
                   verdeClaro:"F0FDF4", amClaro:"FFFBEB", rojoClaro:"FEF2F2",
                   gris:"F8FAFC", blanco:"FFFFFF" };
+
       const hdrStyle = (bg) => ({
         font: { bold:true, color:{argb:"FFFFFFFF"}, name:"Arial", size:10 },
         fill: { type:"pattern", pattern:"solid", fgColor:{argb:`FF${bg}`} },
@@ -1566,6 +2022,7 @@ Responde ÚNICAMENTE con JSON válido sin markdown.`;
         fill: { type:"pattern", pattern:"solid", fgColor:{argb: bg ? `FF${bg}` : (i%2===0 ? "FFFFFFFF" : `FF${C.gris}`)} },
         alignment: { horizontal:"left", vertical:"middle", wrapText:true }
       });
+
       const addTitle = (ws, txt, cols) => {
         const r = ws.addRow([txt]);
         ws.mergeCells(r.number,1,r.number,cols);
@@ -1596,11 +2053,14 @@ Responde ÚNICAMENTE con JSON válido sin markdown.`;
       const prop = analisis.proposito || {};
       const alc  = analisis.alcance_tecnico || {};
 
+      // ── Hoja 1: Resumen General ────────────────────────────────────────────
       const ws1 = wb.addWorksheet("Resumen General");
       ws1.columns = [{ width:35 },{ width:75 }];
       const tituloExcel = (id.nombre || metadata.titulo || "LICITACIÓN").toUpperCase();
       addTitle(ws1, tituloExcel, 2);
       addTitle(ws1, (id.mandante || metadata.organismo || "").toUpperCase(), 2);
+
+      // Indicador de confianza
       ws1.addRow([]);
       const confLabel = escaneadosCount===0 ? "🟢 Extracción completa — revisión recomendada antes de usar" :
                         escaneadosCount < archivosAuditoria.filter(a=>a.tipo==="Texto").length ? "🟡 Extracción parcial — algunos PDFs escaneados, completar manualmente" :
@@ -1613,6 +2073,8 @@ Responde ÚNICAMENTE con JSON válido sin markdown.`;
         rAlert.height = 22;
       }
       ws1.addRow([]);
+
+      // Identificación
       addSec(ws1, "IDENTIFICACIÓN", 2);
       const camposId = [
         ["Nombre licitación", id.nombre || metadata.titulo],
@@ -1633,6 +2095,8 @@ Responde ÚNICAMENTE con JSON válido sin markdown.`;
       ];
       camposId.filter(([,v]) => v && v !== "[NO ENCONTRADO]").forEach(([l,v]) => addKV(ws1, l, v));
       ws1.addRow([]);
+
+      // Descripción del proyecto
       addSec(ws1, "DESCRIPCIÓN DEL PROYECTO", 2);
       const camposProp = [
         ["Objetivo principal", prop.objetivo_general],
@@ -1647,6 +2111,8 @@ Responde ÚNICAMENTE con JSON válido sin markdown.`;
         r.height = 48;
       });
       ws1.addRow([]);
+
+      // Requisitos empresa
       if (analisis.requisitos_empresa?.length) {
         addSec(ws1, "REQUISITOS PROPONENTES", 2);
         const hrEmp = ws1.addRow(["Requisito", "Descripción / Cómo acreditar"]);
@@ -1657,6 +2123,8 @@ Responde ÚNICAMENTE con JSON válido sin markdown.`;
         });
         ws1.addRow([]);
       }
+
+      // Requisitos profesionales
       if (analisis.requisitos_profesionales?.length) {
         addSec(ws1, "REQUISITOS PROFESIONALES", 2);
         const hrProf = ws1.addRow(["Cargo", "Título / Experiencia / Dedicación"]);
@@ -1667,6 +2135,8 @@ Responde ÚNICAMENTE con JSON válido sin markdown.`;
         });
         ws1.addRow([]);
       }
+
+      // Puntos críticos
       if (analisis.puntos_criticos?.length) {
         addSec(ws1, "⚠ PUNTOS CRÍTICOS ANTES DE DECIDIR PARTICIPAR", 2);
         analisis.puntos_criticos.forEach((p, i) => {
@@ -1676,6 +2146,8 @@ Responde ÚNICAMENTE con JSON válido sin markdown.`;
         });
         ws1.addRow([]);
       }
+
+      // Preguntas sugeridas
       if (analisis.preguntas_sugeridas?.length && analisis.preguntas_sugeridas[0]) {
         addSec(ws1, "PREGUNTAS SUGERIDAS PARA EL FORO", 2);
         analisis.preguntas_sugeridas.forEach((q, i) => {
@@ -1686,6 +2158,7 @@ Responde ÚNICAMENTE con JSON válido sin markdown.`;
         });
       }
 
+      // ── Hoja 2: Calendario ────────────────────────────────────────────────
       const ws2 = wb.addWorksheet("Calendario");
       ws2.columns = [{ width:38 },{ width:22 },{ width:55 },{ width:14 }];
       addTitle(ws2, `CALENDARIO DE LICITACIÓN — ${id.codigo_mp || metadata.codigo || ""}`, 4);
@@ -1696,9 +2169,11 @@ Responde ÚNICAMENTE con JSON válido sin markdown.`;
         addTableRow(ws2, [c.hito, c.fecha_plazo || c.fecha, c.observaciones, c.estado], i, bg);
       });
 
+      // ── Hoja 3: Garantías y Pagos ─────────────────────────────────────────
       const ws3 = wb.addWorksheet("Garantías y Pagos");
       ws3.columns = [{ width:35 },{ width:25 },{ width:22 },{ width:22 },{ width:42 }];
       addTitle(ws3, `GARANTÍAS Y ESQUEMA DE PAGOS — ${id.mandante || metadata.organismo || ""}`, 5);
+
       addSec(ws3, "GARANTÍAS", 5);
       const hg = ws3.addRow(["Tipo de Garantía", "Monto / Porcentaje", "Vigencia", "Forma", "Observaciones"]);
       hg.eachCell(c => { c.style = tblHdr(); }); hg.height = 18;
@@ -1707,6 +2182,7 @@ Responde ÚNICAMENTE con JSON válido sin markdown.`;
         addTableRow(ws3, [g.tipo, g.monto, g.vigencia, g.forma, obs], i);
       });
       ws3.addRow([]);
+
       if (analisis.esquema_pagos?.length) {
         addSec(ws3, "ESQUEMA DE PAGOS POR HITOS", 5);
         const hep = ws3.addRow(["Estado de Pago", "Hito / Etapa", "Porcentaje", "", "Descripción del hito"]);
@@ -1716,6 +2192,7 @@ Responde ÚNICAMENTE con JSON válido sin markdown.`;
         });
         ws3.addRow([]);
       }
+
       addSec(ws3, "CONDICIONES DE PAGO", 5);
       (analisis.condiciones_pago || []).forEach((cp, i) => {
         const r = ws3.addRow([cp.condicion, cp.descripcion]);
@@ -1724,6 +2201,7 @@ Responde ÚNICAMENTE con JSON válido sin markdown.`;
         r.height = 24;
       });
       ws3.addRow([]);
+
       if (analisis.multas?.length) {
         addSec(ws3, "MULTAS Y SANCIONES", 5);
         const hm = ws3.addRow(["Causal", "Monto", "Alcance", "Tope", "Observaciones"]);
@@ -1733,9 +2211,11 @@ Responde ÚNICAMENTE con JSON válido sin markdown.`;
         });
       }
 
+      // ── Hoja 4: Alcance Técnico ───────────────────────────────────────────
       const ws4 = wb.addWorksheet("Alcance Técnico");
       ws4.columns = [{ width:20 },{ width:15 },{ width:45 },{ width:45 }];
       addTitle(ws4, "ALCANCE TÉCNICO Y ENTREGABLES", 4);
+
       if (alc.etapas?.length) {
         addSec(ws4, "ETAPAS Y ENTREGABLES POR ETAPA", 4);
         const he = ws4.addRow(["Etapa", "Duración", "Contenido Principal", "Entregables Clave"]);
@@ -1743,6 +2223,7 @@ Responde ÚNICAMENTE con JSON válido sin markdown.`;
         alc.etapas.forEach((e, i) => addTableRow(ws4, [e.etapa, e.duracion, e.contenido, e.entregables], i));
         ws4.addRow([]);
       }
+
       if (alc.especialidades?.length) {
         addSec(ws4, "ESPECIALIDADES CONSULTADAS", 4);
         const hes = ws4.addRow(["Especialidad", "", "Alcance Principal", ""]);
@@ -1755,6 +2236,7 @@ Responde ÚNICAMENTE con JSON válido sin markdown.`;
         });
         ws4.addRow([]);
       }
+
       if (alc.condiciones_operativas) {
         addSec(ws4, "CONDICIONES OPERATIVAS RELEVANTES", 4);
         const rCO = ws4.addRow([alc.condiciones_operativas]);
@@ -1763,12 +2245,14 @@ Responde ÚNICAMENTE con JSON válido sin markdown.`;
         rCO.height = 48;
         ws4.addRow([]);
       }
+
       if (alc.formatos_entrega || alc.normativa_aplicable) {
         addSec(ws4, "FORMATOS Y NORMATIVA", 4);
         if (alc.formatos_entrega) addKV(ws4, "Formatos de entrega", alc.formatos_entrega);
         if (alc.normativa_aplicable) addKV(ws4, "Normativa aplicable", alc.normativa_aplicable);
       }
 
+      // ── Hoja 5: Auditoría ─────────────────────────────────────────────────
       const ws5 = wb.addWorksheet("Auditoría");
       ws5.columns = [{ width:42 },{ width:15 },{ width:10 },{ width:18 },{ width:42 }];
       addTitle(ws5, "AUDITORÍA DE ARCHIVOS PROCESADOS", 5);
@@ -1781,15 +2265,18 @@ Responde ÚNICAMENTE con JSON válido sin markdown.`;
       ha.eachCell(c => { c.style = tblHdr(); }); ha.height = 18;
       archivosAuditoria.forEach((a, i) => addTableRow(ws5, [a.nombre, a.tipo, a.paginas, a.estado, a.observacion], i));
 
+      // ── Respuesta ──────────────────────────────────────────────────────────
       const buf     = await wb.xlsx.writeBuffer();
       const b64     = Buffer.from(buf).toString("base64");
       const archivo = `Resumen_${(metadata.codigo||"LIC").replace(/[^a-zA-Z0-9]/g,"_")}_${new Date().toISOString().split("T")[0]}.xlsx`;
       const confianza = escaneadosCount===0 ? "completa" : escaneadosCount < archivosAuditoria.filter(a=>a.tipo==="Escaneado"||a.tipo==="Texto").length ? "parcial" : "fallida";
 
+      // ── Persistir: subir Excel a Supabase Storage + actualizar licitación ─
       let excelPath = null;
       if (metadata.codigo && metadata.licitacionId) {
         try {
           const storagePath = `${metadata.codigo.replace(/[^a-zA-Z0-9_-]/g, "_")}/${archivo}`;
+          // Subir a Supabase Storage (upsert para sobreescribir si re-analizan)
           const upRes = await fetch(
             `${SUPABASE_URL}/storage/v1/object/bases-resumenes/${storagePath}`,
             {
@@ -1810,6 +2297,8 @@ Responde ÚNICAMENTE con JSON válido sin markdown.`;
           } else {
             console.warn(`[analizar-bases] Subida a Storage falló ${upRes.status}: ${await upRes.text()}`);
           }
+
+          // Actualizar la licitación con el path del Excel y metadatos
           await fetch(
             `${SUPABASE_URL}/rest/v1/licitaciones?id=eq.${encodeURIComponent(metadata.licitacionId)}`,
             {
@@ -1825,10 +2314,13 @@ Responde ÚNICAMENTE con JSON válido sin markdown.`;
               signal: AbortSignal.timeout(8000)
             }
           );
-        } catch(e) { console.warn(`[analizar-bases] No se pudo persistir: ${e.message}`); }
+        } catch(e) {
+          console.warn(`[analizar-bases] No se pudo persistir: ${e.message}`);
+        }
       }
 
       res.json({ ok:true, excelBase64:b64, nombreArchivo:archivo, excelPath, confianza, escaneados:escaneadosCount, totalArchivos:archivosAuditoria.length, auditoria:archivosAuditoria });
+
     } catch(err) {
       console.error("[analizar-bases]", err.message);
       res.status(500).json({ error: err.message });
@@ -1837,9 +2329,12 @@ Responde ÚNICAMENTE con JSON válido sin markdown.`;
 });
 
 // ── GET /mp/descargar-resumen-bases/:licitacionId ──────────────────────────
+// Genera signed URL de 5 minutos para descargar el Excel resumen de bases
+// que está guardado en Supabase Storage (bucket privado bases-resumenes).
 app.get("/mp/descargar-resumen-bases/:licitacionId", async (req, res) => {
   const { licitacionId } = req.params;
   try {
+    // 1) Buscar el path del Excel en la licitación
     const r = await fetch(
       `${SUPABASE_URL}/rest/v1/licitaciones?id=eq.${encodeURIComponent(licitacionId)}&select=resumen_bases_excel_path`,
       { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(5000) }
@@ -1850,6 +2345,8 @@ app.get("/mp/descargar-resumen-bases/:licitacionId", async (req, res) => {
       return res.status(404).json({ error: "Esta licitación aún no tiene resumen de bases generado" });
     }
     const path = data[0].resumen_bases_excel_path;
+
+    // 2) Crear signed URL para descarga (válida 5 minutos)
     const signRes = await fetch(
       `${SUPABASE_URL}/storage/v1/object/sign/bases-resumenes/${path}`,
       {
@@ -1863,7 +2360,9 @@ app.get("/mp/descargar-resumen-bases/:licitacionId", async (req, res) => {
     const signed = await signRes.json();
     const fullUrl = `${SUPABASE_URL}/storage/v1${signed.signedURL || signed.signedUrl}`;
     res.json({ ok: true, url: fullUrl });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ── PATCH /mp/actualizar-licitacion/:id — edición desde el gestor ─────────────
@@ -1892,38 +2391,65 @@ app.patch("/mp/actualizar-licitacion/:id", async (req, res) => {
       return res.status(502).json({ error: err.substring(0, 300) });
     }
     const data = await r.json();
-    if (!data || data.length === 0) return res.status(404).json({ error: "Licitación no encontrada" });
+    if (!data || data.length === 0) {
+      return res.status(404).json({ error: "Licitación no encontrada" });
+    }
     res.json({ ok: true, licitacion: data[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ── Polling automático de adjudicaciones ──────────────────────────────────────
+// Cada 12 horas consulta la API de ChileCompra para licitaciones que están en
+// estados no-terminales (Detectada, En análisis, Postulada). Si MP las marca
+// como adjudicadas/desiertas/revocadas, actualiza Supabase. Cuando una se
+// adjudica, compara RUT del adjudicatario contra LEN_RUT para distinguir
+// "Adjudicada" (LEN ganó) vs "Perdida" (otro consultor).
+//
+// Optimización: solo polea licitaciones cuya fecha_adjudicacion_estimada ya
+// pasó (o que no tienen fecha estimada). Antes de esa fecha, MP no tiene
+// resultado y consultar es desperdicio.
+
 let pollingState = {
-  ultimo_inicio: null, ultimo_fin: null,
-  ultimo_total: 0, ultimo_actualizadas: 0, ultimo_error: null
+  ultimo_inicio:    null,
+  ultimo_fin:       null,
+  ultimo_total:     0,
+  ultimo_actualizadas: 0,
+  ultimo_error:     null
 };
 
 async function pollingAdjudicaciones() {
   pollingState.ultimo_inicio = new Date().toISOString();
   pollingState.ultimo_error  = null;
+
   try {
+    // Listar licitaciones aún en proceso (estados no-terminales)
     const estadosActivos = ["Detectada", "En análisis", "Postulada"];
     const filtroEstados = `estado_proceso=in.(${estadosActivos.map(e => `"${e}"`).join(",")})`;
     const url = `${SUPABASE_URL}/rest/v1/licitaciones?${filtroEstados}&select=*`;
+
     const r = await fetch(url, { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(20000) });
     if (!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`);
     const licitaciones = await r.json();
+
     const ahora = new Date();
     let totalRevisadas = 0;
     let totalActualizadas = 0;
+
     for (const lic of licitaciones) {
+      // Optimización: si tiene fecha estimada y aún falta más de 1 día, saltar
       if (lic.fecha_adjudicacion_estimada) {
         const estim = new Date(lic.fecha_adjudicacion_estimada);
         const diffMs = estim - ahora;
         const unDiaMs = 24 * 60 * 60 * 1000;
-        if (diffMs > unDiaMs) continue;
+        if (diffMs > unDiaMs) {
+          continue; // aún muy temprano para que MP tenga resultado
+        }
       }
+
       totalRevisadas++;
+
       try {
         const apiUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?codigo=${lic.codigo}&ticket=${TICKET}`;
         const apiRes = await fetch(apiUrl, { signal: AbortSignal.timeout(15000) });
@@ -1931,13 +2457,17 @@ async function pollingAdjudicaciones() {
         const data = await apiRes.json();
         const licData = data.Listado?.[0];
         if (!licData) continue;
+
         const updates = { ultimo_polling_at: new Date().toISOString() };
         const estadoMP = (licData.Estado || "").trim();
+
+        // Detectar adjudicación
         if (estadoMP === "Adjudicada") {
           const items = licData.Items?.Listado || [];
           let rutAdj = null;
           let nombreAdj = null;
           let montoAdj = 0;
+
           for (const item of items) {
             const adj = item.Adjudicacion;
             if (!adj) continue;
@@ -1947,19 +2477,34 @@ async function pollingAdjudicaciones() {
             const cantidad = parseFloat(adj.Cantidad || 1);
             if (!isNaN(unitario)) montoAdj += unitario * cantidad;
           }
+
           updates.adjudicatario          = nombreAdj;
           updates.adjudicatario_rut      = rutAdj;
           updates.monto_adjudicado       = montoAdj > 0 ? montoAdj : null;
           updates.fecha_adjudicacion_real = licData.Fechas?.FechaAdjudicacion || new Date().toISOString();
-          if (rutAdj && normalizarRut(rutAdj) === LEN_RUT_NORMALIZADO) updates.estado_proceso = "Adjudicada";
-          else updates.estado_proceso = "Perdida";
-        } else if (estadoMP === "Desierta") updates.estado_proceso = "Desierta";
-        else if (estadoMP === "Revocada") updates.estado_proceso = "Revocada";
+
+          // Comparar RUT con LEN
+          if (rutAdj && normalizarRut(rutAdj) === LEN_RUT_NORMALIZADO) {
+            updates.estado_proceso = "Adjudicada";
+          } else {
+            updates.estado_proceso = "Perdida";
+          }
+        }
+        // Otros estados terminales
+        else if (estadoMP === "Desierta") {
+          updates.estado_proceso = "Desierta";
+        }
+        else if (estadoMP === "Revocada") {
+          updates.estado_proceso = "Revocada";
+        }
+
+        // Solo actualizar si hubo cambio relevante
         if (updates.estado_proceso) {
           const patchRes = await fetch(
             `${SUPABASE_URL}/rest/v1/licitaciones?id=eq.${encodeURIComponent(lic.id)}`,
             {
-              method: "PATCH", headers: SUPABASE_HEADERS,
+              method: "PATCH",
+              headers: SUPABASE_HEADERS,
               body: JSON.stringify(updates),
               signal: AbortSignal.timeout(10000)
             }
@@ -1969,8 +2514,11 @@ async function pollingAdjudicaciones() {
             console.log(`[polling] ${lic.codigo} → ${updates.estado_proceso}`);
           }
         }
-      } catch (e) { console.warn(`[polling] Error con ${lic.codigo}: ${e.message}`); }
+      } catch (e) {
+        console.warn(`[polling] Error con ${lic.codigo}: ${e.message}`);
+      }
     }
+
     pollingState.ultimo_total        = totalRevisadas;
     pollingState.ultimo_actualizadas = totalActualizadas;
     pollingState.ultimo_fin          = new Date().toISOString();
@@ -1982,35 +2530,58 @@ async function pollingAdjudicaciones() {
   }
 }
 
+// Disparar cada 12 horas + 1 minuto después del arranque (para no esperar 12h)
 const POLLING_INTERVAL_MS = 12 * 60 * 60 * 1000;
 
+// ── Auto-descarte de licitaciones vencidas (Detectada / En análisis) ────────
+// Si una licitación cerró hace más de 1 día y LEN nunca llegó a postular,
+// se mueve automáticamente a "Descartada" para que no quede en En Proceso
+// indefinidamente. Las que están "Postulada" NO se tocan (siguen esperando
+// adjudicación vía polling).
 let limpiezaState = {
-  ultimo_inicio: null, ultimo_fin: null,
-  ultimo_revisadas: 0, ultimo_descartadas: 0, ultimo_error: null
+  ultimo_inicio: null,
+  ultimo_fin:    null,
+  ultimo_revisadas:    0,
+  ultimo_descartadas:  0,
+  ultimo_error:        null
 };
 
 async function limpiarVencidas() {
   limpiezaState.ultimo_inicio = new Date().toISOString();
   limpiezaState.ultimo_error  = null;
+
   try {
+    // Calcular "hoy" como YYYY-MM-DD: las que cierran antes de hoy están vencidas.
+    // Eso da 1 día de gracia natural: una licitación que cierra HOY no se descarta
+    // (todavía podría postularse hasta su hora de cierre); solo cuando llegue el
+    // día siguiente se descartará.
     const ahora = new Date();
-    const hoyStr = ahora.toISOString().split("T")[0];
+    const hoyStr = ahora.toISOString().split("T")[0]; // YYYY-MM-DD UTC
+
+    // Listar licitaciones que: (a) están Detectada o En análisis y (b) cerraron antes de hoy
     const filtroEstados = `estado_proceso=in.("Detectada","En análisis")`;
     const filtroFecha   = `fecha_cierre=lt.${hoyStr}`;
     const url = `${SUPABASE_URL}/rest/v1/licitaciones?${filtroEstados}&${filtroFecha}&select=id,codigo,nombre,fecha_cierre,estado_proceso`;
+
     const r = await fetch(url, { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(15000) });
     if (!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`);
     const vencidas = await r.json();
+
     let totalDescartadas = 0;
     for (const lic of vencidas) {
       const diasVencida = Math.floor((ahora - new Date(lic.fecha_cierre)) / (24 * 60 * 60 * 1000));
       const sufijoTiempo = diasVencida <= 0 ? "ayer" : `hace ${diasVencida} días`;
       const motivoTexto = `Vencida sin postulación (auto-cierre, cerró ${sufijoTiempo} el ${lic.fecha_cierre}). Estado anterior: ${lic.estado_proceso}.`;
+
       const patchRes = await fetch(
         `${SUPABASE_URL}/rest/v1/licitaciones?id=eq.${encodeURIComponent(lic.id)}`,
         {
-          method: "PATCH", headers: SUPABASE_HEADERS,
-          body: JSON.stringify({ estado_proceso: "Descartada", razon_resultado: motivoTexto }),
+          method: "PATCH",
+          headers: SUPABASE_HEADERS,
+          body: JSON.stringify({
+            estado_proceso:  "Descartada",
+            razon_resultado: motivoTexto
+          }),
           signal: AbortSignal.timeout(8000)
         }
       );
@@ -2019,6 +2590,7 @@ async function limpiarVencidas() {
         console.log(`[limpiar-vencidas] ${lic.codigo} → Descartada (cerró ${sufijoTiempo})`);
       }
     }
+
     limpiezaState.ultimo_revisadas   = vencidas.length;
     limpiezaState.ultimo_descartadas = totalDescartadas;
     limpiezaState.ultimo_fin         = new Date().toISOString();
@@ -2032,15 +2604,20 @@ async function limpiarVencidas() {
   }
 }
 
+// Endpoint manual para disparar la limpieza sin esperar al ciclo de 12h
 app.get("/mp/limpiar-vencidas", async (req, res) => {
   try {
     const result = await limpiarVencidas();
     res.json({ ok: true, ...result, state: limpiezaState });
-  } catch (e) { res.status(500).json({ error: e.message, state: limpiezaState }); }
+  } catch (e) {
+    res.status(500).json({ error: e.message, state: limpiezaState });
+  }
 });
 
+// Endpoint para ver estado de la última limpieza
 app.get("/mp/limpiar-vencidas-status", (req, res) => res.json(limpiezaState));
 
+// Polling cada 12h: ejecuta primero la limpieza de vencidas, después el polling de adjudicaciones
 async function ciclo12h() {
   await limpiarVencidas().catch(e => console.warn("[ciclo12h] limpiar-vencidas falló:", e.message));
   await pollingAdjudicaciones().catch(e => console.warn("[ciclo12h] polling-adjudicaciones falló:", e.message));
@@ -2048,22 +2625,32 @@ async function ciclo12h() {
 setInterval(ciclo12h, POLLING_INTERVAL_MS);
 setTimeout(ciclo12h, 60 * 1000);
 
+// Endpoint manual para disparar el polling (también usable por cron externo
+// tipo UptimeRobot para mantener el servidor despierto en Render Free)
 app.get("/mp/polling-adjudicaciones", (req, res) => {
   pollingAdjudicaciones();
   res.json({ ok: true, mensaje: "Polling iniciado en background", state: pollingState });
 });
 
+// Endpoint para ver estado del último polling
 app.get("/mp/polling-status", (req, res) => res.json(pollingState));
 
 // ── Exportar a Excel ─────────────────────────────────────────────────────────
+// Genera archivo .xlsx con todas las licitaciones del gestor + hoja de KPIs.
+// Devuelve el archivo como descarga.
 app.get("/mp/exportar-excel", async (req, res) => {
   try {
+    // Obtener todas las licitaciones del gestor
     const r = await fetch(
       `${SUPABASE_URL}/rest/v1/licitaciones?select=*&order=fecha_deteccion.desc.nullslast`,
       { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(30000) }
     );
-    if (!r.ok) return res.status(502).json({ error: `Supabase ${r.status}` });
+    if (!r.ok) {
+      return res.status(502).json({ error: `Supabase ${r.status}` });
+    }
     const licitaciones = await r.json();
+
+    // Mapa de divisiones para mostrar nombres legibles en lugar de IDs
     const labelDivision = {};
     for (const d of DIVISIONES_LEN) labelDivision[d.id] = `${d.icon} ${d.label}`;
     const formatDiv = (id) => id ? (labelDivision[id] || id) : "Sin asignar";
@@ -2072,32 +2659,35 @@ app.get("/mp/exportar-excel", async (req, res) => {
     workbook.creator = "LEN Ingeniería - Agente de Licitaciones";
     workbook.created = new Date();
 
-    const sheet = workbook.addWorksheet("Licitaciones", { views: [{ state: "frozen", ySplit: 1 }] });
+    // ── Hoja 1: Licitaciones ──────────────────────────────────────────────
+    const sheet = workbook.addWorksheet("Licitaciones", {
+      views: [{ state: "frozen", ySplit: 1 }]
+    });
     sheet.columns = [
-      { header: "Código MP", key: "codigo", width: 18 },
-      { header: "Nombre", key: "nombre", width: 50 },
-      { header: "Mandante", key: "mandante", width: 35 },
-      { header: "Región", key: "region", width: 22 },
-      { header: "División LEN", key: "division_label", width: 22 },
-      { header: "Estado", key: "estado_proceso", width: 14 },
-      { header: "F. Detección", key: "fecha_deteccion", width: 14 },
-      { header: "F. Publicación", key: "fecha_publicacion", width: 14 },
-      { header: "F. Cierre", key: "fecha_cierre", width: 14 },
-      { header: "F. Adjud. Estim.", key: "fecha_adjudicacion_estimada", width: 16 },
-      { header: "F. Adjud. Real", key: "fecha_adjudicacion_real", width: 14 },
-      { header: "Monto Estimado", key: "monto_estimado", width: 18, style: { numFmt: '"$"#,##0' } },
-      { header: "Monto LEN Ofertó", key: "monto_ofertado_len", width: 18, style: { numFmt: '"$"#,##0' } },
-      { header: "Monto Adjudicado", key: "monto_adjudicado", width: 18, style: { numFmt: '"$"#,##0' } },
-      { header: "Δ LEN vs Ganador", key: "delta_pct", width: 18, style: { numFmt: '0.0%' } },
-      { header: "Adjudicatario", key: "adjudicatario", width: 35 },
-      { header: "RUT Adjud.", key: "adjudicatario_rut", width: 16 },
-      { header: "Razón Resultado", key: "razon_resultado", width: 40 },
-      { header: "Especialidades MOP", key: "especialidades_str", width: 40 },
-      { header: "Descripción", key: "descripcion", width: 60 },
-      { header: "Objetivos", key: "objetivos", width: 60 },
-      { header: "Análisis IA", key: "analisis_ia_completo", width: 80 },
-      { header: "URL", key: "url", width: 30 },
-      { header: "Notas Internas", key: "notas_internas", width: 40 }
+      { header: "Código MP",         key: "codigo",                       width: 18 },
+      { header: "Nombre",            key: "nombre",                       width: 50 },
+      { header: "Mandante",          key: "mandante",                     width: 35 },
+      { header: "Región",            key: "region",                       width: 22 },
+      { header: "División LEN",      key: "division_label",               width: 22 },
+      { header: "Estado",            key: "estado_proceso",               width: 14 },
+      { header: "F. Detección",      key: "fecha_deteccion",              width: 14 },
+      { header: "F. Publicación",    key: "fecha_publicacion",            width: 14 },
+      { header: "F. Cierre",         key: "fecha_cierre",                 width: 14 },
+      { header: "F. Adjud. Estim.",  key: "fecha_adjudicacion_estimada",  width: 16 },
+      { header: "F. Adjud. Real",    key: "fecha_adjudicacion_real",      width: 14 },
+      { header: "Monto Estimado",    key: "monto_estimado",               width: 18, style: { numFmt: '"$"#,##0' } },
+      { header: "Monto LEN Ofertó",  key: "monto_ofertado_len",           width: 18, style: { numFmt: '"$"#,##0' } },
+      { header: "Monto Adjudicado",  key: "monto_adjudicado",             width: 18, style: { numFmt: '"$"#,##0' } },
+      { header: "Δ LEN vs Ganador",  key: "delta_pct",                    width: 18, style: { numFmt: '0.0%' } },
+      { header: "Adjudicatario",     key: "adjudicatario",                width: 35 },
+      { header: "RUT Adjud.",        key: "adjudicatario_rut",            width: 16 },
+      { header: "Razón Resultado",   key: "razon_resultado",              width: 40 },
+      { header: "Especialidades MOP",key: "especialidades_str",           width: 40 },
+      { header: "Descripción",       key: "descripcion",                  width: 60 },
+      { header: "Objetivos",         key: "objetivos",                    width: 60 },
+      { header: "Análisis IA",       key: "analisis_ia_completo",         width: 80 },
+      { header: "URL",               key: "url",                          width: 30 },
+      { header: "Notas Internas",    key: "notas_internas",               width: 40 }
     ];
     sheet.getRow(1).font      = { bold: true, color: { argb: "FFFFFFFF" } };
     sheet.getRow(1).fill      = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E40AF" } };
@@ -2106,22 +2696,25 @@ app.get("/mp/exportar-excel", async (req, res) => {
 
     for (const lic of licitaciones) {
       const delta = (lic.monto_ofertado_len && lic.monto_adjudicado && lic.monto_adjudicado !== 0)
-        ? (lic.monto_ofertado_len - lic.monto_adjudicado) / lic.monto_adjudicado : null;
+        ? (lic.monto_ofertado_len - lic.monto_adjudicado) / lic.monto_adjudicado
+        : null;
       const espStr = Array.isArray(lic.especialidades_mop_json)
-        ? lic.especialidades_mop_json.map(e => `${e.codigo} ${e.descripcion} (${e.categoria})`).join(" | ") : "";
+        ? lic.especialidades_mop_json.map(e => `${e.codigo} ${e.descripcion} (${e.categoria})`).join(" | ")
+        : "";
       sheet.addRow({
         ...lic,
-        division_label: formatDiv(lic.division_len),
-        delta_pct: delta,
+        division_label:    formatDiv(lic.division_len),
+        delta_pct:         delta,
         especialidades_str: espStr
       });
     }
     sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: sheet.columns.length } };
 
+    // ── Hoja 2: KPIs ──────────────────────────────────────────────────────
     const kpiSheet = workbook.addWorksheet("KPIs");
     kpiSheet.columns = [
-      { header: "Indicador", key: "name", width: 50 },
-      { header: "Valor", key: "value", width: 22 }
+      { header: "Indicador", key: "name",  width: 50 },
+      { header: "Valor",     key: "value", width: 22 }
     ];
     kpiSheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
     kpiSheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E40AF" } };
@@ -2138,12 +2731,12 @@ app.get("/mp/exportar-excel", async (req, res) => {
                                        .reduce((s, l) => s + (l.monto_ofertado_len || 0), 0);
 
     kpiSheet.addRow({ name: "RESUMEN GENERAL", value: "" }).font = { bold: true };
-    kpiSheet.addRow({ name: "Total licitaciones detectadas", value: total });
-    kpiSheet.addRow({ name: "Postuladas (en proceso o cerradas)", value: postuladas });
-    kpiSheet.addRow({ name: "Adjudicadas a LEN", value: adjudicadas });
-    kpiSheet.addRow({ name: "Perdidas", value: perdidas });
-    kpiSheet.addRow({ name: "Desiertas", value: desiertas });
-    const fila = kpiSheet.addRow({ name: "Tasa de adjudicación", value: tasaAdj });
+    kpiSheet.addRow({ name: "Total licitaciones detectadas",       value: total });
+    kpiSheet.addRow({ name: "Postuladas (en proceso o cerradas)",  value: postuladas });
+    kpiSheet.addRow({ name: "Adjudicadas a LEN",                   value: adjudicadas });
+    kpiSheet.addRow({ name: "Perdidas",                            value: perdidas });
+    kpiSheet.addRow({ name: "Desiertas",                           value: desiertas });
+    const fila = kpiSheet.addRow({ name: "Tasa de adjudicación",   value: tasaAdj });
     fila.getCell(2).numFmt = "0.0%";
     const filaMonto = kpiSheet.addRow({ name: "Monto total adjudicado a LEN", value: totalAdj });
     filaMonto.getCell(2).numFmt = '"$"#,##0';
@@ -2172,6 +2765,7 @@ app.get("/mp/exportar-excel", async (req, res) => {
       kpiSheet.addRow({ name: `   ${d}`, value: c });
     });
 
+    // ── Generar y enviar ──────────────────────────────────────────────────
     const filename = `licitaciones_LEN_${new Date().toISOString().slice(0,10)}.xlsx`;
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
@@ -2183,19 +2777,27 @@ app.get("/mp/exportar-excel", async (req, res) => {
   }
 });
 
-// ── Sincronizar análisis IA ──────────────────────────────────────────────
+// ── Listar licitaciones del gestor (frontend) ────────────────────────────────
+// ── Sincronizar análisis IA: copia desde cache a licitaciones para las que ─
+// están en el gestor con analisis_ia_completo NULL pero tienen análisis cacheado.
+// Útil para arreglar de una vez las licitaciones guardadas antes de implementar
+// el cache, o para recuperar cualquier desincronización.
 app.get("/mp/sincronizar-analisis", async (req, res) => {
   try {
+    // Listar licitaciones del gestor que no tienen análisis guardado
     const r = await fetch(
       `${SUPABASE_URL}/rest/v1/licitaciones?select=id,codigo&analisis_ia_completo=is.null`,
       { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(15000) }
     );
     if (!r.ok) return res.status(502).json({ error: `Supabase ${r.status}` });
     const sinAnalisis = await r.json();
+
     let actualizadas = 0;
     const detalles = [];
+
     for (const lic of sinAnalisis) {
       if (!lic.codigo) continue;
+      // Buscar en cache
       const cacheRes = await fetch(
         `${SUPABASE_URL}/rest/v1/analisis_cache?codigo=eq.${encodeURIComponent(lic.codigo)}&select=analisis`,
         { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(5000) }
@@ -2206,10 +2808,12 @@ app.get("/mp/sincronizar-analisis", async (req, res) => {
         detalles.push({ codigo: lic.codigo, status: "sin-cache" });
         continue;
       }
+      // Copiar análisis a la licitación
       const patchRes = await fetch(
         `${SUPABASE_URL}/rest/v1/licitaciones?id=eq.${encodeURIComponent(lic.id)}`,
         {
-          method: "PATCH", headers: SUPABASE_HEADERS,
+          method: "PATCH",
+          headers: SUPABASE_HEADERS,
           body: JSON.stringify({ analisis_ia_completo: cacheData[0].analisis }),
           signal: AbortSignal.timeout(5000)
         }
@@ -2219,8 +2823,17 @@ app.get("/mp/sincronizar-analisis", async (req, res) => {
         detalles.push({ codigo: lic.codigo, status: "sincronizado" });
       }
     }
-    res.json({ ok: true, total_sin_analisis: sinAnalisis.length, actualizadas, sin_cache: sinAnalisis.length - actualizadas, detalles });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+
+    res.json({
+      ok: true,
+      total_sin_analisis: sinAnalisis.length,
+      actualizadas,
+      sin_cache: sinAnalisis.length - actualizadas,
+      detalles
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.get("/mp/listar-gestor", async (req, res) => {
@@ -2232,7 +2845,395 @@ app.get("/mp/listar-gestor", async (req, res) => {
     if (!r.ok) return res.status(502).json({ error: `Supabase ${r.status}` });
     const data = await r.json();
     res.json({ ok: true, total: data.length, licitaciones: data });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Endpoint de triaje rápido en lote ──────────────────────────────────────
+// Recibe lista de códigos de licitaciones y devuelve un veredicto por cada una:
+//   🟢 ALTA:   calza claramente con LEN, vale la pena análisis completo
+//   🟡 MEDIA:  podría servir, evaluar
+//   🔴 BAJA:   claramente fuera de scope (rechazar)
+//   ⚪ INDET:  datos insuficientes, requiere análisis IA para decidir
+// Cachea cada veredicto en analisis_cache (con prefijo "triaje:") para no
+// gastar tokens dos veces sobre la misma licitación.
+// Costo: ~200-300 tokens por licitación (~$0.001 USD = ~$1 CLP cada una).
+app.post("/mp/triaje", async (req, res) => {
+  const OPENAI_KEY = process.env.OPENAI_API_KEY || "";
+  if (!OPENAI_KEY) return res.status(500).json({ error: "OPENAI_API_KEY no configurada" });
+
+  // Acepta dos formatos:
+  //   { codigos: ["X", "Y"] }                          ← solo códigos (legacy)
+  //   { items: [{codigo, titulo, organismo, ...}] }    ← con datos básicos del listado
+  // El segundo formato es preferible: si la API de MP falla con "parámetros no
+  // válidos" en algunas licitaciones, igual podemos triarlas con título+organismo.
+  const { codigos, items } = req.body || {};
+  const inputItems = Array.isArray(items) && items.length > 0
+    ? items
+    : Array.isArray(codigos) ? codigos.map(c => ({ codigo: c })) : null;
+  if (!inputItems || inputItems.length === 0) {
+    return res.status(400).json({ error: "Debe enviar 'items' (con codigo + datos básicos) o 'codigos'" });
+  }
+  if (inputItems.length > 100) {
+    return res.status(400).json({ error: "Máximo 100 licitaciones por request" });
+  }
+
+  // 1) Deduplicar por código
+  const porCodigo = new Map();
+  for (const it of inputItems) {
+    if (it.codigo && !porCodigo.has(it.codigo)) porCodigo.set(it.codigo, it);
+  }
+  const codigosUnicos = [...porCodigo.keys()];
+
+  // 2) Cargar estado del gestor: las que ya están guardadas no necesitan triaje
+  let yaEnGestor = new Set();
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/licitaciones?select=codigo`,
+      { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(8000) }
+    );
+    if (r.ok) {
+      const data = await r.json();
+      yaEnGestor = new Set(data.map(l => l.codigo).filter(Boolean));
+    }
+  } catch(e) { console.warn("[triaje] No se pudo cargar gestor:", e.message); }
+
+  const aTriar = codigosUnicos.filter(c => !yaEnGestor.has(c));
+
+  // 3) Cargar veredictos cacheados
+  const resultados = {};
+  let porCachear = [];
+  if (aTriar.length > 0) {
+    try {
+      const inList = aTriar.map(c => `triaje:${c}`).map(k => `"${k}"`).join(",");
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/analisis_cache?codigo=in.(${encodeURIComponent(inList)})&select=codigo,analisis`,
+        { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(8000) }
+      );
+      if (r.ok) {
+        const cached = await r.json();
+        for (const row of cached) {
+          const codigoReal = row.codigo.replace(/^triaje:/, "");
+          try {
+            resultados[codigoReal] = { ...JSON.parse(row.analisis), cached: true };
+          } catch(e) {}
+        }
+      }
+    } catch(e) { console.warn("[triaje] Cache lookup falló:", e.message); }
+    porCachear = aTriar.filter(c => !resultados[c]);
+  }
+
+  console.log(`[triaje] codigos=${inputItems.length} unicos=${codigosUnicos.length} en_gestor=${codigosUnicos.length - aTriar.length} cache_hits=${aTriar.length - porCachear.length} a_consultar_gpt=${porCachear.length}`);
+
+  // 4) Para los que faltan, intentar enriquecer con la API de MP. Si falla,
+  //    usar los datos básicos del frontend como fallback.
+  const datos = {};
+  const BATCH_FETCH = 10;
+  for (let i = 0; i < porCachear.length; i += BATCH_FETCH) {
+    const lote = porCachear.slice(i, i + BATCH_FETCH);
+    await Promise.all(lote.map(async cod => {
+      let datoApi = null;
+      try {
+        const apiUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?codigo=${cod}&ticket=${TICKET}`;
+        const r = await fetch(apiUrl, { signal: AbortSignal.timeout(10000) });
+        if (r.ok) {
+          const j = await r.json();
+          const lic = j.Listado?.[0];
+          if (lic) {
+            datoApi = {
+              nombre: lic.Nombre || "",
+              descripcion: lic.Descripcion || "",
+              organismo: lic.Comprador?.NombreOrganismo || "",
+              region: lic.Comprador?.RegionUnidad || "",
+              monto: parseFloat(lic.MontoEstimado) || 0
+            };
+          }
+        }
+      } catch(e) {}
+
+      // Fallback: si la API no devolvió nada, usar lo que mandó el frontend
+      const fallback = porCodigo.get(cod) || {};
+      datos[cod] = datoApi || {
+        nombre: fallback.titulo || fallback.nombre || "",
+        descripcion: fallback.descripcion || "",
+        organismo: fallback.organismo || "",
+        region: fallback.region || "",
+        monto: parseFloat(fallback.monto) || 0,
+        _fallback: true
+      };
+      // Si la API devolvió pero algunos campos están vacíos, completar con fallback
+      if (datoApi) {
+        if (!datoApi.nombre && fallback.titulo) datos[cod].nombre = fallback.titulo;
+        if (!datoApi.organismo && fallback.organismo) datos[cod].organismo = fallback.organismo;
+        if (!datoApi.region && fallback.region) datos[cod].region = fallback.region;
+      }
+    }));
+  }
+
+  // Si después del fallback aún no hay título ni organismo, marcar ⚪
+  const sinDatos = porCachear.filter(c => {
+    const d = datos[c];
+    return !d || (!d.nombre && !d.organismo);
+  });
+  for (const c of sinDatos) {
+    resultados[c] = { veredicto: "⚪", razon: "Sin información suficiente para evaluar", cached: false };
+  }
+  const conDatos = porCachear.filter(c => !resultados[c] && datos[c] && (datos[c].nombre || datos[c].organismo));
+
+  // 5) Llamar a GPT en lotes de 20 (más rápido y resistente a timeouts)
+  const BATCH_GPT = 20;
+  for (let i = 0; i < conDatos.length; i += BATCH_GPT) {
+    const lote = conDatos.slice(i, i + BATCH_GPT);
+    const licitacionesTexto = lote.map((c, idx) => {
+      const d = datos[c];
+      return `${idx+1}. CÓDIGO: ${c}
+   Título: ${d.nombre || "(sin título)"}
+   Descripción: ${(d.descripcion || "(sin descripción)").substring(0, 400)}
+   Organismo: ${d.organismo || "(sin info)"}
+   Región: ${d.region || "(sin info)"}
+   Monto estimado: ${d.monto > 0 ? `$${Number(d.monto).toLocaleString("es-CL")} CLP` : "(no publicado)"}`;
+    }).join("\n\n");
+
+    const systemPrompt = `Eres un evaluador de oportunidades de licitaciones para LEN Ingeniería, consultora chilena de ingeniería con 7 divisiones:
+- Zona Sur (regiones VII a XII): vial, puentes, hidráulica, hidrología, sanitario, APR, drenaje
+- Infraestructura de Transporte (centro/norte): vial, puentes, conservación
+- ITO (nacional): inspección técnica, supervisión de obras
+- Medio Ambiente y Territorio: SEIA, declaraciones de impacto
+- Energía: ERNC, fotovoltaico, eólico, BESS
+- Proyectos Civiles (centro/norte): obras civiles, estructural, paralelismos
+- Minería (en formación)
+
+LEN NO TOMA: edificación habitacional, salud, educación pura, consultoría administrativa, RRHH, marketing, software de gestión, servicios de aseo, alimentación, vigilancia.
+
+Tu tarea: para cada licitación, devolver UNO de estos 4 veredictos:
+🟢 ALTA: Está claramente alineada con alguna división de LEN. Tema técnico claro y dentro del scope.
+🟡 MEDIA: Podría servir pero hay dudas (monto chico, organismo nuevo, scope mixto).
+🔴 BAJA: Claramente fuera del scope de LEN (ej: salud, educación, alimentación, etc.).
+⚪ INDETERMINADO: Título genérico o datos insuficientes para decidir. NO uses 🔴 si tenés dudas — usá ⚪.
+
+REGLA CRÍTICA: ante CUALQUIER duda, usá ⚪, NUNCA 🔴. Es preferible que el usuario revise una indeterminada a que perdamos una licitación buena.
+
+Responde ÚNICAMENTE con un JSON válido con clave "items" que sea un array, una entrada por licitación, en el mismo orden recibido. Cada entrada: {"codigo":"...","veredicto":"🟢|🟡|🔴|⚪","razon":"breve frase de 5-15 palabras"}`;
+
+    try {
+      const gptRes = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${OPENAI_KEY}` },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          max_tokens: Math.min(4000, lote.length * 80),
+          temperature: 0.1,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: `Evalúa estas ${lote.length} licitaciones:\n\n${licitacionesTexto}` }
+          ],
+          response_format: { type: "json_object" }
+        }),
+        signal: AbortSignal.timeout(90000) // 90s en lugar de 60s
+      });
+      if (!gptRes.ok) {
+        const err = await gptRes.text();
+        console.error(`[triaje] GPT error ${gptRes.status} en lote ${i}:`, err.substring(0, 200));
+        for (const c of lote) {
+          if (!resultados[c]) {
+            resultados[c] = { veredicto: "⚪", razon: "Error de evaluación, requiere análisis manual", cached: false };
+          }
+        }
+        continue;
+      }
+      const gptData = await gptRes.json();
+      const content = gptData.choices[0].message.content;
+      let parsed;
+      try {
+        const obj = JSON.parse(content);
+        parsed = Array.isArray(obj) ? obj : (obj.items || obj.licitaciones || obj.resultados || Object.values(obj)[0]);
+      } catch(e) {
+        console.error("[triaje] Parse JSON falló en lote " + i + ":", content.substring(0, 200));
+        for (const c of lote) {
+          if (!resultados[c]) {
+            resultados[c] = { veredicto: "⚪", razon: "No se pudo parsear veredicto", cached: false };
+          }
+        }
+        continue;
+      }
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) {
+          if (item.codigo && item.veredicto) {
+            resultados[item.codigo] = {
+              veredicto: item.veredicto,
+              razon: item.razon || "",
+              cached: false
+            };
+          }
+        }
+        for (const c of lote) {
+          if (!resultados[c]) {
+            resultados[c] = { veredicto: "⚪", razon: "No incluido en respuesta GPT", cached: false };
+          }
+        }
+      }
+    } catch(e) {
+      console.error("[triaje] Error en lote " + i + ":", e.message);
+      for (const c of lote) {
+        if (!resultados[c]) {
+          resultados[c] = { veredicto: "⚪", razon: `Error: ${e.message}`, cached: false };
+        }
+      }
+    }
+  }
+
+  // 6) Cachear los resultados nuevos (no cached)
+  const aCachear = Object.entries(resultados).filter(([_, v]) => !v.cached && v.veredicto !== "⚪");
+  for (const [cod, vrd] of aCachear) {
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/analisis_cache`, {
+        method: "POST",
+        headers: { ...SUPABASE_HEADERS, "Prefer": "resolution=merge-duplicates" },
+        body: JSON.stringify({
+          codigo: `triaje:${cod}`,
+          analisis: JSON.stringify({ veredicto: vrd.veredicto, razon: vrd.razon }),
+          creado_en: new Date().toISOString()
+        }),
+        signal: AbortSignal.timeout(3000)
+      });
+    } catch(e) {}
+  }
+
+  res.json({
+    ok: true,
+    total_recibidos: inputItems.length,
+    total_unicos: codigosUnicos.length,
+    en_gestor: codigosUnicos.length - aTriar.length,
+    triados: Object.keys(resultados).length,
+    cache_hits: aTriar.length - porCachear.length,
+    gpt_consultados: conDatos.length,
+    resultados
+  });
+});
+
+// ── Endpoint liviano: códigos + estado de las licitaciones guardadas ────────
+app.get("/mp/codigos-gestor", async (req, res) => {
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/licitaciones?select=codigo,estado_proceso`,
+      { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(10000) }
+    );
+    if (!r.ok) return res.status(502).json({ error: `Supabase ${r.status}` });
+    const data = await r.json();
+    const items = data.filter(l => l.codigo).map(l => ({
+      codigo: l.codigo,
+      estado_proceso: l.estado_proceso || "Detectada"
+    }));
+    // Mantenemos también `codigos` (array de strings) para compatibilidad con
+    // versiones anteriores del frontend que solo usan los códigos.
+    res.json({
+      ok: true,
+      total: items.length,
+      codigos: items.map(i => i.codigo),
+      items
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Clasificar licitaciones existentes (one-shot fix) ────────────────────────
+// Para todas las licitaciones que NO tengan division_len ni division_sugerida,
+// calcula sugerencia desde el título + descripción + objetivos + datos
+// enriquecidos de la API de MP. Usar GET una vez después de actualizar el código.
+app.get("/mp/clasificar-existentes", async (req, res) => {
+  try {
+    // Listar todas las licitaciones que aún no tienen división asignada
+    const url = `${SUPABASE_URL}/rest/v1/licitaciones?select=id,codigo,nombre,region,descripcion,objetivos,especialidades_mop_json&division_len=is.null&division_sugerida=is.null`;
+    const r = await fetch(url, { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(20000) });
+    if (!r.ok) return res.status(502).json({ error: `Supabase ${r.status}: ${await r.text()}` });
+    const pendientes = await r.json();
+
+    let actualizadas = 0;
+    let sinClasificar = 0;
+    const detalles = [];
+
+    for (const lic of pendientes) {
+      // Determinar codigoRegion si tenemos texto de región
+      let codigoRegion = null;
+      if (lic.region) {
+        const reg = REGIONES.find(rx => lic.region.toLowerCase().includes(rx.oficial));
+        if (reg) codigoRegion = reg.codigo;
+      }
+
+      // Enriquecer desde la API de MP para tener nombre + descripción completos
+      let nombreMP = "";
+      let descripcionMP = "";
+      if (lic.codigo) {
+        try {
+          const apiUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?codigo=${lic.codigo}&ticket=${TICKET}`;
+          const apiRes = await fetch(apiUrl, { signal: AbortSignal.timeout(8000) });
+          if (apiRes.ok) {
+            const data = await apiRes.json();
+            const licMP = data.Listado?.[0];
+            if (licMP) {
+              nombreMP      = licMP.Nombre      || "";
+              descripcionMP = licMP.Descripcion || "";
+              if (!codigoRegion && licMP.Comprador?.RegionUnidad) {
+                const reg2 = REGIONES.find(rx => licMP.Comprador.RegionUnidad.toLowerCase().includes(rx.oficial));
+                if (reg2) codigoRegion = reg2.codigo;
+              }
+            }
+          }
+        } catch (e) {
+          // Ignorar errores de enriquecimiento, seguir con datos parciales
+        }
+      }
+
+      // Texto enriquecido combinando todas las fuentes textuales disponibles
+      const textoEnriquecido = [
+        lic.nombre      || "",
+        nombreMP,
+        descripcionMP,
+        lic.descripcion || "",
+        lic.objetivos   || ""
+      ].filter(Boolean).join(" | ");
+
+      // Sugerir basándose en texto enriquecido + especialidades MOP si están
+      const especialidadesMOP = Array.isArray(lic.especialidades_mop_json) ? lic.especialidades_mop_json : [];
+      const divisionSugerida = sugerirDivision(textoEnriquecido, especialidadesMOP, codigoRegion, lic.mandante || "");
+
+      if (!divisionSugerida) {
+        sinClasificar++;
+        detalles.push({ id: lic.id, nombre: lic.nombre, status: "sin-match" });
+        continue;
+      }
+
+      // Actualizar Supabase
+      const patchRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/licitaciones?id=eq.${encodeURIComponent(lic.id)}`,
+        {
+          method: "PATCH",
+          headers: SUPABASE_HEADERS,
+          body: JSON.stringify({
+            division_sugerida: divisionSugerida,
+            division_len:      divisionSugerida // pre-llenar con sugerida (editable después)
+          }),
+          signal: AbortSignal.timeout(8000)
+        }
+      );
+      if (patchRes.ok) {
+        actualizadas++;
+        detalles.push({ id: lic.id, nombre: lic.nombre, division: divisionSugerida });
+      }
+    }
+
+    res.json({
+      ok: true,
+      total_pendientes: pendientes.length,
+      actualizadas,
+      sin_clasificar: sinClasificar,
+      detalles
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.listen(PORT, () => console.log(`Backend licitaciones en puerto ${PORT} | Ticket: ${TICKET.substring(0,8)}...`));
