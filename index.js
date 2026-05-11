@@ -496,20 +496,27 @@ app.post("/buscar-general", async (req, res) => {
     // y la licitación queda invisible aunque sí encaje con LEN.
     const esTituloGenerico = (nombre) => {
       if (!nombre) return false;
-      const n = nombre.trim().toLowerCase();
-      const palabras = n.split(/\s+/).length;
-      // Títulos muy cortos (≤5 palabras) o patrones de "encabezado" sin contenido específico
+      // Normalizar igual que el resto del backend (sin acentos, sin ñ, sin apóstrofes)
+      const n = nombre.toLowerCase()
+        .replace(/[áàä]/g,"a").replace(/[éèë]/g,"e").replace(/[íìï]/g,"i")
+        .replace(/[óòö]/g,"o").replace(/[úùü]/g,"u").replace(/ñ/g,"n")
+        .replace(/['''`´]/g,"").trim();
+      const palabras = n.split(/\s+/).filter(Boolean).length;
+      // Todos los patrones YA en forma normalizada (sin acentos, sin ñ)
       const patrones = [
-        "servicio de consultoria","servicio de consultoría",
-        "servicio de asesoria","servicio de asesoría",
-        "consultoria especializada","consultoría especializada",
-        "asesoria tecnica","asesoría técnica",
-        "proyecto de ingenieria","proyecto de ingeniería",
-        "asistencia tecnica","asistencia técnica",
-        "estudio de ingenieria","estudio de ingeniería",
-        "diseno de ingenieria","diseño de ingeniería",
-        "servicios profesionales","servicios de consultoria",
-        "contratacion de servicios","contratación de servicios"
+        "servicio de consultoria",
+        "servicio de asesoria",
+        "consultoria especializada",
+        "asesoria tecnica",
+        "proyecto de ingenieria",
+        "asistencia tecnica",
+        "estudio de ingenieria",
+        "diseno de ingenieria",
+        "servicios profesionales",
+        "servicios de consultoria",
+        "contratacion de servicios",
+        "ingenieria de detalle",
+        "ingenieria basica"
       ];
       const matchPatron = patrones.some(p => n.includes(p));
       return matchPatron || palabras <= 4;
