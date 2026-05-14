@@ -68,6 +68,17 @@ const DIVISIONES_LEN = [
     servicios: ["estudio","consultoria","asesoria","diseno","inspeccion","levantamiento"],
     regiones: ["7","16","8","9","14","10","11","12"],
     exclusiones: {
+      // Si el texto tiene señales claras de ITO, NO es Zona Sur — el servicio
+      // (no el territorio) determina la división. ITO opera nacionalmente, así
+      // que un trabajo de inspección en Ñuble va a ITO, no a Zona Sur.
+      keywords: [
+        "aif","aif global","aif vialidad","aif mop",
+        "asesoria a la inspeccion","asesoria a la inspeccion fiscal",
+        "asesoria inspeccion fiscal","asistencia a la inspeccion",
+        "inspeccion fiscal","fiscalizacion de obras","fiscalizacion de contrato",
+        "supervision de obras","supervision de contrato","supervision tecnica",
+        "contraparte tecnica","auditoria tecnica de obras"
+      ],
       combinados: [
         { todas: ["actualizacion sanitario rural", "hidrogeologia"] },
         { todas: ["actualizacion ssr", "hidrogeologia"] }
@@ -81,7 +92,17 @@ const DIVISIONES_LEN = [
     servicios: ["estudio","consultoria","diseno","prefactibilidad","factibilidad","asesoria","anteproyecto","inspeccion"],
     exclusiones: {
       organismos: ["serviu", "municipalidad", "ilustre municipalidad", "i. municipalidad"],
-      keywords: ["arquitectura", "edificacion", "edificaciones"]
+      // Si tiene señales ITO, no es infra — infra hace proyectos/diseños,
+      // ITO hace supervisión/asesoría a la inspección
+      keywords: [
+        "arquitectura", "edificacion", "edificaciones",
+        "aif","aif global","aif vialidad","aif mop",
+        "asesoria a la inspeccion","asesoria a la inspeccion fiscal",
+        "asesoria inspeccion fiscal","inspeccion fiscal",
+        "fiscalizacion de obras","fiscalizacion de contrato",
+        "supervision de obras","supervision de contrato","supervision tecnica",
+        "contraparte tecnica"
+      ]
     }
   },
   {
@@ -101,7 +122,18 @@ const DIVISIONES_LEN = [
   {
     id: "ito", label: "Inspección Técnica", icon: "🔍", color: "#dc2626",
     activa: true,
-    keywords: ["ito","inspeccion tecnica","supervision de obras","contraparte tecnica","fiscalizacion de obras","control de obras","auditoria tecnica de obras","geomensura","supervision tecnica","acompanamiento a la construccion","inspeccion fiscal","asistencia tecnica en obra","inspeccion de obras"],
+    keywords: [
+      "ito","inspeccion tecnica","supervision de obras","contraparte tecnica",
+      "fiscalizacion de obras","control de obras","auditoria tecnica de obras",
+      "geomensura","supervision tecnica","acompanamiento a la construccion",
+      "inspeccion fiscal","asistencia tecnica en obra","inspeccion de obras",
+      // AIF = Asesoría a la Inspección Fiscal (sigla MOP muy frecuente)
+      "aif","aif global","aif vialidad","aif mop",
+      "asesoria a la inspeccion","asesoria inspeccion fiscal",
+      "asesoria a la inspeccion fiscal","asistencia a la inspeccion",
+      "inspeccion de contrato","control de contrato","supervision de contrato",
+      "fiscalizacion de contrato"
+    ],
     servicios: [],
     exclusiones: {
       organismos: ["municipalidad", "ilustre municipalidad", "i. municipalidad"],
@@ -691,13 +723,21 @@ app.post("/buscar-general", async (req, res) => {
         const e = Math.max(idxD<0?0:idxD, idxH<0?REGIONES.length-1:idxH);
         codigosValidos = new Set(REGIONES.slice(s,e+1).map(r => r.codigo));
       }
+      // Resolver la config de la división en DIVISIONES_LEN para aplicar sus
+      // exclusiones (organismos, keywords negativas, combinados). Esto evita
+      // que aparezcan en la pestaña equivocada licitaciones cuyo SERVICIO
+      // corresponde a otra división (ej: AIF en Zona Sur cuando es ITO).
+      const divConfig = DIVISIONES_LEN.find(d => d.id === id);
+
       const filtradas = pool.filter(l => {
         const titulo = `${l.Nombre || ""} ${l.Descripcion || ""}`;
         if (esBloqueada(titulo)) return false;
         const matchTec = keywords.some(kw => matchKw(titulo, kw));
         if (!matchTec) return false;
-        if (!servicios?.length) return true;
-        return servicios.some(s => matchKw(titulo, s));
+        if (servicios?.length && !servicios.some(s => matchKw(titulo, s))) return false;
+        // Aplicar exclusiones cruzadas de la división (ej: AIF excluye de Zona Sur)
+        if (divConfig && aplicaExclusiones(divConfig, l.Comprador?.NombreOrganismo || "", titulo)) return false;
+        return true;
       });
       let mapped = filtradas.map(mapItem);
       if (codigosValidos) mapped = mapped.filter(r => !r.codigoRegion || codigosValidos.has(r.codigoRegion));
