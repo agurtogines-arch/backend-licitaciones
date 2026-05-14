@@ -535,7 +535,7 @@ app.post("/buscar-general", async (req, res) => {
           const chunk = codigosNecesarios.slice(i, i + CHUNK_QRY);
           const inList = chunk.map(c => `"${encodeURIComponent(c)}"`).join(",");
           const cacheRes = await fetch(
-            `${SUPABASE_URL}/rest/v1/mp_pool_cache?codigo=in.(${inList})&select=codigo,descripcion,organismo,region,monto,comuna`,
+            `${SUPABASE_URL}/rest/v1/mp_pool_cache?codigo=in.(${inList})&select=codigo,descripcion,organismo,region,monto,comuna,fecha_publicacion,tipo_licitacion`,
             { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(12000) }
           );
           if (cacheRes.ok) {
@@ -558,6 +558,8 @@ app.post("/buscar-general", async (req, res) => {
           lic.Comprador = { NombreOrganismo: cached.organismo, RegionUnidad: cached.region, ComunaUnidad: cached.comuna };
         }
         if (cached.monto && !lic.MontoEstimado) lic.MontoEstimado = cached.monto;
+        if (cached.fecha_publicacion && !lic.FechaPublicacion) lic.FechaPublicacion = cached.fecha_publicacion;
+        if (cached.tipo_licitacion && !lic.Tipo) lic.Tipo = cached.tipo_licitacion;
       }
     }
 
@@ -587,6 +589,8 @@ app.post("/buscar-general", async (req, res) => {
             if (detalle.Descripcion) lic.Descripcion = detalle.Descripcion;
             if (detalle.Comprador && !lic.Comprador) lic.Comprador = detalle.Comprador;
             if (detalle.MontoEstimado && !lic.MontoEstimado) lic.MontoEstimado = detalle.MontoEstimado;
+            if (detalle.Fechas?.FechaPublicacion && !lic.FechaPublicacion) lic.FechaPublicacion = detalle.Fechas.FechaPublicacion;
+            if (detalle.Tipo && !lic.Tipo) lic.Tipo = detalle.Tipo;
             // Preparar para guardar en cache
             nuevasEnCache.push({
               codigo:      lic.CodigoExterno,
@@ -596,6 +600,8 @@ app.post("/buscar-general", async (req, res) => {
               region:      detalle.Comprador?.RegionUnidad || null,
               comuna:      detalle.Comprador?.ComunaUnidad || null,
               monto:       parseFloat(detalle.MontoEstimado) || null,
+              fecha_publicacion: detalle.Fechas?.FechaPublicacion || null,
+              tipo_licitacion:   detalle.Tipo || null,
               fetched_at:  new Date().toISOString()
             });
           } catch (e) {}
@@ -692,6 +698,112 @@ app.post("/buscar-general", async (req, res) => {
         seen.add(k); return true;
       });
     }
+
+    // ── Enriquecimiento POST-FILTRO: traer fecha de publicación para las que pasaron
+    // Solo los items que ya pasaron filtros (números manejables: típicamente 5-50
+    // por división). Las que ya tienen fechaPublicacion del cache/pool se saltan.
+    // El cache mp_pool_cache se va llenando con cada búsqueda.
+    try {
+      const codigosSinFecha = new Set();
+      for (const divId in resultados) {
+        for (const item of resultados[divId]) {
+          if (!item.fechaPublicacion || item.fechaPublicacion === "–") {
+            if (item.codigo) codigosSinFecha.add(item.codigo);
+          }
+        }
+      }
+
+      if (codigosSinFecha.size > 0) {
+        const codigosArr = [...codigosSinFecha];
+        console.log(`[buscar-general] Post-filtro: enriqueciendo ${codigosArr.length} licitaciones para fecha pub`);
+
+        // 1) Consultar cache primero (puede que /precalentar-pool ya las tenga)
+        const fechasCache = new Map();
+        const yaEnCache = new Set();
+        try {
+          const CHUNK = 200;
+          for (let i = 0; i < codigosArr.length; i += CHUNK) {
+            const chunk = codigosArr.slice(i, i + CHUNK);
+            const inList = chunk.map(c => `"${encodeURIComponent(c)}"`).join(",");
+            const r = await fetch(
+              `${SUPABASE_URL}/rest/v1/mp_pool_cache?codigo=in.(${inList})&select=codigo,descripcion,organismo,region,monto,comuna,fecha_publicacion,tipo_licitacion`,
+              { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(10000) }
+            );
+            if (r.ok) {
+              for (const row of await r.json()) {
+                fechasCache.set(row.codigo, row);
+                yaEnCache.add(row.codigo);
+              }
+            }
+          }
+        } catch(e) { console.warn(`[buscar-general] Post-filtro cache lookup falló: ${e.message}`); }
+
+        // 2) Las que NO están en cache, fetch a ChileCompra con rate-limit
+        const sinCache = codigosArr.filter(c => !yaEnCache.has(c));
+        const PARALELISMO_POST = 5;
+        const SLEEP_POST = 250;
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+        const nuevasParaCache = [];
+
+        for (let i = 0; i < sinCache.length; i += PARALELISMO_POST) {
+          const lote = sinCache.slice(i, i + PARALELISMO_POST);
+          await Promise.all(lote.map(async cod => {
+            try {
+              const url = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?codigo=${cod}&ticket=${TICKET}`;
+              const r = await fetch(url, { signal: AbortSignal.timeout(6000) });
+              if (!r.ok) return;
+              const data = await r.json();
+              const det = data.Listado?.[0];
+              if (!det) return;
+              const row = {
+                codigo: cod,
+                nombre: det.Nombre || null,
+                descripcion: det.Descripcion || "",
+                organismo:   det.Comprador?.NombreOrganismo || null,
+                region:      det.Comprador?.RegionUnidad || null,
+                comuna:      det.Comprador?.ComunaUnidad || null,
+                monto:       parseFloat(det.MontoEstimado) || null,
+                fecha_publicacion: det.Fechas?.FechaPublicacion || null,
+                tipo_licitacion:   det.Tipo || null,
+                fetched_at: new Date().toISOString()
+              };
+              fechasCache.set(cod, row);
+              nuevasParaCache.push(row);
+            } catch (e) {}
+          }));
+          if (i + PARALELISMO_POST < sinCache.length) await sleep(SLEEP_POST);
+        }
+
+        // 3) Aplicar fechas y otros campos a los items en resultados
+        for (const divId in resultados) {
+          for (const item of resultados[divId]) {
+            const row = fechasCache.get(item.codigo);
+            if (!row) continue;
+            if (row.fecha_publicacion && (!item.fechaPublicacion || item.fechaPublicacion === "–")) {
+              item.fechaPublicacion = formatFecha(row.fecha_publicacion);
+            }
+            if (row.organismo && item.organismo === "–") item.organismo = row.organismo;
+            if (row.region && !item.region) item.region = row.region;
+            if (row.monto && !item.monto) item.monto = `${Number(row.monto).toLocaleString("es-CL")} CLP`;
+          }
+        }
+
+        // 4) Guardar nuevas en cache (fire-and-forget, no bloquea respuesta)
+        if (nuevasParaCache.length > 0) {
+          fetch(`${SUPABASE_URL}/rest/v1/mp_pool_cache`, {
+            method: "POST",
+            headers: { ...SUPABASE_HEADERS, "Prefer": "resolution=merge-duplicates" },
+            body: JSON.stringify(nuevasParaCache),
+            signal: AbortSignal.timeout(10000)
+          }).then(r => {
+            if (r.ok) console.log(`[buscar-general] Post-filtro: ${nuevasParaCache.length} nuevas guardadas en cache`);
+          }).catch(e => console.warn(`[buscar-general] Post-filtro cache save error: ${e.message}`));
+        }
+      }
+    } catch(e) {
+      console.warn(`[buscar-general] Error en enriquecimiento post-filtro: ${e.message}`);
+    }
+
     res.json({ ok: true, resultados, total: pool.length });
   } catch(err) {
     if(err.name==="AbortError") return res.status(504).json({ error:"Tiempo de espera agotado" });
@@ -2656,6 +2768,8 @@ app.get("/mp/precalentar-pool", async (req, res) => {
               region:      det.Comprador?.RegionUnidad || null,
               comuna:      det.Comprador?.ComunaUnidad || null,
               monto:       parseFloat(det.MontoEstimado) || null,
+              fecha_publicacion: det.Fechas?.FechaPublicacion || null,
+              tipo_licitacion:   det.Tipo || null,
               fetched_at:  new Date().toISOString()
             });
           } catch (e) { totalFallos++; }
