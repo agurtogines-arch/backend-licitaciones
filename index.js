@@ -352,6 +352,16 @@ function formatFecha(str) {
   return String(str).substring(0, 10);
 }
 
+// Devuelve la fecha de publicación con prefijo "Fecha de Publicación: ".
+// Si no hay fecha disponible, devuelve "–" sin prefijo (no tiene sentido decir
+// "Fecha de Publicación: –"). El sort por fecha sigue funcionando porque las
+// strings con prefijo común se comparan en su parte variable (la fecha al final),
+// y "–" se detecta como "sin fecha" para mandarlas al final.
+function formatFechaPub(str) {
+  const f = formatFecha(str);
+  return f === "–" ? "–" : `Fecha de Publicación: ${f}`;
+}
+
 app.get("/", (req, res) => { res.sendFile(path.join(__dirname, "public", "index.html")); });
 app.get("/regiones", (req, res) => res.json(REGIONES));
 
@@ -444,7 +454,7 @@ app.get("/buscar", async (req, res) => {
         region:           regionExtraida?.nombre || null,
         codigoRegion:     regionExtraida?.codigo || null,
         estado:           estadoTexto(l.CodigoEstado),
-        fechaPublicacion: formatFecha(l.FechaPublicacion),
+        fechaPublicacion: formatFechaPub(l.FechaPublicacion),
         fechaCierre:      formatFecha(l.FechaCierre),
         monto:            null,
         descripcion:      l.Descripcion || "",
@@ -661,7 +671,7 @@ app.post("/buscar-general", async (req, res) => {
         region: regionExtraida?.nombre || null,
         codigoRegion: regionExtraida?.codigo || null,
         estado: estadoTexto(l.CodigoEstado),
-        fechaPublicacion: formatFecha(l.FechaPublicacion),
+        fechaPublicacion: formatFechaPub(l.FechaPublicacion),
         fechaCierre: formatFecha(l.FechaCierre),
         monto: null, descripcion: l.Descripcion || "",
         url: `https://www.mercadopublico.cl/Procurement/Modules/RFB/DetailsAcquisition.aspx?idlicitacion=${l.CodigoExterno}`,
@@ -783,7 +793,7 @@ app.post("/buscar-general", async (req, res) => {
             const row = fechasCache.get(item.codigo);
             if (!row) continue;
             if (row.fecha_publicacion && (!item.fechaPublicacion || item.fechaPublicacion === "–")) {
-              item.fechaPublicacion = formatFecha(row.fecha_publicacion);
+              item.fechaPublicacion = formatFechaPub(row.fecha_publicacion);
             }
             if (row.organismo && item.organismo === "–") item.organismo = row.organismo;
             if (row.region && !item.region) item.region = row.region;
@@ -805,6 +815,22 @@ app.post("/buscar-general", async (req, res) => {
       }
     } catch(e) {
       console.warn(`[buscar-general] Error en enriquecimiento post-filtro: ${e.message}`);
+    }
+
+    // ── Ordenar cada división por fecha de publicación descendente ────────
+    // Se hace al final (después del enriquecimiento post-filtro) para que las
+    // licitaciones que recién obtuvieron su fecha también queden bien ordenadas.
+    // Las que no tienen fecha quedan al final. ISO YYYY-MM-DD ordena alfabético
+    // = cronológico, por eso localeCompare alcanza.
+    for (const divId in resultados) {
+      resultados[divId].sort((a, b) => {
+        const aSinFecha = !a.fechaPublicacion || a.fechaPublicacion === "–";
+        const bSinFecha = !b.fechaPublicacion || b.fechaPublicacion === "–";
+        if (aSinFecha && bSinFecha) return 0;
+        if (aSinFecha) return 1;
+        if (bSinFecha) return -1;
+        return b.fechaPublicacion.localeCompare(a.fechaPublicacion);
+      });
     }
 
     res.json({ ok: true, resultados, total: pool.length });
@@ -869,7 +895,7 @@ app.get("/buscar-organismo", async (req, res) => {
         region: regionExtraida?.nombre || null,
         codigoRegion: regionExtraida?.codigo || null,
         estado: estadoTexto(l.CodigoEstado),
-        fechaPublicacion: formatFecha(l.FechaPublicacion),
+        fechaPublicacion: formatFechaPub(l.FechaPublicacion),
         fechaCierre: formatFecha(l.FechaCierre),
         monto: null, descripcion: l.Descripcion || "",
         url: `https://www.mercadopublico.cl/Procurement/Modules/RFB/DetailsAcquisition.aspx?idlicitacion=${l.CodigoExterno}`,
