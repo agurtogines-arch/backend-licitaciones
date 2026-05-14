@@ -732,7 +732,10 @@ app.post("/buscar-general", async (req, res) => {
             if (r.ok) {
               for (const row of await r.json()) {
                 fechasCache.set(row.codigo, row);
-                yaEnCache.add(row.codigo);
+                // Marcar como "ya enriquecido con fecha" SOLO si tiene fecha_publicacion.
+                // Filas viejas (cacheadas antes del ALTER TABLE) tienen fecha_publicacion=null
+                // y deben re-enriquecerse para obtener la fecha real.
+                if (row.fecha_publicacion) yaEnCache.add(row.codigo);
               }
             }
           }
