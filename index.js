@@ -72,12 +72,26 @@ const DIVISIONES_LEN = [
       // (no el territorio) determina la división. ITO opera nacionalmente, así
       // que un trabajo de inspección en Ñuble va a ITO, no a Zona Sur.
       keywords: [
+        // ── ITO (inspección/supervisión) ──
         "aif","aif global","aif vialidad","aif mop",
         "asesoria a la inspeccion","asesoria a la inspeccion fiscal",
         "asesoria inspeccion fiscal","asistencia a la inspeccion",
         "inspeccion fiscal","fiscalizacion de obras","fiscalizacion de contrato",
         "supervision de obras","supervision de contrato","supervision tecnica",
-        "contraparte tecnica","auditoria tecnica de obras"
+        "contraparte tecnica","auditoria tecnica de obras",
+        "inspeccion de obras","inspeccion tecnica","inspeccion de puente",
+        "inspeccion de puentes","inspeccion de pavimento","inspeccion de caminos",
+        // ── Sector salud (no es LEN) ──
+        "stent","medicamento","insumo medico","insumos medicos","farmaceutico",
+        "consignacion en transito","hospital de carabineros","fondo hospital",
+        "servicio de salud","atencion medica","equipo medico","equipamiento medico",
+        "implante","protesis","reactivo","cirugia",
+        // ── Sector eléctrico (no es Zona Sur, va a Energía si aplica) ──
+        "asesoria tecnica electrica","asesor electrico","ingeniero electrico",
+        "instalacion electrica","tablero electrico","empalme electrico",
+        // ── Servicios menores fuera del alcance LEN ──
+        "senda peatonal","sendas peatonales","reparacion de veredas",
+        "bacheo","tapado de hoyos","pintura de demarcacion"
       ],
       combinados: [
         { todas: ["actualizacion sanitario rural", "hidrogeologia"] },
@@ -839,6 +853,31 @@ app.post("/buscar-general", async (req, res) => {
             if (row.region && !item.region) item.region = row.region;
             if (row.monto && !item.monto) item.monto = `${Number(row.monto).toLocaleString("es-CL")} CLP`;
           }
+        }
+
+        // 3.5) Re-filtrar por región ahora que el enriquecimiento completó datos.
+        // Sin esto, una licitación cuyo Nombre no tenía indicio de región pasaba
+        // el filtro original (codigoRegion=null → beneficio de la duda), pero
+        // luego el enriquecimiento revela que es de RM/Coquimbo/etc. y aparece
+        // en una división filtrada al sur. Acá la sacamos definitivamente.
+        for (const div of divisiones) {
+          const { id, regionDesde, regionHasta } = div;
+          if (!regionDesde || regionDesde === "todas" || !regionHasta || regionHasta === "todas") continue;
+          const s = REGIONES.findIndex(r => r.codigo === String(regionDesde));
+          const e = REGIONES.findIndex(r => r.codigo === String(regionHasta));
+          if (s < 0 || e < 0 || s > e) continue;
+          const codigosValidos = new Set(REGIONES.slice(s, e + 1).map(r => r.codigo));
+          resultados[id] = (resultados[id] || []).filter(item => {
+            // Si ya tenía codigoRegion confiable, validar contra el rango
+            if (item.codigoRegion) return codigosValidos.has(String(item.codigoRegion));
+            // Si vino región como texto del enriquecimiento, intentar resolverla
+            if (!item.region) return true; // sin info, dar beneficio de la duda
+            const inferida = extraerRegionDeTexto(item.region);
+            if (!inferida?.codigo) return true; // no se pudo inferir, dejar pasar
+            // Cachear el código para que el frontend lo tenga consistente
+            item.codigoRegion = inferida.codigo;
+            return codigosValidos.has(inferida.codigo);
+          });
         }
 
         // 4) Guardar nuevas en cache (fire-and-forget, no bloquea respuesta)
