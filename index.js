@@ -145,7 +145,7 @@ const DIVISIONES_LEN = [
       "aif","aif global","aif vialidad","aif mop",
       "asesoria a la inspeccion","asesoria inspeccion fiscal",
       "asesoria a la inspeccion fiscal","asistencia a la inspeccion",
-      "inspeccion de contrato","control de contrato","supervision de contrato",
+      "inspeccion de contrato","supervision de contrato",
       "fiscalizacion de contrato"
     ],
     servicios: [],
@@ -453,7 +453,20 @@ const EXCLUSION_SECTORIAL = [
   // Transporte de personas
   "transporte escolar","transporte de pasajeros","transporte de personal",
   // Informática genérica
-  "soporte informatico","mantencion de impresoras","toner","licencia de software"
+  "soporte informatico","mantencion de impresoras","toner","licencia de software",
+  "creditos de nube","infraestructura cloud","nube publica de aws","plataformas cloud",
+  // Eventos / Producción artística
+  "evento artistico","festival","produccion de evento","evento cultural",
+  "evento comunitario","espectaculo","show","concierto",
+  // Servicios transitorios / Personal de reemplazo
+  "servicios transitorios","personal de reemplazo","dotacion transitoria",
+  "cargos de reemplazo","horas de matroneria","prestaciones en caracter transitorio",
+  // Arriendo de maquinaria (no ingeniería)
+  "arriendo tractor","tractor desbrozador","arriendo de maquinaria pesada",
+  "retroexcavadora en arriendo",
+  // Insumos hospitalarios específicos
+  "administracion enteral","apositos","curacion avanzada",
+  "insumos para administracion","neuroquirurgic"
 ];
 function bloqueadaSectorial(titulo) {
   const t = normDiv(titulo);
