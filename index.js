@@ -792,6 +792,13 @@ app.post("/buscar-general", async (req, res) => {
         if (servicios?.length && !servicios.some(s => matchKw(titulo, s))) return false;
         // Aplicar exclusiones cruzadas de la división (ej: AIF excluye de Zona Sur)
         if (divConfig && aplicaExclusiones(divConfig, l.Comprador?.NombreOrganismo || "", titulo)) return false;
+        // ── UNIFICACIÓN: el clasificador del backend tiene la última palabra.
+        // Si clasificarDivisiones asigna esta licitación a OTRA división distinta,
+        // no aparece en esta pestaña. Esto elimina el desacople entre el tag
+        // visual (que dice "ITO") y la pestaña (que decía "Minería").
+        const regionClasif = extraerRegionDeTexto(titulo);
+        const clasificacion = clasificarDivisiones(titulo, regionClasif?.codigo || null, l.Comprador?.NombreOrganismo || "");
+        if (clasificacion.length > 0 && !clasificacion.some(d => d.id === id)) return false;
         return true;
       });
       let mapped = filtradas.map(mapItem);
