@@ -408,6 +408,45 @@ function formatFechaPub(str) {
   return f === "–" ? "–" : `Fecha de Publicación: ${f}`;
 }
 
+// ── Exclusión sectorial global: sectores COMPLETAMENTE fuera del alcance de LEN.
+// Se aplica sin salvavidas. Colaciones, medicamentos, toldos, talleres culturales,
+// equipamiento hospitalario, limpieza, etc. nunca son de interés para LEN
+// aunque coincidan con alguna keyword técnica por stemming.
+const EXCLUSION_SECTORIAL = [
+  // Salud: insumos, medicamentos, equipamiento clínico
+  "medicamento","metilfenidato","farmaceutico","cateter","dialisis",
+  "dispositivo medico","dispositivos medicos",
+  "insumo medico","insumos medicos","equipo medico","equipamiento medico",
+  "soporte vital","quirurgico","endoscopia","protesis dental","implante coclear",
+  "colchones clinicos","ventilacion mecanica",
+  "hospitalizacion domiciliaria","transporte para hospitalizacion",
+  "servicio de salud","atencion primaria","atencion medica",
+  "hospital de carabineros","fondo hospital",
+  // Alimentación
+  "colaciones saludables","colaciones escolares","racion alimentaria",
+  "alimentacion escolar","servicio de alimentacion","servicio de colacion",
+  "comedor escolar","casino de alimentacion",
+  // Cultura / Talleres sociales / Educación no técnica
+  "talleres comunitarios","talleres culturales","talleres artisticos",
+  "servicio de talleristas","centro cultural","actividad cultural",
+  "educacion parvularia","jardin infantil","sala cuna",
+  // Contabilidad / Auditoría financiera (no técnica)
+  "contador auditor","auditoria contable","auditoria financiera",
+  "servicio contable",
+  // Mobiliario urbano menor / áreas verdes (no ingeniería)
+  "toldos de proteccion solar","juegos infantiles para plazas",
+  "mobiliario urbano","bancas de plaza","maquinas de ejercicio",
+  // Seguridad
+  "municion","armamento","gendarmeria","penitenciario",
+  // Limpieza / Aseo / Plagas
+  "servicio de aseo","insumos de aseo","productos de limpieza",
+  "desratizacion","fumigacion","control de plagas"
+];
+function bloqueadaSectorial(titulo) {
+  const t = norm(titulo);
+  return EXCLUSION_SECTORIAL.some(ex => t.includes(ex));
+}
+
 app.get("/", (req, res) => { res.sendFile(path.join(__dirname, "public", "index.html")); });
 app.get("/regiones", (req, res) => res.json(REGIONES));
 
@@ -483,6 +522,7 @@ app.get("/buscar", async (req, res) => {
     const filtradas = licitaciones.filter(l => {
       const titulo = `${l.Nombre || ""} ${l.Descripcion || ""}`;
       if (esBloqueada(titulo)) return false;
+      if (bloqueadaSectorial(titulo)) return false;
       const matchesTecnica = keywords.some(kw => matchesKeyword(titulo, kw));
       if (!matchesTecnica) return false;
       if (servicios.length === 0) return true;
@@ -746,6 +786,7 @@ app.post("/buscar-general", async (req, res) => {
       const filtradas = pool.filter(l => {
         const titulo = `${l.Nombre || ""} ${l.Descripcion || ""}`;
         if (esBloqueada(titulo)) return false;
+        if (bloqueadaSectorial(titulo)) return false;
         const matchTec = keywords.some(kw => matchKw(titulo, kw));
         if (!matchTec) return false;
         if (servicios?.length && !servicios.some(s => matchKw(titulo, s))) return false;
