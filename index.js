@@ -443,7 +443,7 @@ const EXCLUSION_SECTORIAL = [
   "desratizacion","fumigacion","control de plagas"
 ];
 function bloqueadaSectorial(titulo) {
-  const t = norm(titulo);
+  const t = normDiv(titulo);
   return EXCLUSION_SECTORIAL.some(ex => t.includes(ex));
 }
 
