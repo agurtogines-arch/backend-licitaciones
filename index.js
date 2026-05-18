@@ -413,7 +413,7 @@ function formatFechaPub(str) {
 // equipamiento hospitalario, limpieza, etc. nunca son de interés para LEN
 // aunque coincidan con alguna keyword técnica por stemming.
 const EXCLUSION_SECTORIAL = [
-  // Salud: insumos, medicamentos, equipamiento clínico
+  // Salud
   "medicamento","metilfenidato","farmaceutico","cateter","dialisis",
   "dispositivo medico","dispositivos medicos",
   "insumo medico","insumos medicos","equipo medico","equipamiento medico",
@@ -421,26 +421,39 @@ const EXCLUSION_SECTORIAL = [
   "colchones clinicos","ventilacion mecanica",
   "hospitalizacion domiciliaria","transporte para hospitalizacion",
   "servicio de salud","atencion primaria","atencion medica",
-  "hospital de carabineros","fondo hospital",
+  "hospital de carabineros","fondo hospital","ambulancia","reactivo","laboratorio clinico",
   // Alimentación
   "colaciones saludables","colaciones escolares","racion alimentaria",
   "alimentacion escolar","servicio de alimentacion","servicio de colacion",
-  "comedor escolar","casino de alimentacion",
-  // Cultura / Talleres sociales / Educación no técnica
+  "comedor escolar","casino de alimentacion","catering",
+  // Cultura / Talleres / Educación no técnica
   "talleres comunitarios","talleres culturales","talleres artisticos",
   "servicio de talleristas","centro cultural","actividad cultural",
   "educacion parvularia","jardin infantil","sala cuna",
-  // Contabilidad / Auditoría financiera (no técnica)
-  "contador auditor","auditoria contable","auditoria financiera",
-  "servicio contable",
-  // Mobiliario urbano menor / áreas verdes (no ingeniería)
+  // Contabilidad
+  "contador auditor","auditoria contable","auditoria financiera","servicio contable",
+  // Mobiliario urbano menor
   "toldos de proteccion solar","juegos infantiles para plazas",
   "mobiliario urbano","bancas de plaza","maquinas de ejercicio",
-  // Seguridad
+  // Seguridad / Vigilancia
   "municion","armamento","gendarmeria","penitenciario",
+  "servicio de vigilancia","guardia de seguridad","monitoreo de alarmas",
   // Limpieza / Aseo / Plagas
   "servicio de aseo","insumos de aseo","productos de limpieza",
-  "desratizacion","fumigacion","control de plagas"
+  "desratizacion","fumigacion","control de plagas",
+  // Vestuario / Uniformes
+  "vestuario","uniforme","ropa de trabajo","calzado de seguridad",
+  // Combustible / Vehículos (suministro)
+  "suministro de combustible","bencina","lubricantes",
+  "mantencion de vehiculos","lavado de vehiculos",
+  // Publicidad / Imprenta
+  "servicio de impresion","material grafico","produccion audiovisual",
+  // Seguros
+  "poliza de seguro","corredor de seguros",
+  // Transporte de personas
+  "transporte escolar","transporte de pasajeros","transporte de personal",
+  // Informática genérica
+  "soporte informatico","mantencion de impresoras","toner","licencia de software"
 ];
 function bloqueadaSectorial(titulo) {
   const t = normDiv(titulo);
@@ -793,12 +806,14 @@ app.post("/buscar-general", async (req, res) => {
         // Aplicar exclusiones cruzadas de la división (ej: AIF excluye de Zona Sur)
         if (divConfig && aplicaExclusiones(divConfig, l.Comprador?.NombreOrganismo || "", titulo)) return false;
         // ── UNIFICACIÓN: el clasificador del backend tiene la última palabra.
-        // Si clasificarDivisiones asigna esta licitación a OTRA división distinta,
-        // no aparece en esta pestaña. Esto elimina el desacople entre el tag
-        // visual (que dice "ITO") y la pestaña (que decía "Minería").
+        // Si clasificarDivisiones no puede asignar a NINGUNA división → fuera.
+        // Si asigna a otra división distinta a esta pestaña → fuera.
+        // Esto elimina el desacople y también limpia la basura que no encaja
+        // en ningún nicho de LEN.
         const regionClasif = extraerRegionDeTexto(titulo);
         const clasificacion = clasificarDivisiones(titulo, regionClasif?.codigo || null, l.Comprador?.NombreOrganismo || "");
-        if (clasificacion.length > 0 && !clasificacion.some(d => d.id === id)) return false;
+        if (clasificacion.length === 0) return false;
+        if (!clasificacion.some(d => d.id === id)) return false;
         return true;
       });
       let mapped = filtradas.map(mapItem);
