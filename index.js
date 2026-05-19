@@ -818,15 +818,14 @@ app.post("/buscar-general", async (req, res) => {
         if (servicios?.length && !servicios.some(s => matchKw(titulo, s))) return false;
         // Aplicar exclusiones cruzadas de la división (ej: AIF excluye de Zona Sur)
         if (divConfig && aplicaExclusiones(divConfig, l.Comprador?.NombreOrganismo || "", titulo)) return false;
-        // ── UNIFICACIÓN: el clasificador del backend tiene la última palabra.
-        // Si clasificarDivisiones no puede asignar a NINGUNA división → fuera.
-        // Si asigna a otra división distinta a esta pestaña → fuera.
-        // Esto elimina el desacople y también limpia la basura que no encaja
-        // en ningún nicho de LEN.
+        // ── UNIFICACIÓN: si el clasificador asigna a OTRA división, excluir.
+        // Si no tiene opinión (vacío), dejar que las keywords del frontend decidan.
+        // La basura de ITO ya se resolvió removiendo "control de contrato" del
+        // stemming, y bloqueadaSectorial filtra el resto. No hace falta ser
+        // estricto con clasificacion vacía — eso mataba Zona Sur legítimas.
         const regionClasif = extraerRegionDeTexto(titulo);
         const clasificacion = clasificarDivisiones(titulo, regionClasif?.codigo || null, l.Comprador?.NombreOrganismo || "");
-        if (clasificacion.length === 0) return false;
-        if (!clasificacion.some(d => d.id === id)) return false;
+        if (clasificacion.length > 0 && !clasificacion.some(d => d.id === id)) return false;
         return true;
       });
       let mapped = filtradas.map(mapItem);
