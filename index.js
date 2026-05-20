@@ -138,7 +138,7 @@ const DIVISIONES_LEN = [
     activa: true,
     keywords: [
       "ito","inspeccion tecnica","supervision de obras","contraparte tecnica",
-      "fiscalizacion de obras","control de obras","auditoria tecnica de obras",
+      "fiscalizacion de obras","auditoria tecnica de obras",
       "geomensura","supervision tecnica","acompanamiento a la construccion",
       "inspeccion fiscal","asistencia tecnica en obra","inspeccion de obras",
       // AIF = Asesoría a la Inspección Fiscal (sigla MOP muy frecuente)
@@ -818,13 +818,17 @@ app.post("/buscar-general", async (req, res) => {
         if (servicios?.length && !servicios.some(s => matchKw(titulo, s))) return false;
         // Aplicar exclusiones cruzadas de la división (ej: AIF excluye de Zona Sur)
         if (divConfig && aplicaExclusiones(divConfig, l.Comprador?.NombreOrganismo || "", titulo)) return false;
-        // ── UNIFICACIÓN: si el clasificador asigna a OTRA división, excluir.
-        // Si no tiene opinión (vacío), dejar que las keywords del frontend decidan.
-        // La basura de ITO ya se resolvió removiendo "control de contrato" del
-        // stemming, y bloqueadaSectorial filtra el resto. No hace falta ser
-        // estricto con clasificacion vacía — eso mataba Zona Sur legítimas.
+        // ── UNIFICACIÓN con modo estricto selectivo.
+        // ITO, Minería y Energía reciben mucha basura genérica → modo estricto:
+        // si el clasificador no asigna a NINGUNA división, se excluye.
+        // Zona Sur, Infra y Civil → modo flexible: si el clasificador no tiene
+        // opinión, las keywords del frontend deciden (evita perder licitaciones
+        // regionales que el clasificador no cubre).
+        // En todos los casos: si el clasificador asigna a OTRA división → fuera.
+        const DIVISIONES_ESTRICTAS = new Set(["ito","mineria","energia"]);
         const regionClasif = extraerRegionDeTexto(titulo);
         const clasificacion = clasificarDivisiones(titulo, regionClasif?.codigo || null, l.Comprador?.NombreOrganismo || "");
+        if (clasificacion.length === 0 && DIVISIONES_ESTRICTAS.has(id)) return false;
         if (clasificacion.length > 0 && !clasificacion.some(d => d.id === id)) return false;
         return true;
       });
