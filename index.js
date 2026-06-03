@@ -265,7 +265,11 @@ function sugerirDivision(titulo, especialidadesMOP, codigoRegion, organismo) {
 const LEN_REGISTRO_MOP = {
   certificado: "264614",
   rut: "83.665.200-2",
-  vigente_hasta: "2026-05-23",
+  // vigente_hasta: null porque la fecha de caducidad del certificado solo es
+  // relevante al momento de postular (LEN renueva antes de cada postulación).
+  // No implica pérdida de categorías. Solo actualizar este campo si LEN
+  // efectivamente gana o pierde una categoría.
+  vigente_hasta: null,
   especialidades: {
     "1.1":  3, "1.2":  4, "1.3":  1, "2.2":  1, "3.1":  1,
     "3.2":  2, "3.3":  1, "3.6":  1, "3.7":  1, "4.1":  1,
@@ -285,10 +289,9 @@ const RANK_CATEGORIA = {
 const NOMBRE_CATEGORIA = ["", "1ra Superior", "1ra", "2da", "3ra"];
 
 function validarRegistroMOP(requisitos) {
-  const hoy = new Date();
-  const vence = new Date(LEN_REGISTRO_MOP.vigente_hasta);
-  const dias = Math.ceil((vence - hoy) / 86400000);
-  if (dias < 0) return { califica: false, fallas: ["⛔ Registro MOP vencido"], diasVigencia: dias, avisoVigencia: "⛔ Registro vencido — renovar urgente" };
+  // El chequeo de vigencia de fecha fue eliminado: las categorías de LEN
+  // se consideran permanentes hasta que se actualicen manualmente.
+  // La fecha del certificado solo importa al momento de postular.
   const fallas = [];
   for (const req of (requisitos || [])) {
     const rankLEN = LEN_REGISTRO_MOP.especialidades[req.codigo];
@@ -299,8 +302,8 @@ function validarRegistroMOP(requisitos) {
   return {
     califica: fallas.length === 0,
     fallas,
-    diasVigencia: dias,
-    avisoVigencia: dias < 30 ? `⚠️ Registro vence en ${dias} días` : null
+    diasVigencia: null,
+    avisoVigencia: null
   };
 }
 
@@ -1406,8 +1409,6 @@ Para evitar consumir tokens de OpenAI en una licitación que LEN podría no cali
 
 📋 ESPECIALIDADES INSCRITAS DE LEN (Cert. N°${LEN_REGISTRO_MOP.certificado}):
 ${especialidadesLEN}
-
-⏳ Vigencia del registro: hasta ${LEN_REGISTRO_MOP.vigente_hasta}
 
 Si tras la verificación manual confirmas que LEN califica, podemos analizar la licitación más adelante (cuando se implemente el extractor de bases PDF o se identifique el endpoint AJAX de MP).`;
     return res.json({ descartado: true, motivo: "Requiere Registro MOP — verificación manual pendiente", requiere_mop: true, verificacion_pendiente: true, analysis });
