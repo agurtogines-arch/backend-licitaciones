@@ -463,6 +463,33 @@ function bloqueadaSectorial(titulo) {
   return EXCLUSION_SECTORIAL.some(ex => t.includes(ex));
 }
 
+// ── Tipos de proyecto que YA implican servicio profesional ─────────────────
+// Muchas licitaciones legítimas (planes maestros, líneas de base, monografías,
+// anteproyectos) NO mencionan "Estudio" ni "Diseño" en el título porque el
+// TIPO DE PROYECTO es lo principal. Sin embargo, estos tipos de proyecto solo
+// se ejecutan vía consultoría/estudio — no se "compran" ni se "construyen".
+//
+// Cuando el título contiene alguno de estos términos, omitimos el filtro de
+// "servicios" del frontend (esBloqueada y bloqueadaSectorial siguen aplicando).
+// Esto resuelve casos como "PLANES MAESTROS DE AGUAS LLUVIAS DE COLLIPULLI Y
+// LAUTARO" que matchean keywords pero no servicios.
+const TIPOS_PROYECTO_IMPLICAN_SERVICIO = [
+  "plan maestro","planes maestros",
+  "plan regulador","planes reguladores",
+  "plan de desarrollo","plan estrategico","planes estrategicos",
+  "linea de base","lineas de base",
+  "monografia","monografias",
+  "anteproyecto","anteproyectos",
+  "proyecto de ingenieria","proyecto integral",
+  "memoria de calculo","memoria tecnica",
+  "evaluacion ambiental","evaluacion economica",
+  "actualizacion ssr","actualizacion sanitario rural"
+];
+function tipoProyectoImplicito(titulo) {
+  const t = normDiv(titulo);
+  return TIPOS_PROYECTO_IMPLICAN_SERVICIO.some(k => t.includes(k));
+}
+
 // ── HELPER: fetch a API de MP con reintentos automáticos ──────────────────
 // La API de Mercado Público es notoriamente intermitente: a veces responde
 // con HTTP 200 pero `Listado` vacío sin error explícito (rate limit silencioso,
@@ -598,6 +625,9 @@ app.get("/buscar", async (req, res) => {
       const matchesTecnica = keywords.some(kw => matchesKeyword(titulo, kw));
       if (!matchesTecnica) return false;
       if (servicios.length === 0) return true;
+      // ✦ Tipos de proyecto que ya implican servicio (Plan Maestro, Anteproyecto, etc.)
+      // pasan sin necesidad de matchear el catálogo de servicios.
+      if (tipoProyectoImplicito(titulo)) return true;
       return servicios.some(s => matchesKeyword(titulo, s));
     });
     console.log(`[buscar] licitaciones=${licitaciones.length} filtradas=${filtradas.length} keywords=${keywords} servicios=${servicios}`);
@@ -848,7 +878,9 @@ app.post("/buscar-general", async (req, res) => {
         if (bloqueadaSectorial(titulo)) return false;
         const matchTec = keywords.some(kw => matchKw(titulo, kw));
         if (!matchTec) return false;
-        if (servicios?.length && !servicios.some(s => matchKw(titulo, s))) return false;
+        // ✦ Tipos de proyecto que ya implican servicio (Plan Maestro, Anteproyecto, etc.)
+        // pasan sin matchear el catálogo de servicios.
+        if (servicios?.length && !tipoProyectoImplicito(titulo) && !servicios.some(s => matchKw(titulo, s))) return false;
         if (divConfig && aplicaExclusiones(divConfig, l.Comprador?.NombreOrganismo || "", titulo)) return false;
         const DIVISIONES_ESTRICTAS = new Set(["ito","mineria","energia"]);
         const regionClasif = extraerRegionDeTexto(titulo);
@@ -1054,6 +1086,7 @@ app.get("/buscar-organismo", async (req, res) => {
         const matchTec = keywords.some(kw => matchesKw(titulo, kw));
         if (!matchTec) return false;
         if (servicios.length === 0) return true;
+        if (tipoProyectoImplicito(titulo)) return true;
         return servicios.some(s => matchesKw(titulo, s));
       });
     }
