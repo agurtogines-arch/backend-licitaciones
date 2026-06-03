@@ -441,7 +441,19 @@ const EXCLUSION_SECTORIAL = [
   "arriendo tractor","tractor desbrozador","arriendo de maquinaria pesada",
   "retroexcavadora en arriendo",
   "administracion enteral","apositos","curacion avanzada",
-  "insumos para administracion","neuroquirurgic"
+  "insumos para administracion","neuroquirurgic",
+  // ── Vehículos / carrocerías / módulos (no es rubro LEN) ──
+  "vehiculos de emergencia","vehiculo de emergencia",
+  "carrocerias","carroceria",
+  "modulos de gabinetes","gabinetes en carrocerias",
+  "imagen corporativa","distribucion imagen corporativa",
+  "distribucion de imagen corporativa",
+  "distintivos vehiculares","distintivos para vehiculos",
+  // ── Contratación de personal individual (LEN se postula como empresa, no como persona) ──
+  "profesional ingeniero civil","profesional ingeniera civil",
+  "contratacion de profesional","contrato a honorarios",
+  "contrato de honorarios","honorarios para ingeniero",
+  "servicios profesionales a honorarios"
 ];
 function bloqueadaSectorial(titulo) {
   const t = normDiv(titulo);
@@ -2807,6 +2819,159 @@ app.get("/mp/cache-pool-status", async (req, res) => {
     const total = r.headers.get("content-range")?.split("/")[1] || "?";
     res.json({ ok: true, total_en_cache: total });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Endpoint de diagnóstico para entender por qué una licitación aparece o no ─
+// USO: GET /mp/debug-clasificacion/1148-2-O126
+// Devuelve análisis paso a paso: pool MP, detección de región, filtros de
+// exclusión, keywords matcheadas por división y veredicto final.
+app.get("/mp/debug-clasificacion/:codigo", async (req, res) => {
+  const codigo = req.params.codigo;
+  try {
+    // 1. Consultar listado activo de MP (con reintentos)
+    const controller = new AbortController();
+    const timeoutId  = setTimeout(() => controller.abort(), 60000);
+    const fetchListado = async (extraParams, etiqueta) => {
+      const usaEstado = !extraParams.includes("tipo=SC");
+      const mpUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json` +
+                    `?${usaEstado ? "estado=activas&" : ""}ticket=${TICKET}${extraParams}`;
+      return await fetchConReintentos(mpUrl, controller, `debug:${etiqueta}`);
+    };
+    const [sinTipo, conSC] = await Promise.all([
+      fetchListado("", "activas"),
+      fetchListado("&tipo=SC", "tipoSC")
+    ]);
+    clearTimeout(timeoutId);
+    const sinTipoArr = sinTipo || [];
+    const conSCArr   = conSC   || [];
+    const todos = [...sinTipoArr, ...conSCArr];
+    const enListado = todos.find(l => l.CodigoExterno === codigo) || null;
+
+    // 2. Consultar detalle directo (siempre, aunque esté en listado, para tener datos completos)
+    let detalle = null;
+    try {
+      const detalleUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?codigo=${codigo}&ticket=${TICKET}`;
+      const dr = await fetch(detalleUrl, { signal: AbortSignal.timeout(15000) });
+      if (dr.ok) {
+        const dd = await dr.json();
+        detalle = dd.Listado?.[0] || null;
+      }
+    } catch (e) {}
+
+    if (!enListado && !detalle) {
+      return res.json({
+        codigo,
+        veredicto: "❌ NO ENCONTRADA EN MP (ni en listado activo ni por código directo)",
+        sugerencia: "Verificar si el código es correcto o si la licitación está en estado distinto (cerrada, adjudicada, suspendida)."
+      });
+    }
+
+    // 3. Tomar datos para análisis
+    const titulo       = enListado?.Nombre || detalle?.Nombre || "";
+    const descripcion  = enListado?.Descripcion || detalle?.Descripcion || "";
+    const tituloTexto  = `${titulo} ${descripcion}`.trim();
+    const organismo    = detalle?.Comprador?.NombreOrganismo || "";
+    const regionUnidad = detalle?.Comprador?.RegionUnidad || "";
+    const estadoMP     = enListado?.CodigoEstado || detalle?.CodigoEstado || null;
+
+    // 4. Detección de región (con misma lógica del sistema)
+    const regionDetectadaTitulo = extraerRegionDeTexto(tituloTexto);
+    const regionDetectadaUnidad = extraerRegionDeTexto(regionUnidad);
+    const regionFinal = regionDetectadaTitulo || regionDetectadaUnidad;
+
+    // 5. Análisis de filtros generales (mismos de /buscar-general)
+    const tNorm = normDiv(tituloTexto);
+    const EXCLUSION = [
+      "construccion de ","construcción de ","ejecucion de obras","ejecución de obras",
+      "suministro de materiales","suministro e instalacion","suministro e instalación",
+      "obra de construccion","obra de construcción","licitacion de obras","licitación de obras",
+      "contrato de obras","compra de ","adquisicion de ","adquisición de ",
+      "arriendo de ","provision de ","provisión de "
+    ];
+    const SALVAVIDAS = [
+      "inspeccion","inspección","supervision","supervisión","asesoria","asesoría",
+      "estudio","consultoria","consultoría","contraparte","auditoria","auditoría",
+      "diseño","proyecto de ingenieria","proyecto de ingeniería","ito"
+    ];
+    const exclusionesEncontradas = EXCLUSION.filter(ex => tNorm.includes(normDiv(ex)));
+    const salvavidasEncontrados  = SALVAVIDAS.filter(sv => tNorm.includes(normDiv(sv)));
+    const bloqueadaPorExclusion  = exclusionesEncontradas.length > 0 && salvavidasEncontrados.length === 0;
+    const sectorialEncontradas   = EXCLUSION_SECTORIAL.filter(ex => tNorm.includes(ex));
+
+    // 6. Match por keywords del backend (DIVISIONES_LEN)
+    const matchesPorDivision = {};
+    for (const div of DIVISIONES_LEN) {
+      const kwMatch        = (div.keywords || []).filter(kw => matchDivKw(tituloTexto, kw));
+      const exclusionDiv   = aplicaExclusiones(div, organismo, tituloTexto);
+      const fueraDeZonaSur = div.id === "zonasur" && regionFinal?.codigo &&
+                             !CODIGOS_ZONA_SUR.has(regionFinal.codigo);
+      matchesPorDivision[div.id] = {
+        label: div.label,
+        activa: div.activa !== false,
+        keywords_matcheadas: kwMatch,
+        exclusiones_aplicadas: exclusionDiv,
+        fuera_de_zona_geografica: fueraDeZonaSur,
+        pasaria_filtro:
+          div.activa !== false && kwMatch.length > 0 &&
+          !exclusionDiv && !fueraDeZonaSur && !bloqueadaPorExclusion &&
+          sectorialEncontradas.length === 0
+      };
+    }
+
+    // 7. clasificarDivisiones final (mismo que el sistema usa)
+    const clasificacionFinal = clasificarDivisiones(
+      tituloTexto,
+      regionFinal?.codigo || null,
+      organismo
+    );
+
+    // 8. Veredicto
+    let veredicto;
+    if (!enListado && detalle) {
+      veredicto = `⚠️ EXISTE EN MP (CodigoEstado=${estadoMP}) PERO NO APARECE EN LISTADO 'activas' — posiblemente en estado distinto a Publicada`;
+    } else if (bloqueadaPorExclusion) {
+      veredicto = `🚫 BLOQUEADA POR EXCLUSION (construcción/suministro). Términos: ${exclusionesEncontradas.join(", ")}. Sin salvavidas.`;
+    } else if (sectorialEncontradas.length > 0) {
+      veredicto = `🚫 BLOQUEADA SECTORIAL. Términos: ${sectorialEncontradas.join(", ")}`;
+    } else if (clasificacionFinal.length === 0) {
+      veredicto = `⚠️ NO CLASIFICA EN NINGUNA DIVISIÓN LEN (no matchea keywords de ninguna división activa, o queda fuera de zona)`;
+    } else {
+      veredicto = `✅ DEBERÍA APARECER EN: ${clasificacionFinal.map(d => d.label).join(", ")}`;
+    }
+
+    res.json({
+      codigo,
+      titulo,
+      descripcion: descripcion?.substring(0, 400) || null,
+      organismo,
+      region_unidad_api: regionUnidad,
+      estado_mp: estadoMP,
+      esta_en_listado_mp_activas: !!enListado,
+      total_licitaciones_en_pool: todos.length,
+      detalle_disponible_por_codigo_directo: !!detalle,
+      deteccion_region: {
+        en_titulo_descripcion: regionDetectadaTitulo,
+        en_region_unidad: regionDetectadaUnidad,
+        final_usada: regionFinal
+      },
+      filtros_generales: {
+        bloqueada_por_construccion: {
+          resultado: bloqueadaPorExclusion,
+          exclusiones_encontradas: exclusionesEncontradas,
+          salvavidas_encontrados: salvavidasEncontrados
+        },
+        bloqueada_sectorial: {
+          resultado: sectorialEncontradas.length > 0,
+          terminos_encontrados: sectorialEncontradas
+        }
+      },
+      matches_por_division: matchesPorDivision,
+      clasificacion_final_sistema: clasificacionFinal,
+      veredicto
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── Arranque del servidor ──────────────────────────────────────────────────
