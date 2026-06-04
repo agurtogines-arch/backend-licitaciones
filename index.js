@@ -3147,10 +3147,15 @@ app.post("/mp/clasificar-pool-ia", async (req, res) => {
         }
       } catch(e) { console.warn(`[clasif-ia] Cache check: ${e.message}`); }
 
-      const sinClasificar = candidatas.filter(l => !yaClasificadas.has(l.CodigoExterno));
-      clasificacionIAState.ya_en_cache  = yaClasificadas.size;
-      clasificacionIAState.a_clasificar = sinClasificar.length;
-      console.log(`[clasif-ia] Ya en cache: ${yaClasificadas.size} | A clasificar: ${sinClasificar.length}`);
+      // Limitar a 500 por ejecución para que Render free tier no se duerma
+      // a mitad del proceso (~5 min de trabajo). Las siguientes ejecuciones
+      // continúan automáticamente desde donde quedó gracias al cache en Supabase.
+      const sinClasificarTotal = candidatas.filter(l => !yaClasificadas.has(l.CodigoExterno));
+      const sinClasificar      = sinClasificarTotal.slice(0, 500);
+      clasificacionIAState.ya_en_cache    = yaClasificadas.size;
+      clasificacionIAState.a_clasificar   = sinClasificarTotal.length; // total real pendiente
+      clasificacionIAState.en_este_lote   = sinClasificar.length;      // lo que clasifica ahora
+      console.log(`[clasif-ia] Ya en cache: ${yaClasificadas.size} | Pendientes totales: ${sinClasificarTotal.length} | Este lote: ${sinClasificar.length}`);
 
       if (sinClasificar.length === 0) {
         clasificacionIAState.estado     = "completado";
