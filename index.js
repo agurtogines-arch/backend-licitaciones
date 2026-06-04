@@ -3054,6 +3054,55 @@ app.get("/mp/debug-clasificacion/:codigo", async (req, res) => {
   }
 });
 
+// ── Diagnóstico: clasificar 2 licitaciones y ver respuesta raw de OpenAI ──
+app.get("/mp/debug-clasificar-ia", async (req, res) => {
+  const OPENAI_KEY = process.env.OPENAI_API_KEY || "";
+  if (!OPENAI_KEY) return res.status(500).json({ error: "OPENAI_API_KEY no configurada" });
+  try {
+    const controller = new AbortController();
+    const sinTipo = await fetchConReintentos(
+      `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?estado=activas&ticket=${TICKET}`,
+      controller, "debug-ia"
+    );
+    const lote = (sinTipo || []).slice(0, 2);
+    if (!lote.length) return res.json({ error: "No se pudo traer licitaciones de MP" });
+    const items = lote.map(l =>
+      [l.CodigoExterno, l.Nombre || "", (l.Descripcion || "").substring(0,200)].filter(Boolean).join(" | ")
+    ).join("\n");
+    const PROMPT = `Eres clasificador de licitaciones públicas chilenas para LEN Ingeniería (consultora: diseña, estudia, inspecciona — NUNCA construye ni compra).\n\nDIVISIONES ACTIVAS DE LEN:\nzonasur — Hidráulica, hidrología, aguas lluvias, drenaje, cauces, APR, saneamiento, vial, puentes, caminos, planes maestros, seguridad vial. SOLO en regiones Maule(7), Ñuble(16), Biobío(8), Araucanía(9), Los Ríos(14), Los Lagos(10), Aysén(11), Magallanes(12).\ninfra — Mismo alcance técnico que zonasur PERO en norte/centro: Arica(15), Tarapacá(1), Antofagasta(2), Atacama(3), Coquimbo(4), Valparaíso(5), Metropolitana(13), O'Higgins(6). También obras portuarias y costeras.\nito — Inspección técnica, supervisión, fiscalización, AIF, asesoría a la inspección fiscal, contraparte técnica, geomensura. Opera en todo Chile.\nenergia — ERNC, fotovoltaico, eólico, BESS, hidrógeno verde, eficiencia energética, electromovilidad, descarbonización. Opera en todo Chile.\nmineria — SOLO estudios de hidráulica, saneamiento, vial o seguridad vial dentro de faenas mineras. NO insumos ni extracción.\n\nDESCARTAR SIEMPRE (divisiones=[]):\n- Construcción/ejecución directa de obras\n- Suministro, compra, arriendo de materiales o equipos\n- Contratación de persona individual\n- Salud, alimentación, educación, cultura, deporte, turismo, seguridad privada\n- Carrocerías, vehículos, mobiliario, vestuario\n- Mataderos, agroindustria, asesoría psicosocial/contable/jurídica\n\nREGLA REGIONAL: La región donde se EJECUTA el trabajo determina zonasur vs infra.\n\nResponde SOLO con JSON array sin texto previo ni markdown:\n[{"codigo":"X","divisiones":["zonasur"],"veredicto":"🟢","razon":"breve razón"}]`;
+    const r = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${OPENAI_KEY}` },
+      body: JSON.stringify({
+        model: "gpt-4o-mini", max_tokens: 400, temperature: 0.1,
+        messages: [
+          { role: "system", content: PROMPT },
+          { role: "user",   content: `Clasifica estas 2 licitaciones:\n${items}` }
+        ]
+      }),
+      signal: AbortSignal.timeout(30000)
+    });
+    const d        = await r.json();
+    const rawText  = d.choices?.[0]?.message?.content || "";
+    const clean    = rawText.replace(/```json|```/g, "").trim();
+    const match    = clean.match(/\[[\s\S]*\]/);
+    let parsed     = null;
+    let parseError = null;
+    try { parsed = JSON.parse(match ? match[0] : "[]"); }
+    catch(e) { parseError = e.message; }
+    res.json({
+      licitaciones_enviadas: lote.map(l => ({ codigo: l.CodigoExterno, titulo: l.Nombre })),
+      prompt_usuario: items,
+      openai_status: r.status,
+      raw_response: rawText,
+      clean_response: clean,
+      regex_match: match ? match[0] : null,
+      parsed_result: parsed,
+      parse_error: parseError
+    });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── Clasificación IA del pool completo con GPT-4o-mini ────────────────────────
 // Trae el pool de MP, filtra exclusiones obvias, y clasifica con IA las
 // candidatas que no están en cache o cuya clasificación tiene > 12h.
