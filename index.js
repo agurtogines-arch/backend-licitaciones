@@ -3098,10 +3098,27 @@ app.post("/mp/clasificar-pool-ia", async (req, res) => {
       console.log(`[clasif-ia] Pool: ${pool.length}`);
 
       // 3. Pre-filtro obvio → candidatas
+      // esBloqueada está definida localmente en los otros endpoints, así que
+      // replicamos la lógica inline para este contexto.
       clasificacionIAState.estado = "filtrando";
+      const normIA  = s => (s || "").toLowerCase()
+        .replace(/[áàä]/g,"a").replace(/[éèë]/g,"e").replace(/[íìï]/g,"i")
+        .replace(/[óòö]/g,"o").replace(/[úùü]/g,"u").replace(/ñ/g,"n")
+        .replace(/['''`´]/g,"").trim();
+      const EXCL_IA = ["construccion de ","ejecucion de obras","suministro de materiales",
+                       "suministro e instalacion","obra de construccion","licitacion de obras",
+                       "contrato de obras","compra de ","adquisicion de ","arriendo de ","provision de "];
+      const SALV_IA = ["inspeccion","supervision","asesoria","estudio","consultoria",
+                       "contraparte","auditoria","diseño","proyecto de ingenieria","ito"];
+      const esBloqueadaIA = titulo => {
+        const t = normIA(titulo);
+        const tieneExcl = EXCL_IA.some(ex => t.includes(ex));
+        if (!tieneExcl) return false;
+        return !SALV_IA.some(sv => t.includes(sv));
+      };
       const candidatas = pool.filter(l => {
         const t = `${l.Nombre || ""} ${l.Descripcion || ""}`;
-        return !esBloqueada(t) && !bloqueadaSectorial(t);
+        return !esBloqueadaIA(t) && !bloqueadaSectorial(t);
       });
       clasificacionIAState.total_candidatas = candidatas.length;
       console.log(`[clasif-ia] Candidatas: ${candidatas.length}`);
