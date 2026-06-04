@@ -880,7 +880,7 @@ app.post("/buscar-general", async (req, res) => {
         const chunk = codigosPool.slice(i, i + CHUNK_IA);
         const inList = chunk.map(c => `"${encodeURIComponent(c)}"`).join(",");
         const iaRes = await fetch(
-          `${SUPABASE_URL}/rest/v1/mp_pool_cache?codigo=in.(${inList})&select=codigo,divisiones_ia,veredicto_ia&divisiones_ia=not.is.null`,
+          `${SUPABASE_URL}/rest/v1/ia_clasificaciones?codigo=in.(${inList})&select=codigo,divisiones_ia,veredicto_ia`,
           { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(10000) }
         );
         if (iaRes.ok) {
@@ -3183,12 +3183,12 @@ app.post("/mp/clasificar-pool-ia", async (req, res) => {
           const chunk  = codigos.slice(i, i + 500);
           const inList = chunk.map(c => `"${encodeURIComponent(c)}"`).join(",");
           const r = await fetch(
-            `${SUPABASE_URL}/rest/v1/mp_pool_cache?codigo=in.(${inList})&select=codigo,clasificado_ia_en&divisiones_ia=not.is.null`,
+            `${SUPABASE_URL}/rest/v1/ia_clasificaciones?codigo=in.(${inList})&select=codigo,clasificado_en`,
             { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(10000) }
           );
           if (r.ok) {
             for (const row of await r.json()) {
-              if (row.clasificado_ia_en && (ahora - new Date(row.clasificado_ia_en)) < VALIDEZ_IA_MS) {
+              if (row.clasificado_en && (ahora - new Date(row.clasificado_en)) < VALIDEZ_IA_MS) {
                 yaClasificadas.add(row.codigo);
               }
             }
@@ -3297,16 +3297,15 @@ Responde SOLO con JSON array sin texto previo ni markdown:
           const rows = resultados
             .filter(res => res.codigo)
             .map(res => ({
-              codigo:            res.codigo,
-              nombre:            "",   // mínimo para INSERT de registros nuevos
-              divisiones_ia:     res.divisiones || [],
-              veredicto_ia:      res.veredicto  || "⚪",
-              razon_ia:          res.razon       || "",
-              clasificado_ia_en: new Date().toISOString()
+              codigo:        res.codigo,
+              divisiones_ia: res.divisiones || [],
+              veredicto_ia:  res.veredicto  || "⚪",
+              razon_ia:      res.razon       || "",
+              clasificado_en: new Date().toISOString()
             }));
 
           if (rows.length > 0) {
-            await fetch(`${SUPABASE_URL}/rest/v1/mp_pool_cache?on_conflict=codigo`, {
+            await fetch(`${SUPABASE_URL}/rest/v1/ia_clasificaciones?on_conflict=codigo`, {
               method: "POST",
               headers: { ...SUPABASE_HEADERS, "Prefer": "resolution=merge-duplicates" },
               body: JSON.stringify(rows),
