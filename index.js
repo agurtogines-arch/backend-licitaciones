@@ -538,6 +538,17 @@ async function fetchConReintentos(url, controller, etiqueta = 'mp', maxIntentos 
   return null;
 }
 
+// ── Estado del proceso de clasificación IA (consultable vía /mp/clasificar-pool-ia-status)
+let clasificacionIAState = {
+  estado: "no_iniciado",
+  ultimo_inicio: null, ultimo_fin: null,
+  total_pool: 0, total_candidatas: 0,
+  ya_en_cache: 0, a_clasificar: 0,
+  clasificadas_hasta_ahora: 0,
+  total_clasificadas: 0, total_errores: 0,
+  ultimo_error: null
+};
+
 app.get("/", (req, res) => { res.sendFile(path.join(__dirname, "public", "index.html")); });
 app.get("/regiones", (req, res) => res.json(REGIONES));
 
@@ -858,8 +869,35 @@ app.post("/buscar-general", async (req, res) => {
         divisiones: clasificarDivisiones(titulo, regionExtraida?.codigo || null, "")
       };
     };
-    const resultados = {};
-    for (const div of divisiones) {
+    // ── Clasificación IA: cargar del cache para todo el pool ──────────────
+    // Cuando hay clasificación IA disponible, tiene prioridad sobre keywords.
+    // Si no hay (pool nuevo o IA aún no ejecutó), el sistema de keywords es el fallback.
+    const iaClassMap = new Map();
+    try {
+      const codigosPool = pool.map(l => l.CodigoExterno).filter(Boolean);
+      const CHUNK_IA = 500;
+      for (let i = 0; i < codigosPool.length; i += CHUNK_IA) {
+        const chunk = codigosPool.slice(i, i + CHUNK_IA);
+        const inList = chunk.map(c => `"${encodeURIComponent(c)}"`).join(",");
+        const iaRes = await fetch(
+          `${SUPABASE_URL}/rest/v1/mp_pool_cache?codigo=in.(${inList})&select=codigo,divisiones_ia,veredicto_ia&divisiones_ia=not.is.null`,
+          { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(10000) }
+        );
+        if (iaRes.ok) {
+          for (const row of await iaRes.json()) {
+            iaClassMap.set(row.codigo, {
+              divisiones_ia: Array.isArray(row.divisiones_ia) ? row.divisiones_ia : [],
+              veredicto_ia:  row.veredicto_ia || "⚪"
+            });
+          }
+        }
+      }
+      console.log(`[buscar-general] IA cache: ${iaClassMap.size}/${codigosPool.length} licitaciones clasificadas`);
+    } catch(e) {
+      console.warn(`[buscar-general] IA cache lookup falló (usando keywords como fallback): ${e.message}`);
+    }
+
+    const resultados = {};    for (const div of divisiones) {
       const { id, keywords, servicios, regionDesde, regionHasta } = div;
       if (!keywords?.length) { resultados[id] = []; continue; }
       let codigosValidos = null;
@@ -876,10 +914,18 @@ app.post("/buscar-general", async (req, res) => {
         const titulo = `${l.Nombre || ""} ${l.Descripcion || ""}`;
         if (esBloqueada(titulo)) return false;
         if (bloqueadaSectorial(titulo)) return false;
+
+        // ✦ PRIORIDAD: clasificación IA cuando está disponible en cache
+        const iaClass = iaClassMap.get(l.CodigoExterno);
+        if (iaClass) {
+          if (iaClass.veredicto_ia === "🔴") return false;
+          return iaClass.divisiones_ia.includes(id);
+        }
+
+        // Fallback: sistema de keywords (cuando IA aún no clasificó)
         const matchTec = keywords.some(kw => matchKw(titulo, kw));
         if (!matchTec) return false;
         // ✦ Tipos de proyecto que ya implican servicio (Plan Maestro, Anteproyecto, etc.)
-        // pasan sin matchear el catálogo de servicios.
         if (servicios?.length && !tipoProyectoImplicito(titulo) && !servicios.some(s => matchKw(titulo, s))) return false;
         if (divConfig && aplicaExclusiones(divConfig, l.Comprador?.NombreOrganismo || "", titulo)) return false;
         const DIVISIONES_ESTRICTAS = new Set(["ito","mineria","energia"]);
@@ -3007,6 +3053,224 @@ app.get("/mp/debug-clasificacion/:codigo", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ── Clasificación IA del pool completo con GPT-4o-mini ────────────────────────
+// Trae el pool de MP, filtra exclusiones obvias, y clasifica con IA las
+// candidatas que no están en cache o cuya clasificación tiene > 12h.
+// Guarda resultado en mp_pool_cache (columnas divisiones_ia, veredicto_ia, razon_ia).
+// Diseñado para ejecutarse desde GitHub Actions 2 veces al día.
+// Devuelve respuesta INMEDIATA y trabaja en background para tolerar free tier Render.
+app.post("/mp/clasificar-pool-ia", async (req, res) => {
+  const OPENAI_KEY = process.env.OPENAI_API_KEY || "";
+  if (!OPENAI_KEY) return res.status(500).json({ error: "OPENAI_API_KEY no configurada" });
+
+  clasificacionIAState.ultimo_inicio = new Date().toISOString();
+  clasificacionIAState.estado        = "iniciando";
+  clasificacionIAState.ultimo_error  = null;
+
+  res.json({ ok: true, mensaje: "Clasificación IA iniciada en background. Consultar /mp/clasificar-pool-ia-status para progreso.", state: clasificacionIAState });
+
+  (async () => {
+    try {
+      // 1. Traer pool MP
+      clasificacionIAState.estado = "trayendo_pool";
+      const controller = new AbortController();
+      const timeoutId  = setTimeout(() => controller.abort(), 120000);
+      const [sinTipo, conSC] = await Promise.all([
+        fetchConReintentos(`https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?estado=activas&ticket=${TICKET}`, controller, "clasif-ia:activas"),
+        fetchConReintentos(`https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?ticket=${TICKET}&tipo=SC`,        controller, "clasif-ia:tipoSC")
+      ]);
+      clearTimeout(timeoutId);
+
+      if (!sinTipo && !conSC) {
+        clasificacionIAState.estado = "error";
+        clasificacionIAState.ultimo_error = "API MP no respondió tras reintentos";
+        return;
+      }
+
+      // 2. Deduplicar
+      const vistos = new Set();
+      const pool   = [];
+      for (const l of [...(sinTipo || []), ...(conSC || [])]) {
+        if (l.CodigoExterno && !vistos.has(l.CodigoExterno)) { vistos.add(l.CodigoExterno); pool.push(l); }
+      }
+      clasificacionIAState.total_pool = pool.length;
+      console.log(`[clasif-ia] Pool: ${pool.length}`);
+
+      // 3. Pre-filtro obvio → candidatas
+      clasificacionIAState.estado = "filtrando";
+      const candidatas = pool.filter(l => {
+        const t = `${l.Nombre || ""} ${l.Descripcion || ""}`;
+        return !esBloqueada(t) && !bloqueadaSectorial(t);
+      });
+      clasificacionIAState.total_candidatas = candidatas.length;
+      console.log(`[clasif-ia] Candidatas: ${candidatas.length}`);
+
+      // 4. Verificar cuáles ya tienen clasificación IA vigente (< 12h)
+      clasificacionIAState.estado = "verificando_cache";
+      const yaClasificadas = new Set();
+      const VALIDEZ_IA_MS  = 12 * 60 * 60 * 1000;
+      const ahora          = new Date();
+      try {
+        const codigos = candidatas.map(l => l.CodigoExterno).filter(Boolean);
+        for (let i = 0; i < codigos.length; i += 500) {
+          const chunk  = codigos.slice(i, i + 500);
+          const inList = chunk.map(c => `"${encodeURIComponent(c)}"`).join(",");
+          const r = await fetch(
+            `${SUPABASE_URL}/rest/v1/mp_pool_cache?codigo=in.(${inList})&select=codigo,clasificado_ia_en&divisiones_ia=not.is.null`,
+            { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(10000) }
+          );
+          if (r.ok) {
+            for (const row of await r.json()) {
+              if (row.clasificado_ia_en && (ahora - new Date(row.clasificado_ia_en)) < VALIDEZ_IA_MS) {
+                yaClasificadas.add(row.codigo);
+              }
+            }
+          }
+        }
+      } catch(e) { console.warn(`[clasif-ia] Cache check: ${e.message}`); }
+
+      const sinClasificar = candidatas.filter(l => !yaClasificadas.has(l.CodigoExterno));
+      clasificacionIAState.ya_en_cache  = yaClasificadas.size;
+      clasificacionIAState.a_clasificar = sinClasificar.length;
+      console.log(`[clasif-ia] Ya en cache: ${yaClasificadas.size} | A clasificar: ${sinClasificar.length}`);
+
+      if (sinClasificar.length === 0) {
+        clasificacionIAState.estado     = "completado";
+        clasificacionIAState.ultimo_fin = new Date().toISOString();
+        console.log(`[clasif-ia] Todo vigente. Nada que clasificar.`);
+        return;
+      }
+
+      // 5. Enriquecer con descripciones del cache para mejor contexto
+      const datosCache = new Map();
+      try {
+        const codigos = sinClasificar.map(l => l.CodigoExterno).filter(Boolean);
+        for (let i = 0; i < codigos.length; i += 500) {
+          const chunk  = codigos.slice(i, i + 500);
+          const inList = chunk.map(c => `"${encodeURIComponent(c)}"`).join(",");
+          const r = await fetch(
+            `${SUPABASE_URL}/rest/v1/mp_pool_cache?codigo=in.(${inList})&select=codigo,descripcion,organismo,region`,
+            { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(10000) }
+          );
+          if (r.ok) { for (const row of await r.json()) datosCache.set(row.codigo, row); }
+        }
+      } catch(e) { console.warn(`[clasif-ia] Enriquecimiento: ${e.message}`); }
+
+      // 6. Clasificar con GPT-4o-mini por lotes de 10
+      clasificacionIAState.estado = "clasificando";
+      const LOTE = 10;
+      const sleep = ms => new Promise(r => setTimeout(r, ms));
+      let totalClasificadas = 0;
+      let totalErrores      = 0;
+
+      const PROMPT_SISTEMA = `Eres clasificador de licitaciones públicas chilenas para LEN Ingeniería (consultora: diseña, estudia, inspecciona — NUNCA construye ni compra).
+
+DIVISIONES ACTIVAS DE LEN:
+zonasur — Hidráulica, hidrología, aguas lluvias, drenaje, cauces, APR, saneamiento, vial, puentes, caminos, planes maestros, seguridad vial. SOLO en regiones Maule(7), Ñuble(16), Biobío(8), Araucanía(9), Los Ríos(14), Los Lagos(10), Aysén(11), Magallanes(12).
+infra — Mismo alcance técnico que zonasur PERO en norte/centro: Arica(15), Tarapacá(1), Antofagasta(2), Atacama(3), Coquimbo(4), Valparaíso(5), Metropolitana(13), O'Higgins(6). También obras portuarias y costeras.
+ito — Inspección técnica, supervisión, fiscalización, AIF, asesoría a la inspección fiscal, contraparte técnica, geomensura. Opera en todo Chile.
+energia — ERNC, fotovoltaico, eólico, BESS, hidrógeno verde, eficiencia energética, electromovilidad, descarbonización. Opera en todo Chile.
+mineria — SOLO estudios de hidráulica, saneamiento, vial o seguridad vial dentro de faenas mineras. NO insumos ni extracción.
+
+DESCARTAR SIEMPRE (divisiones=[]):
+- Construcción/ejecución directa de obras
+- Suministro, compra, arriendo de materiales o equipos
+- Contratación de persona individual
+- Salud, alimentación, educación, cultura, deporte, turismo, seguridad privada
+- Carrocerías, vehículos, mobiliario, vestuario
+- Mataderos, agroindustria, asesoría psicosocial/contable/jurídica
+
+REGLA REGIONAL: La región donde se EJECUTA el trabajo determina zonasur vs infra.
+
+Responde SOLO con JSON array sin texto previo ni markdown:
+[{"codigo":"X","divisiones":["zonasur"],"veredicto":"🟢","razon":"breve razón"}]`;
+
+      for (let i = 0; i < sinClasificar.length; i += LOTE) {
+        const lote  = sinClasificar.slice(i, i + LOTE);
+        const items = lote.map(l => {
+          const c   = datosCache.get(l.CodigoExterno) || {};
+          const desc = (l.Descripcion || c.descripcion || "").substring(0, 200);
+          const org  = c.organismo || l.Comprador?.NombreOrganismo || "";
+          const reg  = c.region    || l.Comprador?.RegionUnidad    || "";
+          return [l.CodigoExterno, l.Nombre || "", desc, org, reg].filter(Boolean).join(" | ");
+        }).join("\n");
+
+        try {
+          const r = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${OPENAI_KEY}` },
+            body: JSON.stringify({
+              model: "gpt-4o-mini", max_tokens: 800, temperature: 0.1,
+              messages: [
+                { role: "system", content: PROMPT_SISTEMA },
+                { role: "user",   content: `Clasifica estas ${lote.length} licitaciones:\n${items}` }
+              ]
+            }),
+            signal: AbortSignal.timeout(30000)
+          });
+
+          if (!r.ok) {
+            console.warn(`[clasif-ia] OpenAI ${r.status} lote ${Math.ceil(i/LOTE)+1}`);
+            totalErrores += lote.length;
+            continue;
+          }
+
+          const d     = await r.json();
+          const txt   = d.choices?.[0]?.message?.content || "[]";
+          const clean = txt.replace(/```json|```/g, "").trim();
+          const match = clean.match(/\[[\s\S]*\]/);
+          const resultados = JSON.parse(match ? match[0] : "[]");
+
+          // Guardar en mp_pool_cache
+          const rows = resultados
+            .filter(res => res.codigo)
+            .map(res => ({
+              codigo:            res.codigo,
+              divisiones_ia:     res.divisiones || [],
+              veredicto_ia:      res.veredicto  || "⚪",
+              razon_ia:          res.razon       || "",
+              clasificado_ia_en: new Date().toISOString()
+            }));
+
+          if (rows.length > 0) {
+            await fetch(`${SUPABASE_URL}/rest/v1/mp_pool_cache`, {
+              method: "POST",
+              headers: { ...SUPABASE_HEADERS, "Prefer": "resolution=merge-duplicates" },
+              body: JSON.stringify(rows),
+              signal: AbortSignal.timeout(10000)
+            }).then(res => { if (res.ok) totalClasificadas += rows.length; })
+              .catch(e => console.warn(`[clasif-ia] Supabase save: ${e.message}`));
+          }
+
+        } catch(e) {
+          console.warn(`[clasif-ia] Error lote ${Math.ceil(i/LOTE)+1}: ${e.message}`);
+          totalErrores += lote.length;
+        }
+
+        clasificacionIAState.clasificadas_hasta_ahora = totalClasificadas;
+        if (i + LOTE < sinClasificar.length) await sleep(500);
+        if (((i / LOTE) + 1) % 10 === 0) {
+          console.log(`[clasif-ia] Progreso: ${i + LOTE}/${sinClasificar.length} | OK: ${totalClasificadas} | Err: ${totalErrores}`);
+        }
+      }
+
+      clasificacionIAState.estado            = "completado";
+      clasificacionIAState.ultimo_fin        = new Date().toISOString();
+      clasificacionIAState.total_clasificadas = totalClasificadas;
+      clasificacionIAState.total_errores      = totalErrores;
+      console.log(`[clasif-ia] FIN — Clasificadas: ${totalClasificadas} | Errores: ${totalErrores}`);
+
+    } catch(e) {
+      clasificacionIAState.estado       = "error";
+      clasificacionIAState.ultimo_error = e.message;
+      clasificacionIAState.ultimo_fin   = new Date().toISOString();
+      console.error("[clasif-ia] Error general:", e.message);
+    }
+  })();
+});
+
+app.get("/mp/clasificar-pool-ia-status", (req, res) => res.json(clasificacionIAState));
 
 // ── Arranque del servidor ──────────────────────────────────────────────────
 app.listen(PORT, () => {
