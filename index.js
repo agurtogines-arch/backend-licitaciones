@@ -3200,7 +3200,7 @@ app.post("/mp/clasificar-pool-ia", async (req, res) => {
       // a mitad del proceso (~5 min de trabajo). Las siguientes ejecuciones
       // continúan automáticamente desde donde quedó gracias al cache en Supabase.
       const sinClasificarTotal = candidatas.filter(l => !yaClasificadas.has(l.CodigoExterno));
-      const sinClasificar      = sinClasificarTotal.slice(0, 500);
+      const sinClasificar      = sinClasificarTotal.slice(0, 200);
       clasificacionIAState.ya_en_cache    = yaClasificadas.size;
       clasificacionIAState.a_clasificar   = sinClasificarTotal.length; // total real pendiente
       clasificacionIAState.en_este_lote   = sinClasificar.length;      // lo que clasifica ahora
