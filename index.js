@@ -3298,6 +3298,7 @@ Responde SOLO con JSON array sin texto previo ni markdown:
             .filter(res => res.codigo)
             .map(res => ({
               codigo:            res.codigo,
+              nombre:            "",   // mínimo para INSERT de registros nuevos
               divisiones_ia:     res.divisiones || [],
               veredicto_ia:      res.veredicto  || "⚪",
               razon_ia:          res.razon       || "",
@@ -3305,13 +3306,19 @@ Responde SOLO con JSON array sin texto previo ni markdown:
             }));
 
           if (rows.length > 0) {
-            await fetch(`${SUPABASE_URL}/rest/v1/mp_pool_cache`, {
+            await fetch(`${SUPABASE_URL}/rest/v1/mp_pool_cache?on_conflict=codigo`, {
               method: "POST",
               headers: { ...SUPABASE_HEADERS, "Prefer": "resolution=merge-duplicates" },
               body: JSON.stringify(rows),
               signal: AbortSignal.timeout(10000)
-            }).then(res => { if (res.ok) totalClasificadas += rows.length; })
-              .catch(e => console.warn(`[clasif-ia] Supabase save: ${e.message}`));
+            }).then(async r => {
+              if (r.ok) {
+                totalClasificadas += rows.length;
+              } else {
+                const errTxt = await r.text();
+                console.warn(`[clasif-ia] Supabase ${r.status}: ${errTxt.substring(0, 300)}`);
+              }
+            }).catch(e => console.warn(`[clasif-ia] Supabase save: ${e.message}`));
           }
 
         } catch(e) {
