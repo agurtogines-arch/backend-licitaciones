@@ -3228,8 +3228,16 @@ app.post("/mp/clasificar-pool-ia", async (req, res) => {
         }
       } catch(e) { console.warn(`[clasif-ia] Enriquecimiento: ${e.message}`); }
 
-      // 6. Clasificar con GPT-4o-mini por lotes de 10
+      // 6. Clasificar con Claude (Anthropic) por lotes de 10
       clasificacionIAState.estado = "clasificando";
+      const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || "";
+      if (!ANTHROPIC_KEY) {
+        clasificacionIAState.estado       = "error";
+        clasificacionIAState.ultimo_error = "ANTHROPIC_API_KEY no configurada";
+        clasificacionIAState.ultimo_fin   = new Date().toISOString();
+        console.error("[clasif-ia] ANTHROPIC_API_KEY no configurada");
+        return;
+      }
       const LOTE = 10;
       const sleep = ms => new Promise(r => setTimeout(r, ms));
       let totalClasificadas = 0;
@@ -3268,30 +3276,42 @@ Responde SOLO con JSON array sin texto previo ni markdown:
         }).join("\n");
 
         try {
-          const r = await fetch("https://api.openai.com/v1/chat/completions", {
+          const r = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST",
-            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${OPENAI_KEY}` },
+            headers: {
+              "Content-Type":      "application/json",
+              "x-api-key":         ANTHROPIC_KEY,
+              "anthropic-version": "2023-06-01"
+            },
             body: JSON.stringify({
-              model: "gpt-4o-mini", max_tokens: 800, temperature: 0.1,
-              messages: [
-                { role: "system", content: PROMPT_SISTEMA },
-                { role: "user",   content: `Clasifica estas ${lote.length} licitaciones:\n${items}` }
-              ]
+              model:      "claude-haiku-4-5-20251001",
+              max_tokens: 1000,
+              system:     PROMPT_SISTEMA,
+              messages:   [{ role: "user", content: `Clasifica estas ${lote.length} licitaciones:\n${items}` }]
             }),
             signal: AbortSignal.timeout(30000)
           });
 
           if (!r.ok) {
-            console.warn(`[clasif-ia] OpenAI ${r.status} lote ${Math.ceil(i/LOTE)+1}`);
+            const errTxt = await r.text();
+            console.warn(`[clasif-ia] Anthropic ${r.status} lote ${Math.ceil(i/LOTE)+1}: ${errTxt.substring(0,200)}`);
             totalErrores += lote.length;
             continue;
           }
 
           const d     = await r.json();
-          const txt   = d.choices?.[0]?.message?.content || "[]";
+          const txt   = d.content?.[0]?.text || "[]";
           const clean = txt.replace(/```json|```/g, "").trim();
           const match = clean.match(/\[[\s\S]*\]/);
-          const resultados = JSON.parse(match ? match[0] : "[]");
+
+          if (i === 0) {
+            console.log(`[clasif-ia] Lote 1 Claude raw: ${txt.substring(0, 400)}`);
+            console.log(`[clasif-ia] Lote 1 regex match: ${match ? "SÍ" : "NO"}`);
+          }
+
+          let resultados = [];
+          try { resultados = JSON.parse(match ? match[0] : "[]"); }
+          catch(e) { console.warn(`[clasif-ia] Parse error lote ${Math.ceil(i/LOTE)+1}: ${e.message}`); }
 
           // Guardar en mp_pool_cache
           const rows = resultados
