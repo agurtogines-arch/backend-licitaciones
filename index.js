@@ -549,6 +549,9 @@ let clasificacionIAState = {
   ultimo_error: null
 };
 
+// ── Jobs de análisis de bases en background ───────────────────────────────────
+const basesJobs = new Map();
+
 app.get("/", (req, res) => { res.sendFile(path.join(__dirname, "public", "index.html")); });
 app.get("/regiones", (req, res) => res.json(REGIONES));
 
@@ -2342,6 +2345,280 @@ RESPONDE ÚNICAMENTE CON JSON VÁLIDO SIN MARKDOWN NI TEXTO PREVIO:
       res.status(500).json({ error: err.message });
     }
   });
+});
+
+// ── Analizar Bases — versión async con background + polling ──────────────────
+// Responde inmediatamente con un jobId. El frontend consulta /mp/bases-status/:jobId
+// cada 5 segundos. Esto elimina el timeout de Render y permite usar 80K chars + 8000 tokens.
+app.post("/mp/analizar-bases-async", (req, res) => {
+  uploadMiddleware(req, res, async (err) => {
+    if (err) return res.status(400).json({ error: "Error al subir archivo: " + err.message });
+    if (!req.file) return res.status(400).json({ error: "Archivo ZIP requerido" });
+
+    let metadata = {};
+    try { metadata = JSON.parse(req.body.metadata || "{}"); } catch(e) {}
+
+    // Responder inmediatamente con jobId
+    const jobId = Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+    basesJobs.set(jobId, { estado: "procesando", progreso: "Leyendo archivos ZIP...", resultado: null, error: null });
+    res.json({ ok: true, jobId });
+
+    // Procesar en background (sin bloquear la respuesta HTTP)
+    const fileBuffer = req.file.buffer;
+    setImmediate(async () => {
+      try {
+        const archivosAuditoria = [];
+        const textosRelevantes  = [];
+        const textosGenericos   = [];
+        let escaneadosCount     = 0;
+
+        basesJobs.set(jobId, { ...basesJobs.get(jobId), progreso: "Extrayendo texto de PDFs..." });
+
+        const zip = new AdmZip(fileBuffer);
+        const entradas = zip.getEntries();
+        for (const entrada of entradas) {
+          if (entrada.isDirectory) continue;
+          const nombre = entrada.name;
+          const ext    = nombre.split(".").pop().toLowerCase();
+          if (ext === "pdf") {
+            const buf       = entrada.getData();
+            const resultado = await extraerTextoPDF(buf);
+            archivosAuditoria.push({
+              nombre, tipo: resultado.escaneado ? "Escaneado" : "Texto",
+              paginas: resultado.paginas,
+              estado: resultado.ok ? (resultado.escaneado ? "⚠️ Escaneado" : "✅ Procesado") : "❌ Error",
+              observacion: resultado.escaneado ? "Revisar manualmente" : (resultado.error || "")
+            });
+            if (resultado.escaneado) escaneadosCount++;
+            if (resultado.texto.trim()) {
+              const bloque = `=== ${nombre} ===\n${resultado.texto}`;
+              if (esDocumentoGenerico(nombre)) textosGenericos.push(bloque);
+              else textosRelevantes.push(bloque);
+            }
+          } else if (["docx","doc"].includes(ext)) {
+            archivosAuditoria.push({ nombre, tipo:"Word", paginas:"–", estado:"⚠️ No procesado", observacion:"Revisar manualmente" });
+          } else {
+            archivosAuditoria.push({ nombre, tipo:ext.toUpperCase(), paginas:"–", estado:"⚪ Omitido", observacion:"Formato no soportado" });
+          }
+        }
+
+        if (!textosRelevantes.length && !textosGenericos.length) {
+          basesJobs.set(jobId, { estado: "error", progreso: null, resultado: null, error: `No se pudo extraer texto de ningún PDF. Escaneados: ${escaneadosCount}` });
+          setTimeout(() => basesJobs.delete(jobId), 10 * 60 * 1000);
+          return;
+        }
+
+        // 80K chars con calidad máxima — sin restricción de timeout HTTP
+        const LIMITE_TOTAL = 80000;
+        let textoTotal = textosRelevantes.join("\n\n");
+        if (textoTotal.length < LIMITE_TOTAL && textosGenericos.length) {
+          const espacio = LIMITE_TOTAL - textoTotal.length;
+          textoTotal += "\n\n" + textosGenericos.join("\n\n").substring(0, espacio);
+        }
+        textoTotal = textoTotal.substring(0, LIMITE_TOTAL);
+
+        basesJobs.set(jobId, { ...basesJobs.get(jobId), progreso: `Consultando Claude Sonnet — ${Math.round(textoTotal.length/1000)}K caracteres...` });
+
+        const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || "";
+        if (!ANTHROPIC_KEY) throw new Error("ANTHROPIC_API_KEY no configurada");
+
+        const META = `METADATA DE LA LICITACIÓN EN MERCADO PÚBLICO:
+Título: ${metadata.titulo||""}
+Código: ${metadata.codigo||""}
+Mandante: ${metadata.organismo||""}
+Región: ${metadata.region||""}
+Monto estimado: ${metadata.monto||""}
+Fecha cierre: ${metadata.fechaCierre||""}
+URL: ${metadata.url||""}`;
+
+        const SYSTEM_PROMPT = `Eres un experto senior en licitaciones públicas chilenas para LEN Ingeniería (consultora de ingeniería: vial, hidráulica, sanitaria, ITO, medio ambiente, energía, minería).
+
+Tu tarea es analizar los documentos de bases de licitación y generar un resumen estructurado, completo y HONESTO.
+
+PRINCIPIOS FUNDAMENTALES:
+1. Usa texto LITERAL de los documentos cuando sea posible. Cita secciones específicas.
+2. Sé HONESTO sobre lo que falta: si los documentos son solo Términos de Referencia técnicos sin Bases Administrativas, indícalo explícitamente. No uses "[NO ENCONTRADO]" — escribe una advertencia clara explicando qué falta y dónde encontrarlo.
+3. Los puntos críticos deben ser realmente útiles para decidir si LEN debe participar o no.
+4. En calendario: distingue entre fechas del portal MP (administración) y plazos del TR (técnicos).
+5. En garantías: si no están en los documentos, usa el campo "garantias_advertencia" para explicarlo.
+6. Sé específico: nombres de software, normativas, metodologías, códigos de documentos, áreas en km².
+
+RESPONDE ÚNICAMENTE CON JSON VÁLIDO SIN MARKDOWN NI TEXTO PREVIO:
+{
+  "titulo": "NOMBRE COMPLETO DE LA CONSULTORÍA EN MAYÚSCULAS",
+  "subtitulo": "Tipo documento — Fecha — Región",
+  "identificacion": {
+    "nombre_estudio": "",
+    "mandante": "",
+    "region": "",
+    "numero_licitacion": "",
+    "fecha_documentos": "",
+    "marco_legal": "",
+    "documentos_base_referencia": ""
+  },
+  "objetivo_general": "texto del objetivo general tal como aparece en el TR",
+  "area_estudio": [{"sector": "nombre sector", "descripcion": "superficie, límites, comunas"}],
+  "perfiles_profesionales": "descripción de los perfiles requeridos o advertencia si no están en los documentos",
+  "alcance_resumen": "descripción de qué documentos se analizaron, qué contienen y qué información administrativa queda fuera del alcance de este resumen",
+  "puntos_criticos": ["punto crítico 1 con detalle suficiente para tomar decisión", "punto 2"],
+  "calendario_licitacion": [{"hito": "nombre del hito", "fecha": "DD-MM-AAAA HH:MM:SS"}],
+  "nota_calendario": "explicación sobre las fechas — cuáles vienen del portal y cuáles del TR",
+  "referencias_temporales_tr": ["plazo o referencia temporal que aparece en el TR pero no en el calendario"],
+  "garantias_advertencia": "texto explicando qué información de garantías y pagos está disponible y qué no",
+  "referencias_pago_tr": ["referencia al pago que aparece en el TR (puede ser técnica, no financiera)"],
+  "alcances_consultoria": ["alcance 1", "alcance 2"],
+  "etapas": [{"etapa": "ETAPA I", "descripcion": "contenido detallado de la etapa"}],
+  "herramientas": [{"herramienta": "nombre", "descripcion": "especificación técnica completa"}],
+  "informes_por_etapa": [{"informe": "nombre del informe", "contenido": "descripción del contenido"}],
+  "entregables_finales": ["entregable 1 con detalle"],
+  "formato_informes": ["requisito de formato 1"],
+  "anexos_tr": [{"anexo": "código del anexo", "descripcion": "descripción del anexo"}]
+}`;
+
+        console.log(`[analizar-bases-async] Llamando a Claude Sonnet jobId=${jobId}...`);
+        const rIA = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type":      "application/json",
+            "x-api-key":         ANTHROPIC_KEY,
+            "anthropic-version": "2023-06-01"
+          },
+          body: JSON.stringify({
+            model:      "claude-sonnet-4-6",
+            max_tokens: 8000,
+            system:     SYSTEM_PROMPT,
+            messages:   [{ role: "user", content: `${META}\n\n--- DOCUMENTOS DE LA LICITACIÓN ---\n\n${textoTotal}` }]
+          }),
+          signal: AbortSignal.timeout(180000) // 3 min — sin restricción HTTP
+        });
+
+        if (!rIA.ok) throw new Error(`Anthropic ${rIA.status}: ${await rIA.text().then(t=>t.substring(0,200))}`);
+        const dIA   = await rIA.json();
+        const txtIA = dIA.content?.[0]?.text || "{}";
+        const clean = txtIA.replace(/```json|```/g,"").trim();
+        const match = clean.match(/\{[\s\S]*\}/);
+        const analisis = JSON.parse(match ? match[0] : clean);
+        console.log(`[analizar-bases-async] Claude OK jobId=${jobId}`);
+
+        basesJobs.set(jobId, { ...basesJobs.get(jobId), progreso: "Generando Excel..." });
+
+        // ── Generar Excel (mismo código que en /mp/analizar-bases) ────────────
+        const wb2 = new ExcelJS.Workbook();
+        wb2.creator = "LEN Ingeniería";
+        wb2.created = new Date();
+        const C2 = { azulOscuro:"1E3A5F", azulMedio:"2563EB", azulClaro:"EFF6FF", gris:"F8FAFC", amClaro:"FFFBEB" };
+        const stT2 = { font:{bold:true,size:13,color:{argb:"FFFFFFFF"},name:"Arial"}, fill:{type:"pattern",pattern:"solid",fgColor:{argb:`FF${C2.azulOscuro}`}}, alignment:{horizontal:"center",vertical:"middle"} };
+        const stSb2 = { font:{bold:false,size:10,color:{argb:"FFFFFFFF"},name:"Arial"}, fill:{type:"pattern",pattern:"solid",fgColor:{argb:`FF${C2.azulMedio}`}}, alignment:{horizontal:"center",vertical:"middle"} };
+        const stSc2 = { font:{bold:true,size:10,color:{argb:`FF${C2.azulMedio}`},name:"Arial"}, fill:{type:"pattern",pattern:"solid",fgColor:{argb:`FF${C2.azulClaro}`}}, alignment:{horizontal:"left",vertical:"middle"} };
+        const stLb2 = { font:{bold:true,size:9,name:"Arial"}, fill:{type:"pattern",pattern:"solid",fgColor:{argb:"FFFAFAFA"}}, alignment:{horizontal:"left",vertical:"middle",wrapText:true} };
+        const stVl2 = (bg) => ({ font:{size:9,name:"Arial"}, fill:{type:"pattern",pattern:"solid",fgColor:{argb:bg?`FF${bg}`:"FFFFFFFF"}}, alignment:{horizontal:"left",vertical:"middle",wrapText:true} });
+        const stTH2 = { font:{bold:true,color:{argb:"FFFFFFFF"},size:9,name:"Arial"}, fill:{type:"pattern",pattern:"solid",fgColor:{argb:`FF${C2.azulOscuro}`}}, alignment:{horizontal:"center",vertical:"middle",wrapText:true} };
+        const stRw2 = (i,bg) => ({ font:{size:9,name:"Arial"}, fill:{type:"pattern",pattern:"solid",fgColor:{argb:bg?`FF${bg}`:(i%2===0?"FFFFFFFF":`FF${C2.gris}`)}}, alignment:{horizontal:"left",vertical:"middle",wrapText:true} });
+        const stWn2 = { font:{bold:true,size:9,name:"Arial",color:{argb:"FF92400E"}}, fill:{type:"pattern",pattern:"solid",fgColor:{argb:`FF${C2.amClaro}`}}, alignment:{horizontal:"left",vertical:"middle",wrapText:true} };
+        const aT2 = (ws,t,c) => { const r=ws.addRow([t]); ws.mergeCells(r.number,1,r.number,c); r.getCell(1).style=stT2; r.height=32; return r; };
+        const aS2 = (ws,t,c) => { const r=ws.addRow([t]); ws.mergeCells(r.number,1,r.number,c); r.getCell(1).style=stSb2; r.height=20; return r; };
+        const aSc2 = (ws,t,c) => { const r=ws.addRow([t]); ws.mergeCells(r.number,1,r.number,c); r.getCell(1).style=stSc2; r.height=22; return r; };
+        const aKV2 = (ws,l,v,bg) => { const r=ws.addRow([l,v||""]); r.getCell(1).style=stLb2; r.getCell(2).style=stVl2(bg); r.height=18; return r; };
+        const aTx2 = (ws,t,c,bg) => { const r=ws.addRow([t||""]); ws.mergeCells(r.number,1,r.number,c); r.getCell(1).style={font:{size:9,name:"Arial"},fill:{type:"pattern",pattern:"solid",fgColor:{argb:bg?`FF${bg}`:"FFFFFFFF"}},alignment:{horizontal:"left",vertical:"middle",wrapText:true}}; r.height=36; return r; };
+        const aWn2 = (ws,t,c) => { const r=ws.addRow([t||""]); ws.mergeCells(r.number,1,r.number,c); r.getCell(1).style=stWn2; r.height=36; return r; };
+        const aLs2 = (ws,items,c) => { (items||[]).filter(Boolean).forEach((it,i)=>{ const r=ws.addRow([`• ${it}`]); ws.mergeCells(r.number,1,r.number,c); r.getCell(1).style=stRw2(i); r.height=28; }); };
+        const aTR2 = (ws,cells,i,bg) => { const r=ws.addRow(cells); r.eachCell(c=>{c.style=stRw2(i,bg);c.alignment={wrapText:true,vertical:"middle"};}); r.height=32; return r; };
+
+        const id2  = analisis.identificacion || {};
+        const TIT2 = (analisis.titulo || metadata.titulo || "LICITACIÓN").toUpperCase();
+        const SUB2 = analisis.subtitulo || `${metadata.organismo||""} — ${metadata.region||""}`;
+
+        // Hoja 1
+        const w1 = wb2.addWorksheet("Resumen General");
+        w1.columns = [{ width:32 },{ width:78 }];
+        aT2(w1,TIT2,2); aS2(w1,SUB2,2);
+        if (escaneadosCount>0) { w1.addRow([]); aWn2(w1,`⚠️ ATENCIÓN: ${escaneadosCount} archivo(s) escaneado(s) — revisar manualmente.`,2); }
+        w1.addRow([]); aSc2(w1,"IDENTIFICACIÓN",2);
+        [["Nombre del estudio",id2.nombre_estudio||metadata.titulo],["Mandante",id2.mandante||metadata.organismo],["Región",id2.region||metadata.region],["Nº de licitación",id2.numero_licitacion||metadata.codigo],["Fecha de los documentos",id2.fecha_documentos],["Marco legal",id2.marco_legal],["Documentos base",id2.documentos_base_referencia]].filter(([,v])=>v).forEach(([l,v])=>{const r=aKV2(w1,l,v);r.height=22;});
+        if (analisis.objetivo_general) { w1.addRow([]); aSc2(w1,"OBJETIVO GENERAL",2); aTx2(w1,analisis.objetivo_general,2); }
+        if (analisis.area_estudio?.length) { w1.addRow([]); aSc2(w1,"ÁREA DE ESTUDIO",2); analisis.area_estudio.forEach(a=>{const r=aKV2(w1,a.sector,a.descripcion);r.height=26;}); }
+        if (analisis.perfiles_profesionales) { w1.addRow([]); aSc2(w1,"PERFILES PROFESIONALES",2); aTx2(w1,analisis.perfiles_profesionales,2); }
+        if (analisis.alcance_resumen) { w1.addRow([]); aSc2(w1,"ALCANCE DE ESTE RESUMEN",2); aTx2(w1,analisis.alcance_resumen,2,"EFF6FF"); }
+        if (analisis.puntos_criticos?.length) { w1.addRow([]); aSc2(w1,"PUNTOS CRÍTICOS",2); analisis.puntos_criticos.forEach(p=>{const r=w1.addRow([`•`,p]);r.getCell(1).style=stLb2;r.getCell(2).style=stVl2();r.height=32;}); }
+
+        // Hoja 2
+        const w2 = wb2.addWorksheet("Calendario");
+        w2.columns = [{ width:40 },{ width:28 }];
+        aT2(w2,TIT2,2); aS2(w2,"Plazos y fechas",2);
+        if (analisis.calendario_licitacion?.length) { w2.addRow([]); aSc2(w2,"CALENDARIO DE LA LICITACIÓN (según ficha del portal)",2); const hc=w2.addRow(["Hito","Fecha / Plazo"]); hc.eachCell(c=>{c.style=stTH2;}); hc.height=18; analisis.calendario_licitacion.forEach((c,i)=>aTR2(w2,[c.hito,c.fecha],i)); }
+        if (analisis.nota_calendario) { w2.addRow([]); aSc2(w2,"NOTA",2); aTx2(w2,analisis.nota_calendario,2,"FFFBEB"); }
+        if (analisis.referencias_temporales_tr?.length) { w2.addRow([]); aSc2(w2,"REFERENCIAS TEMPORALES EN EL TR",2); aTx2(w2,"(No constituyen un calendario; son condiciones técnicas del estudio)",2,"EFF6FF"); aLs2(w2,analisis.referencias_temporales_tr,2); }
+
+        // Hoja 3
+        const w3 = wb2.addWorksheet("Garantías y Pagos");
+        w3.columns = [{ width:40 },{ width:68 }];
+        aT2(w3,TIT2,2); aS2(w3,"Garantías, presupuesto y condiciones de pago",2);
+        w3.addRow([]);
+        if (analisis.garantias_advertencia) aWn2(w3,`ADVERTENCIA\n${analisis.garantias_advertencia}`,2);
+        if (analisis.referencias_pago_tr?.length) { w3.addRow([]); aSc2(w3,"REFERENCIAS A 'PAGO' EN EL TR",2); aTx2(w3,"Aclaración: referencias técnicas al pago de partidas — NO condiciones económicas del contrato.",2,"EFF6FF"); w3.addRow([]); analisis.referencias_pago_tr.forEach((ref,i)=>{const r=w3.addRow([`•`,ref]);r.getCell(1).style=stLb2;r.getCell(2).style=stVl2();r.height=28;}); }
+
+        // Hoja 4
+        const w4 = wb2.addWorksheet("Alcance Técnico");
+        w4.columns = [{ width:18 },{ width:90 }];
+        aT2(w4,TIT2,2); aS2(w4,"Objetivos, alcances, etapas y herramientas",2);
+        if (analisis.alcances_consultoria?.length) { w4.addRow([]); aSc2(w4,"ALCANCES DE LA CONSULTORÍA",2); aLs2(w4,analisis.alcances_consultoria,2); }
+        if (analisis.etapas?.length) { w4.addRow([]); aSc2(w4,`ETAPAS DEL ESTUDIO (${analisis.etapas.length} etapas)`,2); const he=w4.addRow(["Etapa","Descripción"]); he.eachCell(c=>{c.style=stTH2;}); he.height=18; analisis.etapas.forEach((e,i)=>{const r=aTR2(w4,[e.etapa,e.descripcion],i);r.height=48;}); }
+        if (analisis.herramientas?.length) { w4.addRow([]); aSc2(w4,"HERRAMIENTAS Y COMPONENTES TRANSVERSALES",2); analisis.herramientas.forEach(h=>{const r=aKV2(w4,h.herramienta,h.descripcion);r.height=26;}); }
+
+        // Hoja 5
+        const w5 = wb2.addWorksheet("Documentos a Preparar");
+        w5.columns = [{ width:32 },{ width:76 }];
+        aT2(w5,TIT2,2); aS2(w5,"Entregables, informes y anexos del TR",2);
+        if (analisis.informes_por_etapa?.length) { w5.addRow([]); aSc2(w5,"INFORMES POR ETAPA",2); const hi=w5.addRow(["Informe","Contenido"]); hi.eachCell(c=>{c.style=stTH2;}); hi.height=18; analisis.informes_por_etapa.forEach((inf,i)=>{const r=aTR2(w5,[inf.informe,inf.contenido],i);r.height=40;}); }
+        if (analisis.entregables_finales?.length) { w5.addRow([]); aSc2(w5,"ENTREGABLES FINALES",2); aLs2(w5,analisis.entregables_finales,2); }
+        if (analisis.formato_informes?.length) { w5.addRow([]); aSc2(w5,"FORMATO EXIGIDO",2); aLs2(w5,analisis.formato_informes,2); }
+        if (analisis.anexos_tr?.length) { w5.addRow([]); aSc2(w5,"ANEXOS DEL TR",2); const ha=w5.addRow(["Anexo","Descripción"]); ha.eachCell(c=>{c.style=stTH2;}); ha.height=18; analisis.anexos_tr.forEach((a,i)=>aTR2(w5,[a.anexo,a.descripcion],i)); }
+
+        const confianza2 = escaneadosCount===0 ? "completa" : escaneadosCount < archivosAuditoria.length/2 ? "parcial" : "fallida";
+        const buf2    = await wb2.xlsx.writeBuffer();
+        const b64_2   = Buffer.from(buf2).toString("base64");
+        const archivo2 = `Resumen_${(metadata.codigo||"LIC").replace(/[^a-zA-Z0-9]/g,"_")}_${new Date().toISOString().split("T")[0]}.xlsx`;
+
+        let excelPath2 = null;
+        if (metadata.codigo && metadata.licitacionId) {
+          try {
+            const sp2 = `${metadata.codigo.replace(/[^a-zA-Z0-9_-]/g,"_")}/${archivo2}`;
+            const up2 = await fetch(`${SUPABASE_URL}/storage/v1/object/bases-resumenes/${sp2}`, {
+              method:"POST", headers:{"Authorization":SUPABASE_HEADERS.Authorization,"apikey":SUPABASE_HEADERS.apikey,"Content-Type":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","x-upsert":"true"}, body:buf2, signal:AbortSignal.timeout(20000)
+            });
+            if (up2.ok) { excelPath2=sp2; console.log(`[analizar-bases-async] Excel subido: ${sp2}`); }
+            await fetch(`${SUPABASE_URL}/rest/v1/licitaciones?id=eq.${encodeURIComponent(metadata.licitacionId)}`, {
+              method:"PATCH", headers:SUPABASE_HEADERS, body:JSON.stringify({ resumen_bases_excel_path:excelPath2, resumen_bases_creado_at:new Date().toISOString(), resumen_bases_archivos_originales:archivosAuditoria.map(a=>({nombre:a.nombre,tipo:a.tipo,paginas:a.paginas,estado:a.estado})) }), signal:AbortSignal.timeout(8000)
+            });
+          } catch(e) { console.warn(`[analizar-bases-async] No se pudo persistir: ${e.message}`); }
+        }
+
+        basesJobs.set(jobId, {
+          estado:    "completado",
+          progreso:  null,
+          resultado: { ok:true, excelBase64:b64_2, nombreArchivo:archivo2, excelPath:excelPath2, confianza:confianza2, escaneados:escaneadosCount, totalArchivos:archivosAuditoria.length, auditoria:archivosAuditoria },
+          error:     null
+        });
+        setTimeout(() => basesJobs.delete(jobId), 30 * 60 * 1000);
+        console.log(`[analizar-bases-async] ✅ Completado jobId=${jobId}`);
+
+      } catch(err) {
+        console.error(`[analizar-bases-async] ❌ jobId=${jobId}:`, err.message);
+        basesJobs.set(jobId, { estado:"error", progreso:null, resultado:null, error:err.message });
+        setTimeout(() => basesJobs.delete(jobId), 10 * 60 * 1000);
+      }
+    });
+  });
+});
+
+app.get("/mp/bases-status/:jobId", (req, res) => {
+  const job = basesJobs.get(req.params.jobId);
+  if (!job) return res.status(404).json({ error: "Job no encontrado o expirado" });
+  // No retornar excelBase64 en la respuesta de status (muy pesado) — solo cuando completado y se pida el resultado
+  if (job.estado === "completado" && job.resultado) {
+    return res.json({ estado: job.estado, resultado: job.resultado });
+  }
+  res.json({ estado: job.estado, progreso: job.progreso, error: job.error });
 });
 
 app.get("/mp/descargar-resumen-bases/:licitacionId", async (req, res) => {
