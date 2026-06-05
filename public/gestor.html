@@ -471,133 +471,68 @@ async function uploadBases(inputEl) {
   const file = inputEl.files[0];
   if (!file) return;
   if (!file.name.endsWith('.zip')) { toast('⚠️ Solo se aceptan archivos ZIP'); return; }
-
   const lic = lics.find(l => l.id === curId);
   if (!lic) return;
-
-  const btnEl    = document.getElementById('btn-subir-bases');
+  const btnEl = document.getElementById('btn-subir-bases');
   const statusEl = document.getElementById('bases-status');
   if (btnEl) btnEl.disabled = true;
   if (statusEl) statusEl.innerHTML = '<span class="spinner"></span> Iniciando análisis...';
-
   const formData = new FormData();
   formData.append('archivo', file);
   formData.append('metadata', JSON.stringify({
-    titulo:       lic.nombre,
-    codigo:       lic.codigo,
-    organismo:    lic.mandante,
-    region:       lic.steps_json?._meta?.region || '',
-    monto:        lic.steps_json?._meta?.monto  || '',
-    fechaCierre:  lic.fecha_cierre || '',
-    url:          lic.steps_json?._meta?.url    || '',
+    titulo: lic.nombre, codigo: lic.codigo, organismo: lic.mandante,
+    region: lic.steps_json?._meta?.region || '', monto: lic.steps_json?._meta?.monto || '',
+    fechaCierre: lic.fecha_cierre || '', url: lic.steps_json?._meta?.url || '',
     licitacionId: lic.id
   }));
-
   try {
-    // Llama al endpoint async — responde en <1 segundo con jobId
-    const res  = await fetch(`${BACKEND_URL}/mp/analizar-bases-async`, { method:'POST', body: formData });
+    const res = await fetch(`${BACKEND_URL}/mp/analizar-bases-async`, { method:'POST', body: formData });
     const data = await res.json();
-
     if (!res.ok || !data.jobId) {
       if (statusEl) statusEl.innerHTML = `<span style="color:#dc2626">❌ ${data.error || 'Error al iniciar análisis'}</span>`;
       if (btnEl) btnEl.disabled = false;
       return;
     }
-
-    // Iniciar polling — el frontend consulta el estado cada 5 segundos
-    if (statusEl) statusEl.innerHTML = '<span class="spinner"></span> Análisis iniciado — procesando en segundo plano...';
+    if (statusEl) statusEl.innerHTML = '<span class="spinner"></span> Análisis iniciado...';
     pollBasesStatus(data.jobId, statusEl, btnEl, lic);
-
   } catch(e) {
     if (statusEl) statusEl.innerHTML = `<span style="color:#dc2626">❌ Error de conexión: ${e.message}</span>`;
     if (btnEl) btnEl.disabled = false;
   }
 }
 
-// Polling del estado del análisis de bases
-// Consulta /mp/bases-status/:jobId cada 5 segundos hasta completado o error.
-// Cada ping mantiene Render despierto automáticamente.
 function pollBasesStatus(jobId, statusEl, btnEl, lic) {
-  const mensajesRotar = [
-    "Extrayendo texto de PDFs...",
-    "Analizando documentos con Claude Sonnet...",
-    "Procesando bases técnicas y TR...",
-    "Generando resumen estructurado...",
-    "Construyendo Excel con 5 hojas..."
-  ];
-  let rota = 0;
-  let intentos = 0;
-  const MAX = 72; // 6 minutos máximo (72 × 5s)
-
+  const msgs = ["Extrayendo texto de PDFs...","Consultando Claude Sonnet...","Procesando TR...","Generando Excel...","Casi listo..."];
+  let rota=0, intentos=0;
+  const MAX=72;
   const tick = async () => {
     intentos++;
-    if (intentos > MAX) {
-      if (statusEl) statusEl.innerHTML = `<span style="color:#dc2626">❌ El análisis tardó demasiado. Verifica los logs de Render e intenta de nuevo.</span>`;
-      if (btnEl) btnEl.disabled = false;
-      return;
-    }
-
+    if (intentos > MAX) { if(statusEl) statusEl.innerHTML=`<span style="color:#dc2626">❌ Tiempo agotado. Intenta de nuevo.</span>`; if(btnEl) btnEl.disabled=false; return; }
     try {
       const res = await fetch(`${BACKEND_URL}/mp/bases-status/${jobId}`);
-
-      if (res.status === 404) {
-        if (statusEl) statusEl.innerHTML = `<span style="color:#dc2626">❌ Job expirado o no encontrado. Intenta subir las bases de nuevo.</span>`;
-        if (btnEl) btnEl.disabled = false;
-        return;
-      }
-
+      if (res.status===404) { if(statusEl) statusEl.innerHTML=`<span style="color:#dc2626">❌ Job expirado. Sube las bases de nuevo.</span>`; if(btnEl) btnEl.disabled=false; return; }
       const job = await res.json();
-
-      if (job.estado === 'procesando') {
-        const msg = job.progreso || mensajesRotar[rota % mensajesRotar.length];
-        rota++;
-        if (statusEl) statusEl.innerHTML = `<span class="spinner"></span> ${msg} <span style="color:#94a3b8;font-size:11px">(${intentos * 5}s)</span>`;
-        setTimeout(tick, 5000);
-
-      } else if (job.estado === 'completado') {
-        const data = job.resultado;
-
-        // Descargar Excel automáticamente
+      if (job.estado==='procesando') {
+        if(statusEl) statusEl.innerHTML=`<span class="spinner"></span> ${job.progreso||msgs[rota%msgs.length]} <span style="color:#94a3b8;font-size:11px">(${intentos*5}s)</span>`;
+        rota++; setTimeout(tick,5000);
+      } else if (job.estado==='completado') {
+        const data=job.resultado;
         downloadExcelBase64(data.excelBase64, data.nombreArchivo);
-
-        // Persistir metadata en Supabase
-        const sj = getSJ(lic);
-        sj._bases = {
-          analizadoEl:   new Date().toLocaleString('es-CL'),
-          confianza:     data.confianza,
-          escaneados:    data.escaneados,
-          totalArchivos: data.totalArchivos,
-          nombreArchivo: data.nombreArchivo,
-          excelBase64:   data.excelBase64
-        };
-        lic.steps_json = sj;
-        await sb.from('licitaciones').update({ steps_json: sj }).eq('id', curId);
-
-        renderBasesStatus();
-        toast('✅ Excel generado y descargado exitosamente');
-
-      } else if (job.estado === 'error') {
-        if (statusEl) statusEl.innerHTML = `<span style="color:#dc2626">❌ Error en el análisis: ${job.error || 'desconocido'}</span>`;
-        if (btnEl) btnEl.disabled = false;
-      } else {
-        // Estado desconocido — reintentar
-        setTimeout(tick, 5000);
-      }
-
+        const sj=getSJ(lic);
+        sj._bases={ analizadoEl:new Date().toLocaleString('es-CL'), confianza:data.confianza, escaneados:data.escaneados, totalArchivos:data.totalArchivos, nombreArchivo:data.nombreArchivo, excelBase64:data.excelBase64 };
+        lic.steps_json=sj;
+        await sb.from('licitaciones').update({ steps_json:sj }).eq('id',curId);
+        renderBasesStatus(); toast('✅ Excel generado y descargado exitosamente');
+      } else if (job.estado==='error') {
+        if(statusEl) statusEl.innerHTML=`<span style="color:#dc2626">❌ ${job.error||'Error en el análisis'}</span>`;
+        if(btnEl) btnEl.disabled=false;
+      } else { setTimeout(tick,5000); }
     } catch(e) {
-      // Fallo de red puntual (Render despertando) — reintentar silenciosamente
-      if (intentos < MAX) {
-        if (statusEl) statusEl.innerHTML = `<span class="spinner"></span> Reconectando... <span style="color:#94a3b8;font-size:11px">(${intentos * 5}s)</span>`;
-        setTimeout(tick, 5000);
-      } else {
-        if (statusEl) statusEl.innerHTML = `<span style="color:#dc2626">❌ Error de conexión: ${e.message}</span>`;
-        if (btnEl) btnEl.disabled = false;
-      }
+      if(intentos<MAX) { if(statusEl) statusEl.innerHTML=`<span class="spinner"></span> Reconectando... (${intentos*5}s)`; setTimeout(tick,5000); }
+      else { if(statusEl) statusEl.innerHTML=`<span style="color:#dc2626">❌ ${e.message}</span>`; if(btnEl) btnEl.disabled=false; }
     }
   };
-
-  // Primer check a los 5 segundos (darle tiempo al backend para arrancar)
-  setTimeout(tick, 5000);
+  setTimeout(tick,5000);
 }
 
 function downloadExcelBase64(b64, filename) {
