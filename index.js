@@ -1960,7 +1960,7 @@ app.post("/mp/analizar-bases", (req, res) => {
       if (!textosRelevantes.length && !textosGenericos.length) {
         return res.status(422).json({ error: "No se pudo extraer texto de ningún PDF.", escaneados: escaneadosCount, auditoria: archivosAuditoria });
       }
-      const LIMITE_TOTAL = 80000;
+      const LIMITE_TOTAL = 40000;
       let textoTotal = textosRelevantes.join("\n\n");
       if (textoTotal.length < LIMITE_TOTAL && textosGenericos.length) {
         const espacio = LIMITE_TOTAL - textoTotal.length;
@@ -2037,14 +2037,14 @@ RESPONDE ÚNICAMENTE CON JSON VÁLIDO SIN MARKDOWN NI TEXTO PREVIO:
           },
           body: JSON.stringify({
             model:      "claude-sonnet-4-6",
-            max_tokens: 8000,
+            max_tokens: 5000,
             system:     SYSTEM_PROMPT,
             messages:   [{
               role: "user",
               content: `${META}\n\n--- DOCUMENTOS DE LA LICITACIÓN ---\n\n${textoTotal}`
             }]
           }),
-          signal: AbortSignal.timeout(120000)
+          signal: AbortSignal.timeout(90000)
         });
         if (!rIA.ok) throw new Error(`Anthropic ${rIA.status}: ${await rIA.text().then(t=>t.substring(0,200))}`);
         const dIA    = await rIA.json();
