@@ -533,7 +533,19 @@ async function uploadBases(inputEl) {
   const btnEl    = document.getElementById('btn-subir-bases');
   const statusEl = document.getElementById('bases-status');
   if (btnEl) btnEl.disabled = true;
-  if (statusEl) statusEl.innerHTML = '<span class="spinner"></span> Iniciando análisis...';
+  // ── Wake-up: despertar Render antes de subir el archivo ─────────────────
+  if (statusEl) statusEl.innerHTML = '<span class="spinner"></span> Conectando con el servidor...';
+  try {
+    await fetch(`${BACKEND_URL}/health`, { signal: AbortSignal.timeout(45000) });
+  } catch(wakeErr) {
+    if (wakeErr.name === 'TimeoutError' || wakeErr.name === 'AbortError') {
+      if (statusEl) statusEl.innerHTML = `<span style="color:#dc2626">❌ El servidor tardó demasiado en responder. Espera 30 segundos y vuelve a intentarlo.</span>`;
+      if (btnEl) btnEl.disabled = false;
+      return;
+    }
+    // 404 u otro error HTTP = servidor está vivo igual, seguimos
+  }
+  if (statusEl) statusEl.innerHTML = '<span class="spinner"></span> Subiendo archivo...';
   const formData = new FormData();
   formData.append('archivo', file);
   formData.append('metadata', JSON.stringify({
