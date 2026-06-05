@@ -3676,6 +3676,9 @@ Responde SOLO con JSON array sin texto previo ni markdown:
 
 app.get("/mp/clasificar-pool-ia-status", (req, res) => res.json(clasificacionIAState));
 
+// ── Health check (wake-up para Render free tier) ───────────────────────────
+app.get("/health", (req, res) => res.json({ ok: true, ts: Date.now() }));
+
 // ── Arranque del servidor ──────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`✅ Servidor LEN-Licitaciones corriendo en puerto ${PORT}`);
