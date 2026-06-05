@@ -2485,7 +2485,7 @@ RESPONDE ÚNICAMENTE CON JSON VÁLIDO SIN MARKDOWN NI TEXTO PREVIO:
           },
           body: JSON.stringify({
             model:      "claude-sonnet-4-6",
-            max_tokens: 8000,
+            max_tokens: 16000,
             system:     SYSTEM_PROMPT,
             messages:   [{ role: "user", content: `${META}\n\n--- DOCUMENTOS DE LA LICITACIÓN ---\n\n${textoTotal}` }]
           }),
@@ -2496,8 +2496,30 @@ RESPONDE ÚNICAMENTE CON JSON VÁLIDO SIN MARKDOWN NI TEXTO PREVIO:
         const dIA   = await rIA.json();
         const txtIA = dIA.content?.[0]?.text || "{}";
         const clean = txtIA.replace(/```json|```/g,"").trim();
-        const match = clean.match(/\{[\s\S]*\}/);
-        const analisis = JSON.parse(match ? match[0] : clean);
+        // Extraer JSON con manejo robusto de respuesta truncada
+        let analisis = {};
+        try {
+          const match = clean.match(/\{[\s\S]*\}/);
+          analisis = JSON.parse(match ? match[0] : clean);
+        } catch(jsonErr) {
+          console.warn(`[analizar-bases-async] JSON completo falló (${jsonErr.message}), intentando reparar...`);
+          // Intentar truncar en el último objeto completo antes del error
+          let texto = clean;
+          const posError = parseInt(jsonErr.message.match(/position (\d+)/)?.[1]) || texto.length;
+          texto = texto.substring(0, posError);
+          // Cerrar arrays y objetos abiertos
+          let open = 0;
+          for (const ch of texto) { if (ch==='{') open++; else if (ch==='}') open--; }
+          texto = texto + '}'.repeat(Math.max(0, open));
+          try {
+            const matchRep = texto.match(/\{[\s\S]*\}/);
+            analisis = JSON.parse(matchRep ? matchRep[0] : "{}");
+            console.warn(`[analizar-bases-async] JSON reparado OK`);
+          } catch(e2) {
+            console.error(`[analizar-bases-async] No se pudo reparar JSON: ${e2.message}. Usando objeto vacío.`);
+            analisis = { titulo: metadata.titulo || "LICITACIÓN", subtitulo: metadata.organismo || "", alcance_resumen: "⚠️ Error al parsear respuesta IA — el análisis puede estar incompleto. Intenta de nuevo." };
+          }
+        }
         console.log(`[analizar-bases-async] Claude OK jobId=${jobId}`);
 
         basesJobs.set(jobId, { ...basesJobs.get(jobId), progreso: "Generando Excel..." });
