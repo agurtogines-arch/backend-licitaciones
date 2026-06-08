@@ -3,9 +3,8 @@ name: Clasificación IA — Pool Mercado Público
 on:
   schedule:
     # 06:00 AM Chile Standard Time (UTC-3) = 09:00 UTC
+    # 1 ejecución/día — clasificación permanente elimina reprocesos innecesarios
     - cron: '0 9 * * *'
-    # 06:00 PM Chile Standard Time (UTC-3) = 21:00 UTC
-    - cron: '0 21 * * *'
   workflow_dispatch:  # Ejecución manual desde GitHub → Actions → "Run workflow"
 
 jobs:
