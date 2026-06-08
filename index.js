@@ -3534,7 +3534,7 @@ app.post("/mp/clasificar-pool-ia", async (req, res) => {
       // 4. Verificar cuáles ya tienen clasificación IA vigente (< 12h)
       clasificacionIAState.estado = "verificando_cache";
       const yaClasificadas = new Set();
-      const VALIDEZ_IA_MS  = 12 * 60 * 60 * 1000;
+      const VALIDEZ_IA_MS  = 72 * 60 * 60 * 1000; // 72h — reduce ~80% el consumo de tokens
       const ahora          = new Date();
       try {
         const codigos = candidatas.map(l => l.CodigoExterno).filter(Boolean);
@@ -3558,8 +3558,9 @@ app.post("/mp/clasificar-pool-ia", async (req, res) => {
       // Limitar a 500 por ejecución para que Render free tier no se duerma
       // a mitad del proceso (~5 min de trabajo). Las siguientes ejecuciones
       // continúan automáticamente desde donde quedó gracias al cache en Supabase.
+      // 72h vigencia + 100 límite ≈ $0.15-0.20/día vs $1/día anterior
       const sinClasificarTotal = candidatas.filter(l => !yaClasificadas.has(l.CodigoExterno));
-      const sinClasificar      = sinClasificarTotal.slice(0, 200);
+      const sinClasificar      = sinClasificarTotal.slice(0, 100);
       clasificacionIAState.ya_en_cache    = yaClasificadas.size;
       clasificacionIAState.a_clasificar   = sinClasificarTotal.length; // total real pendiente
       clasificacionIAState.en_este_lote   = sinClasificar.length;      // lo que clasifica ahora
