@@ -3531,34 +3531,31 @@ app.post("/mp/clasificar-pool-ia", async (req, res) => {
       clasificacionIAState.total_candidatas = candidatas.length;
       console.log(`[clasif-ia] Candidatas: ${candidatas.length}`);
 
-      // 4. Verificar cuáles ya tienen clasificación IA vigente (< 12h)
+      // 4. Verificar cuáles ya tienen clasificación IA — si existe, NUNCA reclasificar.
+      // Las licitaciones publicadas en MP no cambian título ni descripción, así que
+      // una clasificación existente es permanentemente válida. Solo se clasifican
+      // las genuinamente nuevas que aún no tienen registro en ia_clasificaciones.
       clasificacionIAState.estado = "verificando_cache";
       const yaClasificadas = new Set();
-      const VALIDEZ_IA_MS  = 72 * 60 * 60 * 1000; // 72h — reduce ~80% el consumo de tokens
-      const ahora          = new Date();
       try {
         const codigos = candidatas.map(l => l.CodigoExterno).filter(Boolean);
         for (let i = 0; i < codigos.length; i += 500) {
           const chunk  = codigos.slice(i, i + 500);
           const inList = chunk.map(c => `"${encodeURIComponent(c)}"`).join(",");
           const r = await fetch(
-            `${SUPABASE_URL}/rest/v1/ia_clasificaciones?codigo=in.(${inList})&select=codigo,clasificado_en`,
+            `${SUPABASE_URL}/rest/v1/ia_clasificaciones?codigo=in.(${inList})&select=codigo`,
             { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(10000) }
           );
           if (r.ok) {
             for (const row of await r.json()) {
-              if (row.clasificado_en && (ahora - new Date(row.clasificado_en)) < VALIDEZ_IA_MS) {
-                yaClasificadas.add(row.codigo);
-              }
+              yaClasificadas.add(row.codigo); // existe = válida para siempre
             }
           }
         }
       } catch(e) { console.warn(`[clasif-ia] Cache check: ${e.message}`); }
 
-      // Limitar a 500 por ejecución para que Render free tier no se duerma
-      // a mitad del proceso (~5 min de trabajo). Las siguientes ejecuciones
-      // continúan automáticamente desde donde quedó gracias al cache en Supabase.
-      // 72h vigencia + 100 límite ≈ $0.15-0.20/día vs $1/día anterior
+      // Solo clasificar licitaciones nuevas sin registro previo.
+      // Límite 100 por ejecución como techo de seguridad ante renovaciones masivas del pool.
       const sinClasificarTotal = candidatas.filter(l => !yaClasificadas.has(l.CodigoExterno));
       const sinClasificar      = sinClasificarTotal.slice(0, 100);
       clasificacionIAState.ya_en_cache    = yaClasificadas.size;
