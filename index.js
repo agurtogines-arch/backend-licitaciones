@@ -2475,27 +2475,79 @@ RESPONDE ÚNICAMENTE CON JSON VÁLIDO SIN MARKDOWN NI TEXTO PREVIO:
   "anexos_tr": [{"anexo": "código del anexo", "descripcion": "descripción del anexo"}]
 }`;
 
-        console.log(`[analizar-bases-async] Llamando a Claude Sonnet jobId=${jobId}...`);
-        const rIA = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "Content-Type":      "application/json",
-            "x-api-key":         ANTHROPIC_KEY,
-            "anthropic-version": "2023-06-01"
-          },
-          body: JSON.stringify({
-            model:      "claude-sonnet-4-6",
-            max_tokens: 16000,
-            system:     SYSTEM_PROMPT,
-            messages:   [{ role: "user", content: `${META}\n\n--- DOCUMENTOS DE LA LICITACIÓN ---\n\n${textoTotal}` }]
-          }),
-          signal: AbortSignal.timeout(180000) // 3 min — sin restricción HTTP
-        });
+        console.log(`[analizar-bases-async] Llamando a Claude Sonnet (streaming) jobId=${jobId}...`);
 
-        if (!rIA.ok) throw new Error(`Anthropic ${rIA.status}: ${await rIA.text().then(t=>t.substring(0,200))}`);
-        const dIA   = await rIA.json();
-        const txtIA = dIA.content?.[0]?.text || "{}";
-        const clean = txtIA.replace(/```json|```/g,"").trim();
+        // ── STREAMING ──────────────────────────────────────────────────────
+        // Con max_tokens=16000 la llamada no-stream puede superar los 3 min y
+        // el AbortSignal fijo la mataba. Con streaming la conexión recibe deltas
+        // continuamente. El watchdog aborta SOLO si Claude deja de enviar datos
+        // por 90s (cuelgue real), no por tiempo total de generación.
+        const abortCtrl   = new AbortController();
+        let   ultimoChunk = Date.now();
+        const watchdog    = setInterval(() => {
+          if (Date.now() - ultimoChunk > 90000) abortCtrl.abort();
+        }, 5000);
+
+        let txtIA = "";
+        try {
+          const rIA = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: {
+              "Content-Type":      "application/json",
+              "x-api-key":         ANTHROPIC_KEY,
+              "anthropic-version": "2023-06-01"
+            },
+            body: JSON.stringify({
+              model:      "claude-sonnet-4-6",
+              max_tokens: 16000,
+              stream:     true,
+              system:     SYSTEM_PROMPT,
+              messages:   [{ role: "user", content: `${META}\n\n--- DOCUMENTOS DE LA LICITACIÓN ---\n\n${textoTotal}` }]
+            }),
+            signal: abortCtrl.signal
+          });
+
+          if (!rIA.ok) {
+            const errTxt = await rIA.text().catch(() => "");
+            throw new Error(`Anthropic ${rIA.status}: ${errTxt.substring(0, 200)}`);
+          }
+
+          // node-fetch v2: rIA.body es un Readable de Node (chunks = Buffer).
+          // Parseamos el SSE línea por línea acumulando los text_delta.
+          let sseBuf = "", deltas = 0;
+          for await (const chunk of rIA.body) {
+            ultimoChunk = Date.now();
+            sseBuf += chunk.toString("utf8");
+            let nl;
+            while ((nl = sseBuf.indexOf("\n")) !== -1) {
+              const linea = sseBuf.slice(0, nl).trim();
+              sseBuf = sseBuf.slice(nl + 1);
+              if (!linea.startsWith("data:")) continue;
+              const data = linea.slice(5).trim();
+              if (!data || data === "[DONE]") continue;
+              let evt;
+              try { evt = JSON.parse(data); } catch { continue; }
+              if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") {
+                txtIA += evt.delta.text;
+                deltas++;
+                // Actualizar progreso visible en polling cada 150 deltas
+                if (deltas % 150 === 0) {
+                  basesJobs.set(jobId, { ...basesJobs.get(jobId), progreso: `Recibiendo respuesta de Claude — ${txtIA.length} chars...` });
+                }
+              } else if (evt.type === "error") {
+                throw new Error("Stream error: " + JSON.stringify(evt.error || evt));
+              }
+            }
+          }
+        } catch (e) {
+          if (e.name === "AbortError") throw new Error("Sin respuesta de Claude por 90s (stream colgado) — abortado por watchdog");
+          throw e;
+        } finally {
+          clearInterval(watchdog);
+        }
+
+        if (!txtIA) txtIA = "{}";
+        const clean = txtIA.replace(/```json|```/g, "").trim();
         // Extraer JSON con manejo robusto de respuesta truncada
         let analisis = {};
         try {
