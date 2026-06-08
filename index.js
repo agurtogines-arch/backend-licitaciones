@@ -12,7 +12,8 @@ const TICKET = process.env.MP_TICKET || "1FC8A3E9-5D72-495C-8340-83E5B1749B79";
 
 // ── Configuración Supabase (centralizada) ────────────────────────────────────
 const SUPABASE_URL = "https://veuzudobuiwtrigdxqjt.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZldXp1ZG9idWl3dHJpZ2R4cWp0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxODM2NTIsImV4cCI6MjA5MTc1OTY1Mn0.mb6Vo3-PmXKezJmSrLYbpCloEu8DPJglrBgkho63wYM";
+const SUPABASE_KEY = process.env.SUPABASE_KEY || "";
+if (!SUPABASE_KEY) console.warn("⚠️  SUPABASE_KEY no configurada como variable de entorno en Render");
 const SUPABASE_HEADERS = {
   "apikey":        SUPABASE_KEY,
   "Authorization": `Bearer ${SUPABASE_KEY}`,
