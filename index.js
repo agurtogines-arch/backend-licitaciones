@@ -213,7 +213,7 @@ function stemDiv(t) { return t.length >= 6 ? t.slice(0,-2) : t; }
 function matchDivKw(titulo, kw) {
   const tNorm = normDiv(titulo);
   const kwNorm = normDiv(kw);
-  if (kwNorm.length <= 4) return new RegExp(`(?<![a-z])${kwNorm}(?![a-z])`).test(tNorm);
+  if (kwNorm.length <= 5) return new RegExp(`(?<![a-z])${kwNorm}(?![a-z])`).test(tNorm);
   return kwNorm.split(/\s+/).filter(t=>t.length>=3).every(t=>tNorm.includes(stemDiv(t)));
 }
 
