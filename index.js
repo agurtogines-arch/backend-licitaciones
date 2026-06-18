@@ -457,7 +457,11 @@ const EXCLUSION_SECTORIAL = [
   "profesional ingeniero civil","profesional ingeniera civil",
   "contratacion de profesional","contrato a honorarios",
   "contrato de honorarios","honorarios para ingeniero",
-  "servicios profesionales a honorarios"
+  "servicios profesionales a honorarios",
+  // ── Programas sociales/urbanos (no son ingeniería LEN) ──
+  "quiero mi barrio","programa quiero mi barrio","mejoramiento de barrio",
+  "arriendo maquinaria","arriendo de maquinaria","arriendo camion","arriendo de camion",
+  "arriendo maquinarias","mantencion camino acceso"
 ];
 function bloqueadaSectorial(titulo) {
   const t = normDiv(titulo);
