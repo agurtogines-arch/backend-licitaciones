@@ -486,9 +486,21 @@ const TIPOS_PROYECTO_IMPLICAN_SERVICIO = [
   "evaluacion ambiental","evaluacion economica",
   "actualizacion ssr","actualizacion sanitario rural"
 ];
+
+// ── Siglas que por sí solas identifican el tipo de servicio ──────────────
+// Licitaciones con estas siglas en el título no necesitan que aparezca
+// una palabra de servicio adicional (Estudio, Consultoría, etc.) porque
+// la sigla ya define inequívocamente el tipo de trabajo.
+// Usa regex con límite de palabra para evitar falsos positivos
+// (ej: APRendizaje no matchea APR).
+const SIGLAS_IMPLICAN_SERVICIO = ["apr","ssr","ernc","bess","aif"];
+
 function tipoProyectoImplicito(titulo) {
   const t = normDiv(titulo);
-  return TIPOS_PROYECTO_IMPLICAN_SERVICIO.some(k => t.includes(k));
+  if (TIPOS_PROYECTO_IMPLICAN_SERVICIO.some(k => t.includes(k))) return true;
+  return SIGLAS_IMPLICAN_SERVICIO.some(sigla =>
+    new RegExp(`(?<![a-z])${sigla}(?![a-z])`).test(t)
+  );
 }
 
 // ── HELPER: fetch a API de MP con reintentos automáticos ──────────────────
