@@ -196,7 +196,7 @@ const DIVISIONS = [
       color: "#16a34a",
       bg: "#f0fdf4",
       border: "#bbf7d0",
-      defaults: ["Inspección","Supervisión","Fiscalización","Control","Auditoría","Asesoría"]
+      defaults: []
     }
   },
   {
@@ -305,7 +305,7 @@ function migrarZonaSur() {
 migrarZonaSur();
 
 // ── Limpiar localStorage de divisiones con keywords actualizadas ──────────
-const VERSION_KW = "3.5";
+const VERSION_KW = "3.6";
 if (localStorage.getItem("kw_version") !== VERSION_KW) {
   const keysToClean = [
     "kw_vial_zonasur","kw_vial_zonasur_active",
