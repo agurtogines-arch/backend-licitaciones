@@ -65,7 +65,7 @@ const DIVISIONES_LEN = [
   {
     id: "zonasur", label: "Zona Sur", icon: "🌊", color: "#0369a1",
     activa: true,
-    keywords: ["vial","seguridad vial","puentes","caminos","transito","pavimento","diseño geometrico","prefactibilidad vial","factibilidad vial","prefactibilidad hidraulica","factibilidad hidraulica","hidraulica","hidrologia","aguas lluvias","cauces","apr","saneamiento","alcantarillado","planta de tratamiento","planta elevadora","conducciones","inundaciones","drenaje","cuencas","aguas servidas","agua potable","sanitario","ssr","rural"],
+    keywords: ["vial","seguridad vial","puentes","caminos","transito","pavimento","diseño geometrico","prefactibilidad vial","factibilidad vial","prefactibilidad hidraulica","factibilidad hidraulica","hidraulica","hidrologia","aguas lluvias","cauces","apr","saneamiento","alcantarillado","planta de tratamiento","planta elevadora","conducciones","inundaciones","drenaje","cuencas","aguas servidas","agua potable","sanitario","ssr","agua potable rural","saneamiento rural","mejoramiento camino rural","habilitacion camino rural","electrificacion rural"],
     servicios: ["estudio","consultoria","asesoria","diseno","inspeccion","levantamiento"],
     regiones: ["7","16","8","9","14","10","11","12"],
     exclusiones: {
@@ -83,7 +83,7 @@ const DIVISIONES_LEN = [
         "inspeccion de obras","inspeccion tecnica","inspeccion de puente",
         "inspeccion de puentes","inspeccion de pavimento","inspeccion de caminos",
         // ── Sector salud (no es LEN) ──
-        "stent","medicamento","insumo medico","insumos medicos","farmaceutico",
+        "stent cardiaco","stent coronario","medicamento","insumo medico","insumos medicos","farmaceutico",
         "consignacion en transito","hospital de carabineros","fondo hospital",
         "servicio de salud","atencion medica","equipo medico","equipamiento medico",
         "implante","protesis","reactivo","cirugia",
@@ -213,7 +213,7 @@ function stemDiv(t) { return t.length >= 6 ? t.slice(0,-2) : t; }
 function matchDivKw(titulo, kw) {
   const tNorm = normDiv(titulo);
   const kwNorm = normDiv(kw);
-  if (kwNorm.length <= 5) return new RegExp(`(?<![a-z])${kwNorm}(?![a-z])`).test(tNorm);
+  if (kwNorm.length <= 4) return new RegExp(`(?<![a-z])${kwNorm}(?![a-z])`).test(tNorm);
   return kwNorm.split(/\s+/).filter(t=>t.length>=3).every(t=>tNorm.includes(stemDiv(t)));
 }
 
