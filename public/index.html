@@ -188,7 +188,7 @@ const DIVISIONS = [
         color: "#dc2626",
         bg: "#fef2f2",
         border: "#fecaca",
-        defaults: ["Inspección Técnica","Supervisión de Obras","Contraparte Técnica","ITO","Fiscalización de Obras","Control de Obras","Auditoría Técnica","Geomensura","Supervisión Técnica","Acompañamiento","Inspección Fiscal"]
+        defaults: ["Inspección Técnica","Supervisión de Obras","Contraparte Técnica","ITO","Fiscalización de Obras","Control de Obras","Auditoría Técnica","Geomensura","Supervisión Técnica","Acompañamiento","Inspección Fiscal","AIF"]
       }
     ],
     servicios: {
@@ -305,7 +305,7 @@ function migrarZonaSur() {
 migrarZonaSur();
 
 // ── Limpiar localStorage de divisiones con keywords actualizadas ──────────
-const VERSION_KW = "3.4";
+const VERSION_KW = "3.5";
 if (localStorage.getItem("kw_version") !== VERSION_KW) {
   const keysToClean = [
     "kw_vial_zonasur","kw_vial_zonasur_active",
