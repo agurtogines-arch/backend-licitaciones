@@ -460,8 +460,21 @@ const EXCLUSION_SECTORIAL = [
   "servicios profesionales a honorarios",
   // ── Programas sociales/urbanos (no son ingeniería LEN) ──
   "quiero mi barrio","programa quiero mi barrio","mejoramiento de barrio",
-  "arriendo maquinaria","arriendo de maquinaria","arriendo camion","arriendo de camion",
-  "arriendo maquinarias","mantencion camino acceso"
+  "mejoramiento integral barrio","programa de barrio",
+  // ── Arriendos de equipos/vehículos/maquinaria (sin importar organismo) ──
+  "arriendo maquinaria","arriendo maquinarias","arriendo de maquinaria",
+  "arriendo camion","arriendo camiones","arriendo de camion","arriendo de camiones",
+  "arriendo retroexcavadora","arriendo tractor","arriendo equipos",
+  "arriendo vehiculo","arriendo vehiculos","arriendo de vehiculo",
+  "contratacion servicio arriendo",
+  // ── Mantenciones de infraestructura menor ──
+  "mantencion camino acceso","mantenimiento camino acceso",
+  "mantencion de ascensor","mantenimiento de ascensor",
+  "mantencion de jardines","mantenimiento de jardines",
+  "mantencion de edificio","mantenimiento de edificio",
+  // ── Suministros y provisiones ──
+  "suministro combustible","suministro de combustible",
+  "provision de materiales","provision materiales"
 ];
 function bloqueadaSectorial(titulo) {
   const t = normDiv(titulo);
