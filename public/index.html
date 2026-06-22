@@ -68,7 +68,7 @@ const DIVISIONS = [
         color: "#2563eb",
         bg: "#eff6ff",
         border: "#bfdbfe",
-        defaults: ["Vial","Seguridad Vial","Puentes","Caminos","Tránsito","Pavimento","Diseño Geométrico","Prefactibilidad","Factibilidad"]
+        defaults: ["Vial","Vías","Seguridad Vial","Puentes","Caminos","Tránsito","Pavimento","Diseño Geométrico","Prefactibilidad","Factibilidad"]
       },
       {
         label: "Hidráulica / Hidrología",
@@ -305,7 +305,7 @@ function migrarZonaSur() {
 migrarZonaSur();
 
 // ── Limpiar localStorage de divisiones con keywords actualizadas ──────────
-const VERSION_KW = "3.7";
+const VERSION_KW = "3.8";
 if (localStorage.getItem("kw_version") !== VERSION_KW) {
   const keysToClean = [
     "kw_vial_zonasur","kw_vial_zonasur_active",
