@@ -305,7 +305,7 @@ function migrarZonaSur() {
 migrarZonaSur();
 
 // ── Limpiar localStorage de divisiones con keywords actualizadas ──────────
-const VERSION_KW = "3.6";
+const VERSION_KW = "3.7";
 if (localStorage.getItem("kw_version") !== VERSION_KW) {
   const keysToClean = [
     "kw_vial_zonasur","kw_vial_zonasur_active",
@@ -323,8 +323,18 @@ if (localStorage.getItem("kw_version") !== VERSION_KW) {
     "kw_serv_civil","kw_serv_civil_active",
   ];
   keysToClean.forEach(k => localStorage.removeItem(k));
+  // Reinicializar explícitamente los defaults de cada división
+  // para evitar que versiones anteriores con arrays vacíos persistan
+  DIVISIONS.forEach(div => {
+    div.grupos.forEach(g => {
+      localStorage.setItem(g.lsKey, JSON.stringify(g.defaults));
+      localStorage.setItem(g.lsKey + "_active", JSON.stringify(g.defaults));
+    });
+    localStorage.setItem(div.servicios.lsKey, JSON.stringify(div.servicios.defaults));
+    localStorage.setItem(div.servicios.lsKey + "_active", JSON.stringify(div.servicios.defaults));
+  });
   localStorage.setItem("kw_version", VERSION_KW);
-  console.log("[LEN] Keywords actualizadas a v" + VERSION_KW + " — localStorage limpiado");
+  console.log("[LEN] Keywords actualizadas a v" + VERSION_KW + " — localStorage reinicializado con defaults");
 }
 
 // ── Inicializar estado de cada división ───────────────────────────────────
