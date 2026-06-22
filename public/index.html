@@ -68,7 +68,7 @@ const DIVISIONS = [
         color: "#2563eb",
         bg: "#eff6ff",
         border: "#bfdbfe",
-        defaults: ["Vial","Vías","Seguridad Vial","Puentes","Caminos","Tránsito","Pavimento","Diseño Geométrico","Prefactibilidad","Factibilidad"]
+        defaults: ["Vial","Vías","Seguridad Vial","Puentes","Caminos","Tránsito","Pavimento","Diseño Geométrico","Prefactibilidad Vial","Factibilidad Vial","Prefactibilidad Hidráulica","Factibilidad Hidráulica"]
       },
       {
         label: "Hidráulica / Hidrología",
@@ -76,7 +76,7 @@ const DIVISIONS = [
         color: "#0891b2",
         bg: "#ecfeff",
         border: "#a5f3fc",
-        defaults: ["Hidráulica","Hidrología","Aguas Lluvias","Cauces","APR","SSR","Saneamiento","Alcantarillado","Planta de Tratamiento","Planta Elevadora","Conducciones","Inundaciones","Drenaje","Cuencas"]
+        defaults: ["Hidráulica","Hidrología","Aguas Lluvias","Cauces","APR","SSR","Saneamiento","Alcantarillado","Planta de Tratamiento","Planta Elevadora","Conducciones","Inundaciones","Drenaje","Cuencas","Aguas Servidas","Agua Potable","Sanitario","Agua Potable Rural","Saneamiento Rural"]
       }
     ],
     servicios: {
@@ -104,7 +104,7 @@ const DIVISIONS = [
         color: "#7c3aed",
         bg: "#f5f3ff",
         border: "#ddd6fe",
-        defaults: ["Ingeniería de Detalle","Ingeniería Básica","Estudio de Factibilidad","Anteproyecto","Preinversión","Iluminación Vial","Conservación Vial","Infraestructura Vial","Ingeniería Vial","Transporte Vial"]
+        defaults: ["Ingeniería de Detalle","Ingeniería Básica","Estudio de Factibilidad","Anteproyecto","Preinversión","Iluminación Vial","Conservación Vial","Infraestructura Vial","Ingeniería Vial","Transporte Vial","Protección Costera","Obras Portuarias","Infraestructura Portuaria","Obras Marítimas"]
       }
     ],
     servicios: {
@@ -188,7 +188,7 @@ const DIVISIONS = [
         color: "#dc2626",
         bg: "#fef2f2",
         border: "#fecaca",
-        defaults: ["Inspección Técnica","Supervisión de Obras","Contraparte Técnica","ITO","Fiscalización de Obras","Control de Obras","Auditoría Técnica","Geomensura","Supervisión Técnica","Acompañamiento","Inspección Fiscal","AIF"]
+        defaults: ["Inspección Técnica","Supervisión de Obras","Contraparte Técnica","ITO","Fiscalización de Obras","Auditoría Técnica de Obras","Geomensura","Supervisión Técnica","Inspección Fiscal","AIF","AIF Global","AIF Vialidad","AIF MOP","Asesoría a la Inspección","Asesoría Inspección Fiscal","Asistencia a la Inspección","Inspección de Contrato","Supervisión de Contrato","Fiscalización de Contrato","Inspección de Obras","Asistencia Técnica en Obra"]
       }
     ],
     servicios: {
@@ -305,7 +305,7 @@ function migrarZonaSur() {
 migrarZonaSur();
 
 // ── Limpiar localStorage de divisiones con keywords actualizadas ──────────
-const VERSION_KW = "3.9";
+const VERSION_KW = "4.0";
 if (localStorage.getItem("kw_version") !== VERSION_KW) {
   const keysToClean = [
     "kw_vial_zonasur","kw_vial_zonasur_active",
