@@ -65,7 +65,7 @@ const DIVISIONES_LEN = [
   {
     id: "zonasur", label: "Zona Sur", icon: "🌊", color: "#0369a1",
     activa: true,
-    keywords: ["vial","vias","seguridad vial","puentes","caminos","transito","pavimento","diseño geometrico","prefactibilidad vial","factibilidad vial","prefactibilidad hidraulica","factibilidad hidraulica","hidraulica","hidrologia","aguas lluvias","cauces","apr","saneamiento","alcantarillado","planta de tratamiento","planta elevadora","conducciones","inundaciones","drenaje","cuencas","aguas servidas","agua potable","sanitario","ssr","agua potable rural","saneamiento rural","mejoramiento camino rural","habilitacion camino rural","electrificacion rural"],
+    keywords: ["vial","vias","seguridad vial","puentes","caminos","transito","pavimento","diseño geometrico","prefactibilidad vial","factibilidad vial","prefactibilidad hidraulica","factibilidad hidraulica","cgm","hidraulica","hidrologia","aguas lluvias","cauces","apr","saneamiento","alcantarillado","planta de tratamiento","planta elevadora","conducciones","inundaciones","drenaje","cuencas","aguas servidas","agua potable","sanitario","ssr","agua potable rural","saneamiento rural","mejoramiento camino rural","habilitacion camino rural","electrificacion rural"],
     servicios: ["estudio","consultoria","asesoria","diseno","inspeccion","levantamiento"],
     regiones: ["7","16","8","9","14","10","11","12"],
     exclusiones: {
@@ -103,7 +103,7 @@ const DIVISIONES_LEN = [
   {
     id: "infra", label: "Infraestructura", icon: "🛣️", color: "#7c3aed",
     activa: true,
-    keywords: ["ingenieria de detalle","ingenieria basica","estudio de factibilidad","anteproyecto","preinversion","iluminacion vial","conservacion vial","infraestructura vial","ingenieria vial","transporte vial","proteccion costera","obras portuarias","infraestructura portuaria","obras maritimas"],
+    keywords: ["ingenieria de detalle","ingenieria basica","estudio de factibilidad","anteproyecto","preinversion","preinv","ep const","ep mej","ep vial","iluminacion vial","conservacion vial","infraestructura vial","ingenieria vial","transporte vial","proteccion costera","obras portuarias","infraestructura portuaria","obras maritimas"],
     servicios: ["estudio","consultoria","diseno","prefactibilidad","factibilidad","asesoria","anteproyecto","inspeccion"],
     exclusiones: {
       organismos: ["serviu", "municipalidad", "ilustre municipalidad", "i. municipalidad"],
@@ -510,7 +510,7 @@ const TIPOS_PROYECTO_IMPLICAN_SERVICIO = [
 // la sigla ya define inequívocamente el tipo de trabajo.
 // Usa regex con límite de palabra para evitar falsos positivos
 // (ej: APRendizaje no matchea APR).
-const SIGLAS_IMPLICAN_SERVICIO = ["apr","ssr","ernc","bess","aif"];
+const SIGLAS_IMPLICAN_SERVICIO = ["apr","ssr","ernc","bess","aif","cgm"];
 
 function tipoProyectoImplicito(titulo) {
   const t = normDiv(titulo);
