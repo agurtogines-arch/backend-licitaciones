@@ -68,7 +68,7 @@ const DIVISIONS = [
         color: "#2563eb",
         bg: "#eff6ff",
         border: "#bfdbfe",
-        defaults: ["Vial","Vías","Seguridad Vial","Puentes","Caminos","Tránsito","Pavimento","Diseño Geométrico","Prefactibilidad Vial","Factibilidad Vial","Prefactibilidad Hidráulica","Factibilidad Hidráulica"]
+        defaults: ["Vial","Vías","Seguridad Vial","Puentes","Caminos","Tránsito","Pavimento","Diseño Geométrico","Prefactibilidad Vial","Factibilidad Vial","Prefactibilidad Hidráulica","Factibilidad Hidráulica","CGM"]
       },
       {
         label: "Hidráulica / Hidrología",
@@ -104,7 +104,7 @@ const DIVISIONS = [
         color: "#7c3aed",
         bg: "#f5f3ff",
         border: "#ddd6fe",
-        defaults: ["Ingeniería de Detalle","Ingeniería Básica","Estudio de Factibilidad","Anteproyecto","Preinversión","Iluminación Vial","Conservación Vial","Infraestructura Vial","Ingeniería Vial","Transporte Vial","Protección Costera","Obras Portuarias","Infraestructura Portuaria","Obras Marítimas"]
+        defaults: ["Ingeniería de Detalle","Ingeniería Básica","Estudio de Factibilidad","Anteproyecto","Preinversión","Preinv","EP Const","EP Mej","EP Vial","Iluminación Vial","Conservación Vial","Infraestructura Vial","Ingeniería Vial","Transporte Vial","Protección Costera","Obras Portuarias","Infraestructura Portuaria","Obras Marítimas"]
       }
     ],
     servicios: {
@@ -305,7 +305,7 @@ function migrarZonaSur() {
 migrarZonaSur();
 
 // ── Limpiar localStorage de divisiones con keywords actualizadas ──────────
-const VERSION_KW = "4.0";
+const VERSION_KW = "4.1";
 if (localStorage.getItem("kw_version") !== VERSION_KW) {
   const keysToClean = [
     "kw_vial_zonasur","kw_vial_zonasur_active",
