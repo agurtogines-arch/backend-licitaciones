@@ -372,11 +372,15 @@ function deduplicar(arr) {
 function parseFecha(str) {
   if(!str||str==="–") return null;
   if(str.includes("-") && str.length >= 10 && str[4]==="-") {
-    return new Date(str);
+    // Parsear como fecha LOCAL, no UTC. "new Date('2026-07-13')" interpreta
+    // la fecha en UTC medianoche, que en hora de Chile cae en el día anterior,
+    // causando que licitaciones que cierran HOY se marquen como vencidas.
+    const [y, m, d] = str.slice(0, 10).split("-").map(Number);
+    return new Date(y, m - 1, d);
   }
   const p = str.split(/[-\/]/);
   if(p.length===3 && p[2].length===4) {
-    return new Date(`${p[2]}-${p[1].padStart(2,"0")}-${p[0].padStart(2,"0")}`);
+    return new Date(Number(p[2]), Number(p[1]) - 1, Number(p[0]));
   }
   return new Date(str);
 }
