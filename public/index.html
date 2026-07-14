@@ -337,6 +337,68 @@ if (localStorage.getItem("kw_version") !== VERSION_KW) {
   console.log("[LEN] Keywords actualizadas a v" + VERSION_KW + " — localStorage reinicializado con defaults");
 }
 
+// ── Sincronización de keywords con el backend (fuente única de verdad) ────
+// En cada carga de la página, el frontend le pregunta al backend cuáles son
+// las keywords vigentes y AGREGA las que falten en el localStorage local,
+// sin tocar ni borrar nada de lo que el usuario ya tenía configurado
+// (keywords activas/inactivas, keywords agregadas manualmente con el botón
+// "+ Agregar"). Esto evita que, de ahora en adelante, una keyword nueva
+// agregada al backend quede invisible en el frontend por falta de
+// sincronización manual del index.html — la causa raíz de la mayoría de los
+// casos de "el backend encuentra la licitación pero no aparece en pantalla".
+//
+// Si el backend no responde (caído, sin red), esta función simplemente no
+// hace nada y el agente sigue funcionando exactamente igual que antes, con
+// los defaults locales — no rompe nada en caso de falla.
+function normSync(s) {
+  return (s || "").toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/['''`´]/g, "").trim();
+}
+async function sincronizarKeywordsConBackend() {
+  let backendConfig = null;
+  try {
+    const res = await fetch(`${BACKEND_URL}/mp/keywords-config`);
+    if (res.ok) backendConfig = await res.json();
+  } catch (e) {
+    console.warn("[LEN] No se pudo sincronizar keywords con el backend, se usan los valores locales:", e.message);
+  }
+  if (!backendConfig) return;
+
+  DIVISIONS.forEach(div => {
+    const cfg = backendConfig[div.id];
+    if (!cfg) return;
+
+    // Keywords técnicas: se revisa contra TODOS los grupos de la división
+    // (p.ej. Zona Sur tiene grupos "Vial" e "Hidráulica" por separado) para
+    // no duplicar una keyword que ya vive en otro grupo.
+    const yaExisten = new Set();
+    div.grupos.forEach(g => {
+      lsGet(g.lsKey, g.defaults).forEach(k => yaExisten.add(normSync(k)));
+    });
+    const nuevasKw = (cfg.keywords || []).filter(k => !yaExisten.has(normSync(k)));
+    if (nuevasKw.length) {
+      const g0 = div.grupos[0];
+      const stored = lsGet(g0.lsKey, g0.defaults);
+      const active = lsGet(g0.lsKey + "_active", g0.defaults);
+      lsSet(g0.lsKey, [...stored, ...nuevasKw]);
+      lsSet(g0.lsKey + "_active", [...active, ...nuevasKw]);
+      console.log(`[LEN] ${div.id}: ${nuevasKw.length} keyword(s) nueva(s) sincronizada(s) desde backend →`, nuevasKw);
+    }
+
+    // Servicios
+    const storedServ = lsGet(div.servicios.lsKey, div.servicios.defaults);
+    const storedServSet = new Set(storedServ.map(normSync));
+    const nuevosServ = (cfg.servicios || []).filter(s => !storedServSet.has(normSync(s)));
+    if (nuevosServ.length) {
+      const activeServ = lsGet(div.servicios.lsKey + "_active", div.servicios.defaults);
+      lsSet(div.servicios.lsKey, [...storedServ, ...nuevosServ]);
+      lsSet(div.servicios.lsKey + "_active", [...activeServ, ...nuevosServ]);
+      console.log(`[LEN] ${div.id}: ${nuevosServ.length} servicio(s) nuevo(s) sincronizado(s) desde backend →`, nuevosServ);
+    }
+  });
+}
+
 // ── Inicializar estado de cada división ───────────────────────────────────
 function initDivState(div) {
   return {
@@ -1456,7 +1518,10 @@ function AnalysisRenderer({ text, descartado }) {
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+(async () => {
+  await sincronizarKeywordsConBackend();
+  ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+})();
 </script>
 </body>
 </html>
