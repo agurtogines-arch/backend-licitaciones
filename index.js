@@ -533,8 +533,7 @@ const TIPOS_PROYECTO_IMPLICAN_SERVICIO = [
   "proyecto de ingenieria","proyecto integral",
   "memoria de calculo","memoria tecnica",
   "evaluacion ambiental","evaluacion economica",
-  "actualizacion ssr","actualizacion sanitario rural",
-  "ep const","ep mej","ep vial","est. preinv"
+  "actualizacion ssr","actualizacion sanitario rural"
 ];
 
 // ── Siglas que por sí solas identifican el tipo de servicio ──────────────
@@ -543,7 +542,17 @@ const TIPOS_PROYECTO_IMPLICAN_SERVICIO = [
 // la sigla ya define inequívocamente el tipo de trabajo.
 // Usa regex con límite de palabra para evitar falsos positivos
 // (ej: APRendizaje no matchea APR).
-const SIGLAS_IMPLICAN_SERVICIO = ["apr","ssr","ernc","bess","aif","cgm","ei"];
+//
+// NOTA IMPORTANTE: "ep" y "ei" son prefijos equivalentes usados por MOP
+// para nombrar el mismo tipo de proyecto (ej. "EP CONST Y MEJ...",
+// "EI CONEXIÓN VIAL..."). Antes se manejaban como frases compuestas
+// rígidas ("ep const","ep vial", etc.) en TIPOS_PROYECTO_IMPLICAN_SERVICIO,
+// pero eso fallaba en cuanto MOP usaba una variante distinta de la sigla
+// o intercalaba una palabra entre el prefijo y el resto del título. Al
+// tratarlas como siglas independientes aquí (igual que AIF/APR/SSR/CGM),
+// el sistema es robusto a cualquier variante sin necesidad de anticipar
+// cada combinación posible.
+const SIGLAS_IMPLICAN_SERVICIO = ["apr","ssr","ernc","bess","aif","cgm","ei","ep","preinv"];
 
 function tipoProyectoImplicito(titulo) {
   const t = normDiv(titulo);
@@ -552,6 +561,7 @@ function tipoProyectoImplicito(titulo) {
     new RegExp(`(?<![a-z])${sigla}(?![a-z])`).test(t)
   );
 }
+
 
 // ── HELPER: fetch a API de MP con reintentos automáticos ──────────────────
 // La API de Mercado Público es notoriamente intermitente: a veces responde
