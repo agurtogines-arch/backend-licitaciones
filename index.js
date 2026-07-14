@@ -175,6 +175,37 @@ const DIVISIONES_LEN = [
   }
 ];
 
+// ── Configuración de keywords para el frontend (fuente única de verdad) ────
+// El frontend consulta este endpoint al cargar la página para mantenerse
+// sincronizado automáticamente con las keywords del backend, en vez de
+// depender de su propia copia hardcodeada que puede quedar desactualizada.
+// Este endpoint es de solo lectura y no modifica ningún comportamiento
+// existente — es puramente aditivo.
+const SIGLAS_CONOCIDAS_DISPLAY = new Set(["aif","ssr","apr","ito","cgm","ep","ernc","bess","est.","mop","dga","seia"]);
+function capitalizarKw(s) {
+  return s.split(" ").map(w => {
+    const wLimpia = w.replace(/\./g, "").toLowerCase();
+    if (SIGLAS_CONOCIDAS_DISPLAY.has(wLimpia) || SIGLAS_CONOCIDAS_DISPLAY.has(w.toLowerCase())) {
+      return w.toUpperCase();
+    }
+    return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+  }).join(" ");
+}
+app.get("/mp/keywords-config", (req, res) => {
+  try {
+    const config = {};
+    DIVISIONES_LEN.forEach(div => {
+      config[div.id] = {
+        keywords: div.keywords.map(capitalizarKw),
+        servicios: (div.servicios || []).map(capitalizarKw)
+      };
+    });
+    res.json(config);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 function aplicaExclusiones(division, organismo, textoCompleto) {
   const exc = division.exclusiones;
   if (!exc) return false;
