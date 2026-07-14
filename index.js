@@ -543,7 +543,7 @@ const TIPOS_PROYECTO_IMPLICAN_SERVICIO = [
 // la sigla ya define inequívocamente el tipo de trabajo.
 // Usa regex con límite de palabra para evitar falsos positivos
 // (ej: APRendizaje no matchea APR).
-const SIGLAS_IMPLICAN_SERVICIO = ["apr","ssr","ernc","bess","aif","cgm"];
+const SIGLAS_IMPLICAN_SERVICIO = ["apr","ssr","ernc","bess","aif","cgm","ei"];
 
 function tipoProyectoImplicito(titulo) {
   const t = normDiv(titulo);
