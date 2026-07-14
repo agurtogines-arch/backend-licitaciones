@@ -638,34 +638,25 @@ app.get("/buscar", async (req, res) => {
   try {
     const controller = new AbortController();
     const timeoutId  = setTimeout(() => controller.abort(), 120000);
-    // ✦ FASE 1: usa el helper fetchConReintentos para tolerar intermitencia de API MP
-    const fetchAll = async (extraParams, etiqueta) => {
-      const usaEstado = !extraParams.includes("tipo=SC");
-      const mpUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json` +
-                    `?${usaEstado ? "estado=activas&" : ""}ticket=${TICKET}${extraParams}`;
-      return await fetchConReintentos(mpUrl, controller, `buscar:${etiqueta}`);
-    };
-    const [sinTipo, conSC] = await Promise.all([fetchAll("", "activas"), fetchAll("&tipo=SC", "tipoSC")]);
+    // Nota: se eliminó la consulta con "tipo=SC" — la API de Mercado Público
+    // no reconoce ese parámetro (confirmado: devuelve siempre HTTP 400
+    // "Nombre de parametro no válido"). Nunca aportó licitaciones reales al
+    // pool; solo agregaba 3 reintentos fallidos por búsqueda y ruido en los
+    // logs. La única fuente real y válida es "estado=activas".
+    const mpUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?estado=activas&ticket=${TICKET}`;
+    const sinTipo = await fetchConReintentos(mpUrl, controller, "buscar:activas");
     clearTimeout(timeoutId);
 
-    // Si AMBAS llamadas devolvieron null (fallo real), responder 503
-    if (sinTipo === null && conSC === null) {
+    if (sinTipo === null) {
       return res.status(503).json({
         error: "MP_API_UNAVAILABLE",
         mensaje: "La API de Mercado Público no respondió tras 3 intentos. Intenta de nuevo en unos segundos.",
         retry: true
       });
     }
-    const sinTipoArr = sinTipo || [];
-    const conSCArr   = conSC   || [];
-    console.log(`[buscar] TOTAL: sinTipo=${sinTipoArr.length} conSC=${conSCArr.length}`);
+    const licitaciones = sinTipo;
+    console.log(`[buscar] TOTAL: ${licitaciones.length} licitaciones`);
 
-    const vistos = new Set();
-    const licitaciones = [];
-    for (const l of [...sinTipoArr, ...conSCArr]) {
-      const cod = l.CodigoExterno || JSON.stringify(l);
-      if (!vistos.has(cod)) { vistos.add(cod); licitaciones.push(l); }
-    }
     const norm = s => (s || "").toLowerCase()
       .replace(/[áàä]/g, "a").replace(/[éèë]/g, "e").replace(/[íìï]/g, "i")
       .replace(/[óòö]/g, "o").replace(/[úùü]/g, "u").replace(/ñ/g, "n")
@@ -744,34 +735,25 @@ app.post("/buscar-general", async (req, res) => {
   try {
     const controller = new AbortController();
     const timeoutId  = setTimeout(() => controller.abort(), 120000);
-    // ✦ FASE 1: usa el helper fetchConReintentos para tolerar intermitencia de API MP
-    const fetchAll = async (extraParams, etiqueta) => {
-      const usaEstado = !extraParams.includes("tipo=SC");
-      const mpUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json` +
-                    `?${usaEstado ? "estado=activas&" : ""}ticket=${TICKET}${extraParams}`;
-      return await fetchConReintentos(mpUrl, controller, `buscar-general:${etiqueta}`);
-    };
-    const [sinTipo, conSC] = await Promise.all([fetchAll("", "activas"), fetchAll("&tipo=SC", "tipoSC")]);
+    // Nota: se eliminó la consulta con "tipo=SC" — la API de Mercado Público
+    // no reconoce ese parámetro (confirmado: devuelve siempre HTTP 400
+    // "Nombre de parametro no válido"). Nunca aportó licitaciones reales al
+    // pool; solo agregaba 3 reintentos fallidos por búsqueda y ruido en los
+    // logs. La única fuente real y válida es "estado=activas".
+    const mpUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?estado=activas&ticket=${TICKET}`;
+    const sinTipo = await fetchConReintentos(mpUrl, controller, "buscar-general:activas");
     clearTimeout(timeoutId);
 
-    // Si AMBAS llamadas devolvieron null (fallo real), responder 503
-    if (sinTipo === null && conSC === null) {
+    if (sinTipo === null) {
       return res.status(503).json({
         error: "MP_API_UNAVAILABLE",
         mensaje: "La API de Mercado Público no respondió tras 3 intentos. Intenta de nuevo en unos segundos.",
         retry: true
       });
     }
-    const sinTipoArr = sinTipo || [];
-    const conSCArr   = conSC   || [];
-    console.log(`[buscar-general] TOTAL: sinTipo=${sinTipoArr.length} conSC=${conSCArr.length}`);
+    const pool = sinTipo;
+    console.log(`[buscar-general] TOTAL: ${pool.length} licitaciones`);
 
-    const vistos = new Set();
-    const pool   = [];
-    for (const l of [...sinTipoArr, ...conSCArr]) {
-      const cod = l.CodigoExterno || JSON.stringify(l);
-      if (!vistos.has(cod)) { vistos.add(cod); pool.push(l); }
-    }
 
     // ── Enriquecimiento con cache persistente Supabase ────────────────────
     const esTituloGenerico = (nombre) => {
@@ -3227,21 +3209,9 @@ app.post("/mp/precalentar-pool", async (req, res) => {
   (async () => {
     try {
       const controller = new AbortController();
-      const fetchAll = async (extraParams, etiqueta) => {
-        const usaEstado = !extraParams.includes("tipo=SC");
-        const mpUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json` +
-                      `?${usaEstado ? "estado=activas&" : ""}ticket=${TICKET}${extraParams}`;
-        return await fetchConReintentos(mpUrl, controller, `precalentar:${etiqueta}`);
-      };
-      const [sinTipo, conSC] = await Promise.all([fetchAll("", "activas"), fetchAll("&tipo=SC", "tipoSC")]);
-      const sinTipoArr = sinTipo || [];
-      const conSCArr   = conSC   || [];
-      const vistos = new Set();
-      const pool = [];
-      for (const l of [...sinTipoArr, ...conSCArr]) {
-        const cod = l.CodigoExterno;
-        if (cod && !vistos.has(cod)) { vistos.add(cod); pool.push(l); }
-      }
+      // Ver nota en /buscar: "tipo=SC" no es un parámetro válido de la API de MP.
+      const mpUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?estado=activas&ticket=${TICKET}`;
+      const pool = (await fetchConReintentos(mpUrl, controller, "precalentar:activas")) || [];
       console.log(`[precalentar] Pool MP: ${pool.length}`);
       const codigosArr = pool.map(l => l.CodigoExterno);
       const yaEnCache = new Set();
@@ -3333,20 +3303,10 @@ app.get("/mp/debug-clasificacion/:codigo", async (req, res) => {
     // 1. Consultar listado activo de MP (con reintentos)
     const controller = new AbortController();
     const timeoutId  = setTimeout(() => controller.abort(), 60000);
-    const fetchListado = async (extraParams, etiqueta) => {
-      const usaEstado = !extraParams.includes("tipo=SC");
-      const mpUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json` +
-                    `?${usaEstado ? "estado=activas&" : ""}ticket=${TICKET}${extraParams}`;
-      return await fetchConReintentos(mpUrl, controller, `debug:${etiqueta}`);
-    };
-    const [sinTipo, conSC] = await Promise.all([
-      fetchListado("", "activas"),
-      fetchListado("&tipo=SC", "tipoSC")
-    ]);
+    // Ver nota en /buscar: "tipo=SC" no es un parámetro válido de la API de MP.
+    const mpUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?estado=activas&ticket=${TICKET}`;
+    const todos = (await fetchConReintentos(mpUrl, controller, "debug:activas")) || [];
     clearTimeout(timeoutId);
-    const sinTipoArr = sinTipo || [];
-    const conSCArr   = conSC   || [];
-    const todos = [...sinTipoArr, ...conSCArr];
     const enListado = todos.find(l => l.CodigoExterno === codigo) || null;
 
     // 2. Consultar detalle directo (siempre, aunque esté en listado, para tener datos completos)
@@ -3547,24 +3507,16 @@ app.post("/mp/clasificar-pool-ia", async (req, res) => {
       clasificacionIAState.estado = "trayendo_pool";
       const controller = new AbortController();
       const timeoutId  = setTimeout(() => controller.abort(), 120000);
-      const [sinTipo, conSC] = await Promise.all([
-        fetchConReintentos(`https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?estado=activas&ticket=${TICKET}`, controller, "clasif-ia:activas"),
-        fetchConReintentos(`https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?ticket=${TICKET}&tipo=SC`,        controller, "clasif-ia:tipoSC")
-      ]);
+      // Ver nota en /buscar: "tipo=SC" no es un parámetro válido de la API de MP.
+      const pool = (await fetchConReintentos(`https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?estado=activas&ticket=${TICKET}`, controller, "clasif-ia:activas")) || [];
       clearTimeout(timeoutId);
 
-      if (!sinTipo && !conSC) {
+      if (!pool.length) {
         clasificacionIAState.estado = "error";
         clasificacionIAState.ultimo_error = "API MP no respondió tras reintentos";
         return;
       }
 
-      // 2. Deduplicar
-      const vistos = new Set();
-      const pool   = [];
-      for (const l of [...(sinTipo || []), ...(conSC || [])]) {
-        if (l.CodigoExterno && !vistos.has(l.CodigoExterno)) { vistos.add(l.CodigoExterno); pool.push(l); }
-      }
       clasificacionIAState.total_pool = pool.length;
       console.log(`[clasif-ia] Pool: ${pool.length}`);
 
