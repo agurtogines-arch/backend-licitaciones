@@ -3767,7 +3767,24 @@ app.post("/mp/clasificar-pool-ia", async (req, res) => {
 
       // Solo clasificar licitaciones nuevas sin registro previo.
       // Límite 100 por ejecución como techo de seguridad ante renovaciones masivas del pool.
-      const sinClasificarTotal = candidatas.filter(l => !yaClasificadas.has(l.CodigoExterno));
+      //
+      // IMPORTANTE: se ordenan por fecha de publicación DESCENDENTE antes de
+      // tomar las primeras 100. El pool de MP no viene ordenado por fecha —
+      // sin este ordenamiento, el clasificador tomaba las primeras 100 que
+      // "cayeran" en el orden arbitrario de la API de MP, dejando licitaciones
+      // recién publicadas esperando semanas su turno mientras licitaciones
+      // antiguas (muchas ya sin relevancia) se clasificaban antes. Como las
+      // licitaciones nuevas son precisamente las que más generan casos de
+      // "el backend encuentra pero no aparece" (dependen del fallback de
+      // keywords en vez de la IA, más precisa), priorizarlas por antigüedad
+      // de publicación ataca esa causa de forma estructural.
+      const sinClasificarTotal = candidatas
+        .filter(l => !yaClasificadas.has(l.CodigoExterno))
+        .sort((a, b) => {
+          const fa = a.FechaPublicacion ? new Date(a.FechaPublicacion).getTime() : 0;
+          const fb = b.FechaPublicacion ? new Date(b.FechaPublicacion).getTime() : 0;
+          return fb - fa; // más reciente primero
+        });
       const sinClasificar      = sinClasificarTotal.slice(0, 100);
       clasificacionIAState.ya_en_cache    = yaClasificadas.size;
       clasificacionIAState.a_clasificar   = sinClasificarTotal.length; // total real pendiente
