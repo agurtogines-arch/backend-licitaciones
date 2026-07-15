@@ -959,6 +959,100 @@ app.post("/buscar-general", async (req, res) => {
       console.warn(`[buscar-general] IA cache lookup falló (usando keywords como fallback): ${e.message}`);
     }
 
+    // ── Descripciones cacheadas: cargar ANTES de filtrar ──────────────────
+    // El listado masivo de MP casi siempre trae "Descripcion" vacía — solo
+    // el título. Si esa licitación ya fue enriquecida en una búsqueda
+    // anterior (queda guardada en mp_pool_cache), usamos esa descripción
+    // real para el matching de keywords y servicios ANTES de filtrar, en
+    // vez de solo después (como se hacía hasta ahora, cuando ya era
+    // demasiado tarde: si el título solo no bastaba, la licitación ya había
+    // sido descartada y la descripción real nunca llegaba a usarse).
+    const descCacheMap = new Map();
+    try {
+      const codigosSinDescripcion = pool
+        .filter(l => !l.Descripcion && l.CodigoExterno)
+        .map(l => l.CodigoExterno);
+      const CHUNK_DESC = 200;
+      for (let i = 0; i < codigosSinDescripcion.length; i += CHUNK_DESC) {
+        const chunk = codigosSinDescripcion.slice(i, i + CHUNK_DESC);
+        const inList = chunk.map(c => `"${encodeURIComponent(c)}"`).join(",");
+        const descRes = await fetch(
+          `${SUPABASE_URL}/rest/v1/mp_pool_cache?codigo=in.(${inList})&select=codigo,descripcion`,
+          { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(10000) }
+        );
+        if (descRes.ok) {
+          for (const row of await descRes.json()) {
+            if (row.descripcion) descCacheMap.set(row.codigo, row.descripcion);
+          }
+        }
+      }
+      console.log(`[buscar-general] Descripciones cacheadas recuperadas pre-filtro: ${descCacheMap.size}/${codigosSinDescripcion.length}`);
+    } catch(e) {
+      console.warn(`[buscar-general] Carga de descripciones cacheadas falló (se sigue solo con título): ${e.message}`);
+    }
+
+    // ── Rescate previo: títulos que son solo sigla + ubicación ────────────
+    // Casos como "E.I. I-72, SECTOR LOLOL..." o "AIF CGM COMUNA X" no
+    // contienen NINGUNA palabra técnica en el título — solo la sigla y el
+    // nombre del lugar. La palabra que confirma el tipo de proyecto
+    // ("mejoramiento", "vial", etc.) vive únicamente en la descripción, que
+    // el pool masivo no trae. Sin este paso, estas licitaciones nunca
+    // matchean ninguna keyword y se descartan silenciosamente sin
+    // oportunidad alguna. Se identifican por sigla conocida y, si no tienen
+    // descripción aún, se consulta su detalle real en vivo (acotado) ANTES
+    // del filtro principal — así el filtro de keywords ya las evalúa con
+    // el contenido completo, igual que a cualquier otra licitación.
+    try {
+      const SIGLA_REGEX = new RegExp(`(?<![a-z])(${SIGLAS_IMPLICAN_SERVICIO.join("|")})(?![a-z])`);
+      const candidatosSolaSigla = pool.filter(l => {
+        if (l.Descripcion || descCacheMap.has(l.CodigoExterno)) return false; // ya tiene descripción
+        const tituloNorm = normDiv(l.Nombre || "");
+        return SIGLA_REGEX.test(tituloNorm);
+      });
+      const MAX_RESCATE_SIGLA = 20;
+      const codigosSigla = [...new Set(candidatosSolaSigla.map(l => l.CodigoExterno).filter(Boolean))].slice(0, MAX_RESCATE_SIGLA);
+      if (codigosSigla.length > 0) {
+        console.log(`[buscar-general] Rescate previo (solo-sigla): ${candidatosSolaSigla.length} candidatos, consultando ${codigosSigla.length} (límite ${MAX_RESCATE_SIGLA})...`);
+        const PARALELISMO_SIGLA = 5;
+        const nuevasParaCacheSigla = [];
+        for (let i = 0; i < codigosSigla.length; i += PARALELISMO_SIGLA) {
+          const lote = codigosSigla.slice(i, i + PARALELISMO_SIGLA);
+          await Promise.all(lote.map(async codigo => {
+            try {
+              const url = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?codigo=${codigo}&ticket=${TICKET}`;
+              const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+              if (!r.ok) return;
+              const data = await r.json();
+              const detalle = data.Listado?.[0];
+              if (detalle?.Descripcion) {
+                descCacheMap.set(codigo, detalle.Descripcion);
+                nuevasParaCacheSigla.push({ codigo, descripcion: detalle.Descripcion });
+              }
+            } catch(e) {}
+          }));
+        }
+        console.log(`[buscar-general] Rescate previo (solo-sigla): ${nuevasParaCacheSigla.length}/${codigosSigla.length} descripciones obtenidas`);
+        if (nuevasParaCacheSigla.length > 0) {
+          fetch(`${SUPABASE_URL}/rest/v1/mp_pool_cache`, {
+            method: "POST",
+            headers: { ...SUPABASE_HEADERS, "Prefer": "resolution=merge-duplicates" },
+            body: JSON.stringify(nuevasParaCacheSigla)
+          }).then(r => {
+            if (r.ok) console.log(`[buscar-general] Rescate previo: ${nuevasParaCacheSigla.length} descripciones guardadas en cache`);
+          }).catch(e => console.warn(`[buscar-general] Rescate previo: error guardando cache: ${e.message}`));
+        }
+      }
+    } catch(e) {
+      console.warn(`[buscar-general] Rescate previo (solo-sigla) falló: ${e.message}`);
+    }
+
+    // Candidatos que matchean keyword técnica pero se descartarían solo por
+    // falta de descripción real (nunca cacheada, pool masivo la trae vacía)
+    // — se les da una segunda oportunidad más abajo antes de descartarlos
+    // definitivamente.
+    const candidatosRescate = []; // { codigo, id, l }
+    const yaEnRescate = new Set(); // evita duplicar el mismo codigo+division
+
     const resultados = {};    for (const div of divisiones) {
       const { id, keywords, servicios, regionDesde, regionHasta } = div;
       if (!keywords?.length) { resultados[id] = []; continue; }
@@ -973,7 +1067,11 @@ app.post("/buscar-general", async (req, res) => {
       const divConfig = DIVISIONES_LEN.find(d => d.id === id);
 
       const filtradas = pool.filter(l => {
-        const titulo = `${l.Nombre || ""} ${l.Descripcion || ""}`;
+        // Si el pool masivo trae descripción vacía, usamos la que ya
+        // tengamos cacheada de una búsqueda anterior — así el matching de
+        // keywords y servicios ve el contenido real, no solo el título.
+        const descripcionReal = l.Descripcion || descCacheMap.get(l.CodigoExterno) || "";
+        const titulo = `${l.Nombre || ""} ${descripcionReal}`;
         if (esBloqueada(titulo)) return false;
         if (bloqueadaSectorial(titulo)) return false;
 
@@ -988,7 +1086,20 @@ app.post("/buscar-general", async (req, res) => {
         const matchTec = keywords.some(kw => matchKw(titulo, kw));
         if (!matchTec) return false;
         // ✦ Tipos de proyecto que ya implican servicio (Plan Maestro, Anteproyecto, etc.)
-        if (servicios?.length && !tipoProyectoImplicito(titulo) && !servicios.some(s => matchKw(titulo, s))) return false;
+        const faltaServicio = servicios?.length && !tipoProyectoImplicito(titulo) && !servicios.some(s => matchKw(titulo, s));
+        if (faltaServicio) {
+          // Si aún no tenemos descripción real (ni del pool ni de cache) y
+          // la única razón de descarte es el servicio, damos una segunda
+          // oportunidad más abajo en vez de descartar definitivamente.
+          if (!descripcionReal && l.CodigoExterno) {
+            const key = `${l.CodigoExterno}::${id}`;
+            if (!yaEnRescate.has(key)) {
+              yaEnRescate.add(key);
+              candidatosRescate.push({ codigo: l.CodigoExterno, id, l });
+            }
+          }
+          return false;
+        }
         if (divConfig && aplicaExclusiones(divConfig, l.Comprador?.NombreOrganismo || "", titulo)) return false;
         const DIVISIONES_ESTRICTAS = new Set(["ito","mineria","energia"]);
         const regionClasif = extraerRegionDeTexto(titulo);
@@ -1006,6 +1117,79 @@ app.post("/buscar-general", async (req, res) => {
         seen.add(k); return true;
       });
     }
+
+    // ── Rescate: segunda oportunidad para candidatos sin descripción ─────
+    // Estas licitaciones matchearon la keyword técnica pero fueron
+    // descartadas solo por falta de una palabra de servicio explícita en el
+    // título — y no teníamos su descripción real para confirmar. Se
+    // consulta su detalle en vivo (acotado a un máximo por búsqueda para no
+    // saturar la API de MP) y, si la descripción real confirma el
+    // servicio, se rescatan. La descripción consultada se guarda en cache
+    // para que futuras búsquedas ya no necesiten este paso.
+    if (candidatosRescate.length > 0) {
+      const MAX_RESCATE = 30;
+      const codigosUnicos = [...new Set(candidatosRescate.map(c => c.codigo))].slice(0, MAX_RESCATE);
+      console.log(`[buscar-general] Rescate: ${candidatosRescate.length} candidatos (${codigosUnicos.length} códigos únicos, límite ${MAX_RESCATE}) sin descripción — consultando detalle real...`);
+      const descRescatadas = new Map();
+      const PARALELISMO_RESCATE = 5;
+      for (let i = 0; i < codigosUnicos.length; i += PARALELISMO_RESCATE) {
+        const lote = codigosUnicos.slice(i, i + PARALELISMO_RESCATE);
+        await Promise.all(lote.map(async codigo => {
+          try {
+            const url = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?codigo=${codigo}&ticket=${TICKET}`;
+            const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+            if (!r.ok) return;
+            const data = await r.json();
+            const detalle = data.Listado?.[0];
+            if (detalle?.Descripcion) descRescatadas.set(codigo, detalle.Descripcion);
+          } catch(e) {}
+        }));
+      }
+      console.log(`[buscar-general] Rescate: ${descRescatadas.size}/${codigosUnicos.length} descripciones obtenidas`);
+
+      // Re-evaluar cada candidato con su descripción real
+      for (const cand of candidatosRescate) {
+        const descRescatada = descRescatadas.get(cand.codigo);
+        if (!descRescatada) continue;
+        const div = divisiones.find(d => d.id === cand.id);
+        if (!div) continue;
+        const titulo = `${cand.l.Nombre || ""} ${descRescatada}`;
+        if (esBloqueada(titulo) || bloqueadaSectorial(titulo)) continue;
+        const matchTec = div.keywords.some(kw => matchKw(titulo, kw));
+        if (!matchTec) continue;
+        const faltaServicio = div.servicios?.length && !tipoProyectoImplicito(titulo) && !div.servicios.some(s => matchKw(titulo, s));
+        if (faltaServicio) continue;
+        const divConfig = DIVISIONES_LEN.find(d => d.id === cand.id);
+        if (divConfig && aplicaExclusiones(divConfig, cand.l.Comprador?.NombreOrganismo || "", titulo)) continue;
+        const DIVISIONES_ESTRICTAS = new Set(["ito","mineria","energia"]);
+        const regionClasif = extraerRegionDeTexto(titulo);
+        const clasificacion = clasificarDivisiones(titulo, regionClasif?.codigo || null, cand.l.Comprador?.NombreOrganismo || "");
+        if (clasificacion.length === 0 && DIVISIONES_ESTRICTAS.has(cand.id)) continue;
+        if (clasificacion.length > 0 && !clasificacion.some(d => d.id === cand.id)) continue;
+
+        // Pasa el filtro con la descripción real: se rescata
+        const itemConDescripcion = { ...cand.l, Descripcion: descRescatada };
+        const mapeado = mapItem(itemConDescripcion);
+        const yaEsta = resultados[cand.id].some(r => r.codigo === mapeado.codigo);
+        if (!yaEsta) {
+          resultados[cand.id].push(mapeado);
+          console.log(`[buscar-general] Rescate exitoso: ${cand.codigo} → ${cand.id}`);
+        }
+      }
+
+      // Guardar en cache para que futuras búsquedas no necesiten rescatarlas de nuevo
+      if (descRescatadas.size > 0) {
+        const filas = [...descRescatadas.entries()].map(([codigo, descripcion]) => ({ codigo, descripcion }));
+        fetch(`${SUPABASE_URL}/rest/v1/mp_pool_cache`, {
+          method: "POST",
+          headers: { ...SUPABASE_HEADERS, "Prefer": "resolution=merge-duplicates" },
+          body: JSON.stringify(filas)
+        }).then(r => {
+          if (r.ok) console.log(`[buscar-general] Rescate: ${filas.length} descripciones guardadas en cache`);
+        }).catch(e => console.warn(`[buscar-general] Rescate: error guardando cache: ${e.message}`));
+      }
+    }
+
 
     // ── Enriquecimiento POST-FILTRO ────────────────────────────────────
     try {
