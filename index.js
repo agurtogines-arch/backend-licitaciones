@@ -239,7 +239,12 @@ function normDiv(s) {
   return (s||"").toLowerCase()
     .replace(/[áàä]/g,"a").replace(/[éèë]/g,"e").replace(/[íìï]/g,"i")
     .replace(/[óòö]/g,"o").replace(/[úùü]/g,"u").replace(/ñ/g,"n")
-    .replace(/['''`´]/g,"").trim();
+    .replace(/['''`´]/g,"")
+    // Elimina puntos: MOP escribe la misma sigla con o sin puntos de forma
+    // inconsistente ("E.I." vs "EI", "EST." vs "EST"). Sin este paso, cada
+    // variante con puntos requeriría un caso especial aparte.
+    .replace(/\./g,"")
+    .trim();
 }
 function stemDiv(t) { return t.length >= 6 ? t.slice(0,-2) : t; }
 function matchDivKw(titulo, kw) {
@@ -667,10 +672,11 @@ app.get("/buscar", async (req, res) => {
     const licitaciones = sinTipo;
     console.log(`[buscar] TOTAL: ${licitaciones.length} licitaciones`);
 
-    const norm = s => (s || "").toLowerCase()
-      .replace(/[áàä]/g, "a").replace(/[éèë]/g, "e").replace(/[íìï]/g, "i")
-      .replace(/[óòö]/g, "o").replace(/[úùü]/g, "u").replace(/ñ/g, "n")
-      .replace(/['''`´]/g, "").trim();
+    // Alias a la función central normDiv (única fuente de verdad de
+    // normalización de texto). Antes esta función se redefinía por separado
+    // en cada endpoint, lo que causaba que una mejora aplicada en un lugar
+    // (ej. quitar puntos de "E.I.") no se reflejara en los demás.
+    const norm = normDiv;
     const stem = t => t.length >= 6 ? t.slice(0, -2) : t;
     const matchesKeyword = (titulo, keyword) => {
       const tNorm = norm(titulo);
@@ -881,10 +887,8 @@ app.post("/buscar-general", async (req, res) => {
       }
     }
 
-    const norm = s => (s || "").toLowerCase()
-      .replace(/[áàä]/g,"a").replace(/[éèë]/g,"e").replace(/[íìï]/g,"i")
-      .replace(/[óòö]/g,"o").replace(/[úùü]/g,"u").replace(/ñ/g,"n")
-      .replace(/['''`´]/g,"").trim();
+    // Alias a la función central normDiv — ver nota en la primera ocurrencia.
+    const norm = normDiv;
     const stem = t => t.length >= 6 ? t.slice(0,-2) : t;
     const matchKw = (titulo, kw) => {
       const tNorm = norm(titulo);
@@ -1172,10 +1176,8 @@ app.get("/buscar-organismo", async (req, res) => {
     }
     let licitaciones = listadoResult;
 
-    const norm = s => (s || "").toLowerCase()
-      .replace(/[áàä]/g, "a").replace(/[éèë]/g, "e").replace(/[íìï]/g, "i")
-      .replace(/[óòö]/g, "o").replace(/[úùü]/g, "u").replace(/ñ/g, "n")
-      .replace(/['''`´]/g, "").trim();
+    // Alias a la función central normDiv — ver nota en la primera ocurrencia.
+    const norm = normDiv;
     const stem = t => t.length >= 6 ? t.slice(0, -2) : t;
     const matchesKw = (titulo, kw) => {
       const tNorm = norm(titulo);
