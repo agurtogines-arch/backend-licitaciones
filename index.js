@@ -286,7 +286,11 @@ const MOP_A_DIVISION = {
 function sugerirDivision(titulo, especialidadesMOP, codigoRegion, organismo) {
   const porKeywords = clasificarDivisiones(titulo || "", codigoRegion, organismo || "");
   const conteoMOP = {};
-  for (const esp of (especialidadesMOP || [])) {
+  // Aplana los grupos OR ({or:[...]}) a sus especialidades individuales —
+  // para efectos de SUGERIR la división, cualquier especialidad mencionada
+  // (aunque sea una alternativa) es una señal válida del tipo de proyecto.
+  const especialidadesPlanas = (especialidadesMOP || []).flatMap(e => e.or ? e.or : [e]);
+  for (const esp of especialidadesPlanas) {
     let div = MOP_A_DIVISION[esp.codigo];
     if (esp.codigo === "4.9") div = CODIGOS_ZONA_SUR.has(String(codigoRegion)) ? "zonasur" : "infra";
     if (div) conteoMOP[div] = (conteoMOP[div] || 0) + 1;
@@ -330,18 +334,61 @@ function validarRegistroMOP(requisitos) {
   // El chequeo de vigencia de fecha fue eliminado: las categorías de LEN
   // se consideran permanentes hasta que se actualicen manualmente.
   // La fecha del certificado solo importa al momento de postular.
+  //
+  // Cada elemento de `requisitos` puede ser:
+  // - Un requisito simple {codigo, descripcion, categoria, especialidad}
+  //   → obligatorio, LEN debe cumplirlo ("Y").
+  // - Un grupo {or: [...]} → basta con que LEN cumpla UNA de las
+  //   alternativas listadas dentro del grupo ("O").
   const fallas = [];
-  for (const req of (requisitos || [])) {
+  const evaluarUno = req => {
     const rankLEN = LEN_REGISTRO_MOP.especialidades[req.codigo];
     const rankReq = RANK_CATEGORIA[(req.categoria || "").toLowerCase().trim()];
-    if (rankLEN === undefined) fallas.push(`Falta especialidad ${req.codigo} (${req.descripcion || ""})`);
-    else if (rankReq && rankLEN > rankReq) fallas.push(`${req.codigo}: requiere ${req.categoria}, LEN tiene ${NOMBRE_CATEGORIA[rankLEN]}`);
+    if (rankLEN === undefined) return { ok: false, motivo: `Falta especialidad ${req.codigo} (${req.descripcion || ""})` };
+    if (rankReq && rankLEN > rankReq) return { ok: false, motivo: `${req.codigo}: requiere ${req.categoria}, LEN tiene ${NOMBRE_CATEGORIA[rankLEN]}` };
+    return { ok: true, motivo: null };
+  };
+  for (const req of (requisitos || [])) {
+    if (req.or) {
+      const resultados = req.or.map(evaluarUno);
+      const algunoOk = resultados.some(r => r.ok);
+      if (!algunoOk) {
+        const opciones = req.or.map(o => o.codigo).join(" o ");
+        fallas.push(`Requiere alguna de estas especialidades (no se cumple ninguna): ${opciones}`);
+      }
+    } else {
+      const r = evaluarUno(req);
+      if (!r.ok) fallas.push(r.motivo);
+    }
   }
   return {
     califica: fallas.length === 0,
     fallas,
     diasVigencia: null,
     avisoVigencia: null
+  };
+}
+
+// ── Parseo de un texto de "Sub Especialidad" → requisito simple o grupo OR ──
+// Por defecto, cada especialidad listada en el recuadro de MP es un requisito
+// obligatorio (LEN debe cumplir TODAS — lógica "Y"). Pero si el mismo texto
+// menciona más de un código de especialidad (ej. "3.1 Mecánica de Suelos...
+// o 3.2 Geología..."), se interpreta como alternativas — basta con cumplir
+// UNA de ellas (lógica "O"). Esta función es la única fuente de verdad para
+// esta interpretación, usada tanto por el parser de tabla estática como por
+// el parser del endpoint AJAX, para que ambos se comporten igual siempre.
+const CODIGO_ESPECIALIDAD_REGEX = /(\d{1,2}\.\d{1,2})\s+([^.]+\.?)/g;
+function parseSubEspecialidad(subEspecialidad, especialidad, categoria) {
+  const coincidencias = [...(subEspecialidad || "").matchAll(CODIGO_ESPECIALIDAD_REGEX)];
+  if (coincidencias.length === 0) return null;
+  if (coincidencias.length === 1) {
+    return { codigo: coincidencias[0][1], descripcion: coincidencias[0][2].trim().replace(/\.$/, ""), categoria, especialidad };
+  }
+  // Múltiples códigos en el mismo texto → grupo de alternativas ("O").
+  return {
+    or: coincidencias.map(m => ({
+      codigo: m[1], descripcion: m[2].trim().replace(/\.$/, ""), categoria, especialidad
+    }))
   };
 }
 
@@ -363,13 +410,12 @@ function extraerEspecialidadesMOP(html) {
     const especialidad    = cleanCell(celdas[0]);
     const subEspecialidad = cleanCell(celdas[1]);
     const categoria       = cleanCell(celdas[2]);
-    const m = subEspecialidad.match(/^(\d{1,2}\.\d{1,2})\s+(.+?)\.?\s*$/);
-    if (!m) continue;
-    const codigo = m[1];
-    const descripcion = m[2].trim();
-    if (seen.has(codigo)) continue;
-    seen.add(codigo);
-    requisitos.push({ codigo, descripcion, categoria, especialidad });
+    const req = parseSubEspecialidad(subEspecialidad, especialidad, categoria);
+    if (!req) continue;
+    const clave = req.or ? req.or.map(o => o.codigo).join("|") : req.codigo;
+    if (seen.has(clave)) continue;
+    seen.add(clave);
+    requisitos.push(req);
   }
   return requisitos;
 }
@@ -395,6 +441,13 @@ async function obtenerEspecialidadesMOPviaAjax(codigo, cookieHeader) {
         "X-Requested-With": "XMLHttpRequest",
         "Referer": referer, "Origin": "https://www.mercadopublico.cl",
         "Accept": "application/json, text/javascript, */*; q=0.01",
+        // Mercado Público empezó a exigir estos headers Sec-Fetch-* para
+        // aceptar la petición (confirmado en vivo: sin ellos responde
+        // "{d:null}" con HTTP 200 aunque las cookies y el Referer sean
+        // correctos; con ellos, devuelve las especialidades reales).
+        "Sec-Fetch-Site": "same-origin",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Dest": "empty",
         "Cookie": cookieHeader
       },
       body: JSON.stringify({}),
@@ -411,13 +464,12 @@ async function obtenerEspecialidadesMOPviaAjax(codigo, cookieHeader) {
       const especialidad    = partes[0];
       const subEspecialidad = partes[1];
       const categoria       = partes[2];
-      const m = subEspecialidad.match(/^(\d{1,2}\.\d{1,2})\s+(.+?)\.?\s*$/);
-      if (!m) continue;
-      const codigoEspec = m[1];
-      const descripcion = m[2].trim();
-      if (seen.has(codigoEspec)) continue;
-      seen.add(codigoEspec);
-      requisitos.push({ codigo: codigoEspec, descripcion, categoria, especialidad });
+      const req = parseSubEspecialidad(subEspecialidad, especialidad, categoria);
+      if (!req) continue;
+      const clave = req.or ? req.or.map(o => o.codigo).join("|") : req.codigo;
+      if (seen.has(clave)) continue;
+      seen.add(clave);
+      requisitos.push(req);
     }
     return requisitos;
   } catch (e) {
@@ -1692,7 +1744,11 @@ app.post("/mp/analizar", async (req, res) => {
   if (requisitosMOP.length > 0) {
     const validacion = validarRegistroMOP(requisitosMOP);
     if (!validacion.califica) {
-      const listaReq = requisitosMOP.map(r => `   • ${r.codigo} ${r.descripcion} — Categoría ${r.categoria}`).join("\n");
+      const listaReq = requisitosMOP.map(r =>
+        r.or
+          ? `   • (se acepta cualquiera de estas) ${r.or.map(o => `${o.codigo} ${o.descripcion} — Categoría ${o.categoria}`).join("  O  ")}`
+          : `   • ${r.codigo} ${r.descripcion} — Categoría ${r.categoria}`
+      ).join("\n");
       const listaFallas = validacion.fallas.map(f => `   ⚠️ ${f}`).join("\n");
       const aviso = validacion.avisoVigencia ? `\n${validacion.avisoVigencia}\n` : "";
       const analysis =
