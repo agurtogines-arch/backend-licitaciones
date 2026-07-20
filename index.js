@@ -143,6 +143,8 @@ const DIVISIONES_LEN = [
       "geomensura","supervision tecnica","acompanamiento a la construccion",
       "inspeccion fiscal","asistencia tecnica en obra","inspeccion de obras",
       "cgm",
+      // AIT = Asesoría Inspección Técnica (sigla MOP similar a AIF)
+      "ait",
       // AIF = Asesoría a la Inspección Fiscal (sigla MOP muy frecuente)
       "aif","aif global","aif vialidad","aif mop",
       "asesoria a la inspeccion","asesoria inspeccion fiscal",
@@ -181,7 +183,7 @@ const DIVISIONES_LEN = [
 // depender de su propia copia hardcodeada que puede quedar desactualizada.
 // Este endpoint es de solo lectura y no modifica ningún comportamiento
 // existente — es puramente aditivo.
-const SIGLAS_CONOCIDAS_DISPLAY = new Set(["aif","ssr","apr","ito","cgm","ep","ernc","bess","est.","mop","dga","seia"]);
+const SIGLAS_CONOCIDAS_DISPLAY = new Set(["aif","ssr","apr","ito","cgm","ep","ernc","bess","est.","mop","dga","seia","ei","ait"]);
 function capitalizarKw(s) {
   return s.split(" ").map(w => {
     const wLimpia = w.replace(/\./g, "").toLowerCase();
@@ -609,7 +611,7 @@ const TIPOS_PROYECTO_IMPLICAN_SERVICIO = [
 // tratarlas como siglas independientes aquí (igual que AIF/APR/SSR/CGM),
 // el sistema es robusto a cualquier variante sin necesidad de anticipar
 // cada combinación posible.
-const SIGLAS_IMPLICAN_SERVICIO = ["apr","ssr","ernc","bess","aif","cgm","ei","ep","preinv"];
+const SIGLAS_IMPLICAN_SERVICIO = ["apr","ssr","ernc","bess","aif","cgm","ei","ep","preinv","ait"];
 
 function tipoProyectoImplicito(titulo) {
   const t = normDiv(titulo);
