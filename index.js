@@ -65,7 +65,7 @@ const DIVISIONES_LEN = [
   {
     id: "zonasur", label: "Zona Sur", icon: "🌊", color: "#0369a1",
     activa: true,
-    keywords: ["vial","vias","seguridad vial","puentes","caminos","transito","pavimento","diseño geometrico","prefactibilidad vial","factibilidad vial","prefactibilidad hidraulica","factibilidad hidraulica","hidraulica","hidrologia","aguas lluvias","cauces","apr","saneamiento","alcantarillado","planta de tratamiento","planta elevadora","conducciones","inundaciones","drenaje","cuencas","aguas servidas","agua potable","sanitario","ssr","agua potable rural","saneamiento rural","mejoramiento camino rural","habilitacion camino rural","electrificacion rural"],
+    keywords: ["vial","vias","seguridad vial","puentes","caminos","transito","pavimento","pav","diseño geometrico","prefactibilidad vial","factibilidad vial","prefactibilidad hidraulica","factibilidad hidraulica","hidraulica","hidrologia","aguas lluvias","cauces","apr","saneamiento","alcantarillado","planta de tratamiento","planta elevadora","conducciones","inundaciones","drenaje","cuencas","aguas servidas","agua potable","sanitario","ssr","agua potable rural","saneamiento rural","mejoramiento camino rural","habilitacion camino rural","electrificacion rural"],
     servicios: ["estudio","consultoria","asesoria","diseno","inspeccion","levantamiento"],
     regiones: ["7","16","8","9","14","10","11","12"],
     exclusiones: {
@@ -254,6 +254,23 @@ function matchDivKw(titulo, kw) {
   const kwNorm = normDiv(kw);
   if (kwNorm.length <= 4) return new RegExp(`(?<![a-z])${kwNorm}(?![a-z])`).test(tNorm);
   return kwNorm.split(/\s+/).filter(t=>t.length>=3).every(t=>tNorm.includes(stemDiv(t)));
+}
+
+// ── Matching de keywords/servicios (usado en /buscar y /buscar-general) ──
+// Única fuente de verdad para esta comparación — antes existían 3 copias
+// locales idénticas (una por endpoint) SIN protección de límite de palabra
+// para términos cortos, a diferencia de matchDivKw que sí la tenía. Eso
+// permitía falsos positivos como "pav" matcheando dentro de "PAVANA".
+// Ahora ambas funciones (matchDivKw y matchKwSafe) usan la misma lógica de
+// protección para términos de 4 caracteres o menos.
+function matchKwSafe(titulo, kw) {
+  const tNorm = normDiv(titulo);
+  const terms = normDiv(kw).split(/\s+/).filter(t => t.length >= 3);
+  if (!terms.length) return false;
+  return terms.every(t => {
+    if (t.length <= 4) return new RegExp(`(?<![a-z])${t}(?![a-z])`).test(tNorm);
+    return tNorm.includes(t.length >= 6 ? t.slice(0,-2) : t);
+  });
 }
 
 function clasificarDivisiones(titulo, codigoRegion, organismo) {
@@ -731,13 +748,8 @@ app.get("/buscar", async (req, res) => {
     // en cada endpoint, lo que causaba que una mejora aplicada en un lugar
     // (ej. quitar puntos de "E.I.") no se reflejara en los demás.
     const norm = normDiv;
-    const stem = t => t.length >= 6 ? t.slice(0, -2) : t;
-    const matchesKeyword = (titulo, keyword) => {
-      const tNorm = norm(titulo);
-      const terms = norm(keyword).split(/\s+/).filter(t => t.length >= 3);
-      if (!terms.length) return false;
-      return terms.every(t => tNorm.includes(stem(t)));
-    };
+    // Alias a la función central matchKwSafe — ver nota junto a su definición.
+    const matchesKeyword = matchKwSafe;
     const EXCLUSION = [
       "construccion de ","construcción de ","ejecucion de obras","ejecución de obras",
       "suministro de materiales","suministro e instalacion","suministro e instalación",
@@ -943,13 +955,8 @@ app.post("/buscar-general", async (req, res) => {
 
     // Alias a la función central normDiv — ver nota en la primera ocurrencia.
     const norm = normDiv;
-    const stem = t => t.length >= 6 ? t.slice(0,-2) : t;
-    const matchKw = (titulo, kw) => {
-      const tNorm = norm(titulo);
-      const terms = norm(kw).split(/\s+/).filter(t => t.length >= 3);
-      if (!terms.length) return false;
-      return terms.every(t => tNorm.includes(stem(t)));
-    };
+    // Alias a la función central matchKwSafe — ver nota junto a su definición.
+    const matchKw = matchKwSafe;
     const EXCLUSION = [
       "construccion de ","construcción de ","ejecucion de obras","ejecución de obras",
       "suministro de materiales","suministro e instalacion","suministro e instalación",
@@ -1416,13 +1423,8 @@ app.get("/buscar-organismo", async (req, res) => {
 
     // Alias a la función central normDiv — ver nota en la primera ocurrencia.
     const norm = normDiv;
-    const stem = t => t.length >= 6 ? t.slice(0, -2) : t;
-    const matchesKw = (titulo, kw) => {
-      const tNorm = norm(titulo);
-      const terms = norm(kw).split(/\s+/).filter(t => t.length >= 3);
-      if (!terms.length) return false;
-      return terms.every(t => tNorm.includes(stem(t)));
-    };
+    // Alias a la función central matchKwSafe — ver nota junto a su definición.
+    const matchesKw = matchKwSafe;
     let filtradas = licitaciones;
     if (keywords.length > 0) {
       filtradas = licitaciones.filter(l => {
