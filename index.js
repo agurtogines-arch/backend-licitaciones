@@ -248,9 +248,64 @@ function normDiv(s) {
     .replace(/\./g,"")
     .trim();
 }
+
+// ── Expansión de abreviaturas MOP ──────────────────────────────────────────
+// MOP abrevia palabras comunes en los títulos de licitación de forma muy
+// inconsistente ("CONSULT", "DIAG", "ELAB", "PROY", "PAV", "MEJ", etc.).
+// En vez de agregar cada variante abreviada como keyword nueva cada vez que
+// aparece un caso (lo cual requiere descubrirlo manualmente cada vez), se
+// expande el TÍTULO a su forma completa antes de buscar coincidencias. Así,
+// cualquier keyword que ya use la palabra completa ("pavimento",
+// "consultoria", "mejoramiento", etc.) matchea automáticamente sin
+// necesitar una variante abreviada agregada a mano.
+// Solo se incluyen abreviaturas sin riesgo real de ambigüedad — se excluyen
+// a propósito "est" (choca con "Este", dirección cardinal), "geom" (choca
+// entre "Geométrico" y "Geomensura", especialidades distintas), "sup" (muy
+// corta) y "contr" (ambigua entre Contrato/Contratación/Control).
+const ABREVIATURAS_MOP = {
+  "const":"construccion", "constr":"construccion", "construc":"construccion",
+  "conserv":"conservacion",
+  "consult":"consultoria",
+  "mej":"mejoramiento",
+  "diag":"diagnostico",
+  "elab":"elaboracion",
+  "proy":"proyecto",
+  "pav":"pavimento", "pavim":"pavimentacion",
+  "preinv":"preinversion",
+  "habil":"habilitacion", "habilit":"habilitacion",
+  "repos":"reposicion", "reposic":"reposicion",
+  "ampl":"ampliacion",
+  "superv":"supervision",
+  "insp":"inspeccion",
+  "asesor":"asesoria",
+  "fisc":"fiscal",
+  "serv":"servicio",
+  "eval":"evaluacion",
+  "anteproy":"anteproyecto",
+  "ejec":"ejecucion",
+  "rehab":"rehabilitacion",
+  "emerg":"emergencia",
+  "transp":"transporte",
+  "vialid":"vialidad",
+  "munic":"municipal",
+  "adq":"adquisicion",
+  "pte":"puente",
+  "electrif":"electrificacion",
+  "alcant":"alcantarillado",
+  "saneam":"saneamiento",
+  "hidraul":"hidraulica",
+  "estruct":"estructural"
+};
+// Reemplaza solo palabras COMPLETAS que coincidan exactamente con una
+// abreviatura conocida (nunca substrings dentro de otras palabras) — el
+// texto de entrada debe estar ya normalizado con normDiv.
+function expandirAbreviaturasMOP(textoNormalizado) {
+  return (textoNormalizado || "").replace(/[a-z]+/g, palabra => ABREVIATURAS_MOP[palabra] || palabra);
+}
+
 function stemDiv(t) { return t.length >= 6 ? t.slice(0,-2) : t; }
 function matchDivKw(titulo, kw) {
-  const tNorm = normDiv(titulo);
+  const tNorm = expandirAbreviaturasMOP(normDiv(titulo));
   const kwNorm = normDiv(kw);
   if (kwNorm.length <= 4) return new RegExp(`(?<![a-z])${kwNorm}(?![a-z])`).test(tNorm);
   return kwNorm.split(/\s+/).filter(t=>t.length>=3).every(t=>tNorm.includes(stemDiv(t)));
@@ -264,7 +319,7 @@ function matchDivKw(titulo, kw) {
 // Ahora ambas funciones (matchDivKw y matchKwSafe) usan la misma lógica de
 // protección para términos de 4 caracteres o menos.
 function matchKwSafe(titulo, kw) {
-  const tNorm = normDiv(titulo);
+  const tNorm = expandirAbreviaturasMOP(normDiv(titulo));
   const terms = normDiv(kw).split(/\s+/).filter(t => t.length >= 3);
   if (!terms.length) return false;
   return terms.every(t => {
@@ -632,7 +687,12 @@ const SIGLAS_IMPLICAN_SERVICIO = ["apr","ssr","ernc","bess","aif","cgm","ei","ep
 
 function tipoProyectoImplicito(titulo) {
   const t = normDiv(titulo);
-  if (TIPOS_PROYECTO_IMPLICAN_SERVICIO.some(k => t.includes(k))) return true;
+  // Las frases de TIPOS_PROYECTO_IMPLICAN_SERVICIO se buscan también en la
+  // versión expandida (ej. "ANTEPROY" → "anteproyecto"). Las siglas de
+  // SIGLAS_IMPLICAN_SERVICIO se buscan en el texto SIN expandir, porque son
+  // códigos literales de MOP (AIF, CGM, etc.), no abreviaciones de palabras.
+  const tExpandido = expandirAbreviaturasMOP(t);
+  if (TIPOS_PROYECTO_IMPLICAN_SERVICIO.some(k => tExpandido.includes(k))) return true;
   return SIGLAS_IMPLICAN_SERVICIO.some(sigla =>
     new RegExp(`(?<![a-z])${sigla}(?![a-z])`).test(t)
   );
