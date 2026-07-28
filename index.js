@@ -103,7 +103,7 @@ const DIVISIONES_LEN = [
   {
     id: "infra", label: "Infraestructura", icon: "🛣️", color: "#7c3aed",
     activa: true,
-    keywords: ["ingenieria de detalle","ingenieria basica","estudio de factibilidad","anteproyecto","preinversion","est. preinv","ep const","ep mej","ep vial","iluminacion vial","conservacion vial","infraestructura vial","ingenieria vial","transporte vial","proteccion costera","obras portuarias","infraestructura portuaria","obras maritimas"],
+    keywords: ["ingenieria de detalle","ingenieria basica","estudio de factibilidad","anteproyecto","preinversion","est. preinv","ep const","ep mej","ep vial","iluminacion vial","conservacion vial","infraestructura vial","ingenieria vial","transporte vial","pavimento","pav","proteccion costera","obras portuarias","infraestructura portuaria","obras maritimas"],
     servicios: ["estudio","consultoria","diseno","prefactibilidad","factibilidad","asesoria","anteproyecto","inspeccion"],
     exclusiones: {
       organismos: ["serviu", "municipalidad", "ilustre municipalidad", "i. municipalidad"],
@@ -303,12 +303,49 @@ function expandirAbreviaturasMOP(textoNormalizado) {
   return (textoNormalizado || "").replace(/[a-z]+/g, palabra => ABREVIATURAS_MOP[palabra] || palabra);
 }
 
+// ── Tolerancia a errores de tipeo ──────────────────────────────────────────
+// Mercado Público a veces publica títulos con errores de tipeo reales (ej.
+// "ACTUALIKZACION" en vez de "ACTUALIZACION"). Esta función mide cuántas
+// letras hay que cambiar/agregar/quitar para convertir una palabra en otra
+// (distancia de Levenshtein), y se usa como ÚLTIMO recurso — solo si el
+// match exacto ya falló — para palabras de 7+ letras. Las palabras cortas
+// (menos de 7 letras) NUNCA usan esta tolerancia, porque ahí cualquier
+// letra distinta suele cambiar el significado completo (ej. "vial" vs
+// "vital" son palabras totalmente distintas, no un error de tipeo).
+function distanciaEdicion(a, b) {
+  const m = a.length, n = b.length;
+  if (Math.abs(m - n) > 2) return 99; // corte rápido: nunca serán similares
+  const dp = Array.from({length: m+1}, () => new Array(n+1).fill(0));
+  for (let i=0; i<=m; i++) dp[i][0] = i;
+  for (let j=0; j<=n; j++) dp[0][j] = j;
+  for (let i=1; i<=m; i++) {
+    for (let j=1; j<=n; j++) {
+      if (a[i-1] === b[j-1]) dp[i][j] = dp[i-1][j-1];
+      else dp[i][j] = 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
+    }
+  }
+  return dp[m][n];
+}
+function toleranciaMaxima(largo) {
+  if (largo < 7) return 0;   // palabras cortas: exige coincidencia exacta
+  if (largo <= 9) return 1;  // 7-9 letras: tolera 1 error de tipeo
+  return 2;                 // 10+ letras: tolera 2 errores de tipeo
+}
+function apareceConTolerancia(tNorm, termino) {
+  if (termino.length < 7) return false;
+  const tol = toleranciaMaxima(termino.length);
+  const palabras = tNorm.split(/[^a-z]+/).filter(Boolean);
+  return palabras.some(p => Math.abs(p.length - termino.length) <= 2 && distanciaEdicion(p, termino) <= tol);
+}
+
 function stemDiv(t) { return t.length >= 6 ? t.slice(0,-2) : t; }
 function matchDivKw(titulo, kw) {
   const tNorm = expandirAbreviaturasMOP(normDiv(titulo));
   const kwNorm = normDiv(kw);
   if (kwNorm.length <= 4) return new RegExp(`(?<![a-z])${kwNorm}(?![a-z])`).test(tNorm);
-  return kwNorm.split(/\s+/).filter(t=>t.length>=3).every(t=>tNorm.includes(stemDiv(t)));
+  return kwNorm.split(/\s+/).filter(t=>t.length>=3).every(t=>
+    tNorm.includes(stemDiv(t)) || apareceConTolerancia(tNorm, t)
+  );
 }
 
 // ── Matching de keywords/servicios (usado en /buscar y /buscar-general) ──
@@ -317,14 +354,16 @@ function matchDivKw(titulo, kw) {
 // para términos cortos, a diferencia de matchDivKw que sí la tenía. Eso
 // permitía falsos positivos como "pav" matcheando dentro de "PAVANA".
 // Ahora ambas funciones (matchDivKw y matchKwSafe) usan la misma lógica de
-// protección para términos de 4 caracteres o menos.
+// protección para términos de 4 caracteres o menos, y la misma tolerancia
+// a errores de tipeo para términos de 7 caracteres o más.
 function matchKwSafe(titulo, kw) {
   const tNorm = expandirAbreviaturasMOP(normDiv(titulo));
   const terms = normDiv(kw).split(/\s+/).filter(t => t.length >= 3);
   if (!terms.length) return false;
   return terms.every(t => {
     if (t.length <= 4) return new RegExp(`(?<![a-z])${t}(?![a-z])`).test(tNorm);
-    return tNorm.includes(t.length >= 6 ? t.slice(0,-2) : t);
+    const stem = t.length >= 6 ? t.slice(0,-2) : t;
+    return tNorm.includes(stem) || apareceConTolerancia(tNorm, t);
   });
 }
 
