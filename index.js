@@ -338,11 +338,20 @@ function apareceConTolerancia(tNorm, termino) {
   return palabras.some(p => Math.abs(p.length - termino.length) <= 2 && distanciaEdicion(p, termino) <= tol);
 }
 
+// Construye el regex de "palabra aislada" permitiendo un sufijo plural
+// opcional en español ("s" o "es") — sin esto, "vial" no matcheaba dentro
+// de "viales" (plural legítimo), aunque sí protegía correctamente contra
+// falsos positivos como "vial" dentro de "vialidad" (que sigue bloqueado,
+// ya que "idad" no es un sufijo de plural válido).
+function regexPalabraAislada(termino) {
+  return new RegExp(`(?<![a-z])${termino}(e?s)?(?![a-z])`);
+}
+
 function stemDiv(t) { return t.length >= 6 ? t.slice(0,-2) : t; }
 function matchDivKw(titulo, kw) {
   const tNorm = expandirAbreviaturasMOP(normDiv(titulo));
   const kwNorm = normDiv(kw);
-  if (kwNorm.length <= 4) return new RegExp(`(?<![a-z])${kwNorm}(?![a-z])`).test(tNorm);
+  if (kwNorm.length <= 4) return regexPalabraAislada(kwNorm).test(tNorm);
   return kwNorm.split(/\s+/).filter(t=>t.length>=3).every(t=>
     tNorm.includes(stemDiv(t)) || apareceConTolerancia(tNorm, t)
   );
@@ -354,14 +363,14 @@ function matchDivKw(titulo, kw) {
 // para términos cortos, a diferencia de matchDivKw que sí la tenía. Eso
 // permitía falsos positivos como "pav" matcheando dentro de "PAVANA".
 // Ahora ambas funciones (matchDivKw y matchKwSafe) usan la misma lógica de
-// protección para términos de 4 caracteres o menos, y la misma tolerancia
-// a errores de tipeo para términos de 7 caracteres o más.
+// protección para términos de 4 caracteres o menos (con soporte de plural),
+// y la misma tolerancia a errores de tipeo para términos de 7+ caracteres.
 function matchKwSafe(titulo, kw) {
   const tNorm = expandirAbreviaturasMOP(normDiv(titulo));
   const terms = normDiv(kw).split(/\s+/).filter(t => t.length >= 3);
   if (!terms.length) return false;
   return terms.every(t => {
-    if (t.length <= 4) return new RegExp(`(?<![a-z])${t}(?![a-z])`).test(tNorm);
+    if (t.length <= 4) return regexPalabraAislada(t).test(tNorm);
     const stem = t.length >= 6 ? t.slice(0,-2) : t;
     return tNorm.includes(stem) || apareceConTolerancia(tNorm, t);
   });
