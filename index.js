@@ -103,7 +103,7 @@ const DIVISIONES_LEN = [
   {
     id: "infra", label: "Infraestructura", icon: "🛣️", color: "#7c3aed",
     activa: true,
-    keywords: ["ingenieria de detalle","ingenieria basica","estudio de factibilidad","anteproyecto","preinversion","est. preinv","ep const","ep mej","ep vial","iluminacion vial","conservacion vial","infraestructura vial","ingenieria vial","transporte vial","pavimento","pav","proteccion costera","obras portuarias","infraestructura portuaria","obras maritimas"],
+    keywords: ["ingenieria de detalle","ingenieria basica","estudio de factibilidad","anteproyecto","preinversion","est. preinv","ep const","ep mej","ep vial","iluminacion vial","conservacion vial","infraestructura vial","ingenieria vial","transporte vial","pavimento","pav","manual de carreteras","cambio climatico","proteccion costera","obras portuarias","infraestructura portuaria","obras maritimas"],
     servicios: ["estudio","consultoria","diseno","prefactibilidad","factibilidad","asesoria","anteproyecto","inspeccion"],
     exclusiones: {
       organismos: ["serviu", "municipalidad", "ilustre municipalidad", "i. municipalidad"],
