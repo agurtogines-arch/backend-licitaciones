@@ -858,6 +858,7 @@ function renderDash() {
     <div class="stat"><div class="stat-num" style="color:#64748b">${descartadas.length}</div><div class="stat-label">Descartadas</div></div>`;
   renderDivTabs();
   if(currentTab==='historico'){renderHistorico();return;}
+  if(currentTab==='calendario'){renderCalendario();return;}
   let filtradas=[],emptyTitle='',emptyMsg='',showBtn=false;
   if(currentTab==='proceso'){filtradas=enProceso;emptyTitle='No hay licitaciones en proceso';emptyMsg='Las licitaciones activas aparecerán aquí';showBtn=true;}
   else if(currentTab==='urgentes'){filtradas=urgentes;emptyTitle='No hay licitaciones urgentes 🎉';emptyMsg='Las licitaciones con cierre en 3 días o menos aparecerán aquí';}
