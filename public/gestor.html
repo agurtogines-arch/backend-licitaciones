@@ -332,15 +332,15 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
       <div class="metrics-grid" id="metricsGrid"></div>
       <div class="cards-grid" id="cardsGridHistorico"></div>
     </div>
-    <div id="view-calendario" style="display:none">
-      <div style="overflow-x:auto;background:white;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08)">
-        <table id="tablaCalendario" style="width:100%;border-collapse:collapse;font-size:12px;white-space:nowrap"></table>
-      </div>
-      <div id="emptyCalendario" class="empty-state" style="display:none">
-        <div class="empty-ico">📅</div>
-        <h2>No hay licitaciones en estudio</h2>
-        <p>El calendario mostrará las fechas clave de las licitaciones activas (no descartadas)</p>
-      </div>
+  </div>
+  <div id="view-calendario" style="display:none;max-width:1800px;margin:0 auto;padding:0 24px 24px">
+    <div style="overflow:auto;background:white;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);height:calc(100vh - 250px);min-height:400px">
+      <table id="tablaCalendario" style="width:100%;border-collapse:collapse;font-size:12.5px;white-space:nowrap"></table>
+    </div>
+    <div id="emptyCalendario" class="empty-state" style="display:none">
+      <div class="empty-ico">📅</div>
+      <h2>No hay licitaciones en estudio</h2>
+      <p>El calendario mostrará las fechas clave de las licitaciones activas (no descartadas)</p>
     </div>
   </div>
 </div>
@@ -725,6 +725,30 @@ async function guardarFechaManual(licId, campo, valorActual) {
   toast('Fecha actualizada');
   renderCalendario();
 }
+// Convierte "DD-MM-AAAA" o "DD-MM-AAAA HH:MM" a un objeto Date real.
+function parseFechaCalendario(str) {
+  if (!str) return null;
+  const m = str.match(/(\d{2})-(\d{2})-(\d{4})(?:\s+(\d{2}):(\d{2}))?/);
+  if (!m) return null;
+  const [, d, mo, y, h, mi] = m;
+  return new Date(Number(y), Number(mo) - 1, Number(d), h ? Number(h) : 0, mi ? Number(mi) : 0);
+}
+// Días restantes hasta una fecha del calendario (negativo = ya pasó).
+function diasHastaFechaCalendario(str) {
+  const d = parseFechaCalendario(str);
+  if (!d) return null;
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  const soloFecha = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  return Math.round((soloFecha - now) / 86400000);
+}
+// Semáforo visual: verde >10 días, amarillo 5-10, rojo 0-5, gris si ya pasó.
+function colorSemaforo(dias) {
+  if (dias === null) return 'transparent';
+  if (dias < 0)  return '#f1f5f9'; // ya ocurrió — gris neutro, no es urgente
+  if (dias <= 5) return '#fecaca'; // rojo suave
+  if (dias <= 10) return '#fde68a'; // amarillo suave
+  return '#bbf7d0'; // verde suave
+}
 function renderCalendario() {
   const activas = lics.filter(l => !isDescartada(l));
   const tabla = document.getElementById('tablaCalendario');
@@ -745,26 +769,43 @@ function renderCalendario() {
     { key:'aperturaEco',     label:'Apertura Económica' },
     { key:'adjudicacion',    label:'Adjudicación' },
   ];
+  const ANCHO_CODIGO = 110, ANCHO_NOMBRE = 240;
+  // Orden: por fecha de PUBLICACIÓN real (la que ya trae cada licitación,
+  // sin importar cuándo se agregó al gestor) — más antigua primero, ya que
+  // lleva más tiempo publicada y sus plazos vencen antes. Las licitaciones
+  // sin fecha de publicación detectada van al final.
+  const conFechas = activas.map(lic => ({ lic, fechas: getFechasCalendario(lic) }));
+  conFechas.sort((a, b) => {
+    const da = parseFechaCalendario(a.fechas.publicacion);
+    const db = parseFechaCalendario(b.fechas.publicacion);
+    if (!da && !db) return 0;
+    if (!da) return 1;
+    if (!db) return -1;
+    return da - db;
+  });
+
   const thead = `<thead><tr style="background:#1E2D5A;color:white">
-    <th style="padding:9px 12px;text-align:left;position:sticky;left:0;background:#1E2D5A;z-index:1">Código</th>
-    <th style="padding:9px 12px;text-align:left;min-width:220px">Nombre</th>
-    ${columnas.map(c => `<th style="padding:9px 12px;text-align:left">${c.label}</th>`).join('')}
+    <th style="padding:9px 12px;text-align:left;position:sticky;left:0;top:0;background:#1E2D5A;z-index:3;width:${ANCHO_CODIGO}px;min-width:${ANCHO_CODIGO}px">Código</th>
+    <th style="padding:9px 12px;text-align:left;position:sticky;left:${ANCHO_CODIGO}px;top:0;background:#1E2D5A;z-index:3;width:${ANCHO_NOMBRE}px;min-width:${ANCHO_NOMBRE}px;box-shadow:2px 0 4px rgba(0,0,0,.15)">Nombre</th>
+    ${columnas.map(c => `<th style="padding:9px 12px;text-align:left;position:sticky;top:0;background:#1E2D5A;z-index:2">${c.label}</th>`).join('')}
   </tr></thead>`;
-  const filas = activas.map((lic, i) => {
-    const fechas = getFechasCalendario(lic);
+
+  const filas = conFechas.map(({ lic, fechas }, i) => {
     const manual = getSJ(lic)._calendarioManual || {};
-    const bg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
+    const bgFila = i % 2 === 0 ? '#ffffff' : '#f8fafc';
     const celdas = columnas.map(c => {
       const val = fechas[c.key];
       const esManual = !!manual[c.key];
-      return `<td style="padding:8px 12px;border-bottom:1px solid #eef2f6">
-        <span style="${esManual ? 'color:#b45309;font-weight:600' : 'color:#334155'}" title="${esManual ? 'Corregido manualmente' : ''}">${val || '—'}</span>
-        <button onclick="guardarFechaManual('${lic.id}','${c.key}',${val ? `'${val}'` : 'null'})" title="Editar fecha manualmente" style="border:none;background:transparent;cursor:pointer;color:#94a3b8;font-size:11px;margin-left:4px">✏️</button>
+      const dias = diasHastaFechaCalendario(val);
+      const bgSemaforo = colorSemaforo(dias);
+      return `<td style="padding:8px 12px;border-bottom:1px solid #eef2f6;background:${bgSemaforo}">
+        <span style="${esManual ? 'color:#92400e;font-weight:700' : 'color:#1e293b'}" title="${esManual ? 'Corregido manualmente' : ''}">${val || '—'}</span>
+        <button onclick="guardarFechaManual('${lic.id}','${c.key}',${val ? `'${val}'` : 'null'})" title="Editar fecha manualmente" style="border:none;background:transparent;cursor:pointer;color:#64748b;font-size:11px;margin-left:4px;opacity:.6">✏️</button>
       </td>`;
     }).join('');
-    return `<tr style="background:${bg}">
-      <td style="padding:8px 12px;font-weight:600;color:#1E2D5A;position:sticky;left:0;background:${bg};border-bottom:1px solid #eef2f6">${esc(lic.codigo || '—')}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #eef2f6;white-space:normal;max-width:280px">${esc(lic.nombre || '—')}</td>
+    return `<tr>
+      <td style="padding:8px 12px;font-weight:600;color:#1E2D5A;position:sticky;left:0;background:${bgFila};border-bottom:1px solid #eef2f6;z-index:1">${esc(lic.codigo || '—')}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #eef2f6;white-space:normal;position:sticky;left:${ANCHO_CODIGO}px;background:${bgFila};box-shadow:2px 0 4px rgba(0,0,0,.06)">${esc(lic.nombre || '—')}</td>
       ${celdas}
     </tr>`;
   }).join('');
