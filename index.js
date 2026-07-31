@@ -618,6 +618,43 @@ function formatFechaPub(str) {
   return f === "–" ? "–" : `Fecha de Publicación: ${f}`;
 }
 
+// ── Fechas con hora (formato DD-MM-AAAA HH:MM) ─────────────────────────────
+// Usado para construir la sección "📅 FECHAS CLAVE" del análisis de forma
+// determinística, con los datos exactos de la API de MP (nunca vía IA).
+function formatFechaHora(isoStr) {
+  if (!isoStr) return null;
+  const d = new Date(isoStr);
+  if (isNaN(d.getTime())) return null;
+  const pad = n => String(n).padStart(2, "0");
+  return `${pad(d.getDate())}-${pad(d.getMonth()+1)}-${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// Construye el texto de la sección "📅 FECHAS CLAVE" a partir de los datos
+// exactos de la API de MP (ver `fechasPrecisas` en /mp/analizar). Reemplaza
+// por completo lo que la IA hubiera escrito para esta sección, evitando
+// errores de transcripción y agregando la hora, que el prompt nunca pedía.
+function construirBloqueFechasClave(fp) {
+  if (!fp) return null;
+  const filas = [
+    ["Fecha publicación",            fp.publicacion],
+    ["Fecha inicio de preguntas",    fp.inicioPreguntas],
+    ["Fecha final de preguntas",     fp.finalPreguntas],
+    ["Publicación de respuestas",    fp.publicacionRespuestas],
+    ["Cierre recepción ofertas",     fp.cierre],
+    ["Apertura técnica",             fp.aperturaTecnica],
+    ["Apertura económica",           fp.aperturaEconomica],
+    [fp.adjudicacionEsEstimada ? "Adjudicación estimada" : "Adjudicación", fp.adjudicacion],
+  ];
+  const lineas = filas
+    .map(([label, iso]) => {
+      const f = formatFechaHora(iso);
+      return f ? `${label}:`.padEnd(28) + f : null;
+    })
+    .filter(Boolean);
+  if (!lineas.length) return null;
+  return `📅 FECHAS CLAVE (fuente: ficha oficial de Mercado Público, hora exacta)\n${lineas.join("\n")}`;
+}
+
 // ── Exclusión sectorial global ────────────────────────────────────────────
 const EXCLUSION_SECTORIAL = [
   "medicamento","metilfenidato","farmaceutico","cateter","dialisis",
@@ -1799,6 +1836,7 @@ app.post("/mp/analizar", async (req, res) => {
   }
 
   let datosAPI = {};
+  let fechasPrecisas = null;
   if (item.codigo) {
     try {
       const apiUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?codigo=${item.codigo}&ticket=${TICKET}`;
@@ -1819,6 +1857,23 @@ app.post("/mp/analizar", async (req, res) => {
                                        ? `${lic.TiempoDuracionContrato} ${lic.UnidadTiempoContratoLicitacion}`
                                        : null,
             tipoEstimacion:          lic.MontoEstimado > 0 ? "Presupuesto disponible (oficial MP)" : null
+          };
+          // ── Fechas con hora exacta, tomadas directamente de la API de MP ──
+          // Se arman de forma determinística (sin IA) para que la sección
+          // "FECHAS CLAVE" del análisis nunca dependa de que el modelo
+          // transcriba bien una fecha desde texto/HTML — y para que incluya
+          // la hora, que el prompt nunca pedía. Mapeo confirmado contra la
+          // ficha real de Mercado Público (recuadro "Etapas y plazos").
+          fechasPrecisas = {
+            publicacion:        lic.FechaPublicacion || null,
+            inicioPreguntas:    lic.Fechas?.FechaInicio || null,
+            finalPreguntas:     lic.Fechas?.FechaFinal || null,
+            publicacionRespuestas: lic.Fechas?.FechaPubRespuestas || null,
+            cierre:             lic.Fechas?.FechaCierre || null,
+            aperturaTecnica:    lic.Fechas?.FechaActoAperturaTecnica || null,
+            aperturaEconomica:  lic.Fechas?.FechaActoAperturaEconomica || null,
+            adjudicacion:       lic.Fechas?.FechaAdjudicacion || lic.Fechas?.FechaEstimadaAdjudicacion || null,
+            adjudicacionEsEstimada: !lic.Fechas?.FechaAdjudicacion && !!lic.Fechas?.FechaEstimadaAdjudicacion
           };
         }
       }
@@ -2126,7 +2181,24 @@ Si no hay alertas relevantes, indica "Sin alertas críticas".`
     }
 
     const data = await response.json();
-    const text = data.choices?.[0]?.message?.content || "No se pudo obtener el análisis.";
+    let text = data.choices?.[0]?.message?.content || "No se pudo obtener el análisis.";
+
+    // ── Reemplazo determinístico de "📅 FECHAS CLAVE" ──────────────────────
+    // Sustituye lo que la IA haya escrito para esta sección (adivinado desde
+    // texto/HTML, sin hora) por el bloque exacto construido desde la API de
+    // MP, que sí incluye hora. Si por algún motivo no hay fechas precisas
+    // disponibles (ej. la API no respondió), se deja el texto de la IA tal
+    // cual, sin romper el análisis.
+    const bloqueFechas = construirBloqueFechasClave(fechasPrecisas);
+    if (bloqueFechas) {
+      const seccionRegex = /📅 FECHAS CLAVE[\s\S]*?(?=\n📊|\n🎯|\n⚠️|$)/;
+      if (seccionRegex.test(text)) {
+        text = text.replace(seccionRegex, bloqueFechas + "\n");
+      } else {
+        // Si la IA omitió la sección por completo, se agrega igual.
+        text = text.trim() + "\n\n" + bloqueFechas;
+      }
+    }
 
     if (item.codigo && text && !text.startsWith("No se pudo")) {
       try {
