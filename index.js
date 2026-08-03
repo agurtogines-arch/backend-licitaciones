@@ -554,50 +554,71 @@ async function obtenerEspecialidadesMOPviaAjax(codigo, cookieHeader) {
   if (!codigo || !cookieHeader) return [];
   const referer = `https://www.mercadopublico.cl/Procurement/Modules/RFB/DetailsAcquisition.aspx?idlicitacion=${codigo}`;
   const ajaxUrl = "https://www.mercadopublico.cl/Procurement/Modules/RFB/DetailsAcquisition.aspx/ObtenerEspecialidades";
-  try {
-    const r = await fetch(ajaxUrl, {
-      method: "POST",
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Content-Type": "application/json; charset=utf-8",
-        "X-Requested-With": "XMLHttpRequest",
-        "Referer": referer, "Origin": "https://www.mercadopublico.cl",
-        "Accept": "application/json, text/javascript, */*; q=0.01",
-        // Mercado Público empezó a exigir estos headers Sec-Fetch-* para
-        // aceptar la petición (confirmado en vivo: sin ellos responde
-        // "{d:null}" con HTTP 200 aunque las cookies y el Referer sean
-        // correctos; con ellos, devuelve las especialidades reales).
-        "Sec-Fetch-Site": "same-origin",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Dest": "empty",
-        "Cookie": cookieHeader
-      },
-      body: JSON.stringify({}),
-      signal: AbortSignal.timeout(10000)
-    });
-    if (!r.ok) { console.warn(`[ObtenerEspecialidades] WebMethod respondió ${r.status} para ${codigo}`); return []; }
-    const data = await r.json();
-    const items = Array.isArray(data?.d) ? data.d : [];
-    const requisitos = [];
-    const seen = new Set();
-    for (const it of items) {
-      const partes = (it.Descripcion || "").split("|").map(s => s.trim());
-      if (partes.length < 3) continue;
-      const especialidad    = partes[0];
-      const subEspecialidad = partes[1];
-      const categoria       = partes[2];
-      const req = parseSubEspecialidad(subEspecialidad, especialidad, categoria);
-      if (!req) continue;
-      const clave = req.or ? req.or.map(o => o.codigo).join("|") : req.codigo;
-      if (seen.has(clave)) continue;
-      seen.add(clave);
-      requisitos.push(req);
+
+  // ── Reintento silencioso ante respuesta vacía ──────────────────────────
+  // Se confirmó en vivo que la PRIMERA llamada a este endpoint, justo
+  // después de abrir la sesión, a veces responde "{d:null}" con HTTP 200
+  // (sesión aún no "calentada" del lado de Mercado Público) — pero la
+  // MISMA sesión, reintentada segundos después, responde correctamente de
+  // forma consistente. En vez de mostrarle al usuario un falso "no se
+  // pudieron obtener las especialidades", el backend reintenta solo,
+  // internamente, antes de rendirse.
+  const MAX_INTENTOS = 3;
+  for (let intento = 1; intento <= MAX_INTENTOS; intento++) {
+    try {
+      const r = await fetch(ajaxUrl, {
+        method: "POST",
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Content-Type": "application/json; charset=utf-8",
+          "X-Requested-With": "XMLHttpRequest",
+          "Referer": referer, "Origin": "https://www.mercadopublico.cl",
+          "Accept": "application/json, text/javascript, */*; q=0.01",
+          // Mercado Público empezó a exigir estos headers Sec-Fetch-* para
+          // aceptar la petición (confirmado en vivo: sin ellos responde
+          // "{d:null}" con HTTP 200 aunque las cookies y el Referer sean
+          // correctos; con ellos, devuelve las especialidades reales).
+          "Sec-Fetch-Site": "same-origin",
+          "Sec-Fetch-Mode": "cors",
+          "Sec-Fetch-Dest": "empty",
+          "Cookie": cookieHeader
+        },
+        body: JSON.stringify({}),
+        signal: AbortSignal.timeout(10000)
+      });
+      if (!r.ok) {
+        console.warn(`[ObtenerEspecialidades] Intento ${intento}/${MAX_INTENTOS}: WebMethod respondió ${r.status} para ${codigo}`);
+      } else {
+        const data = await r.json();
+        const items = Array.isArray(data?.d) ? data.d : [];
+        if (items.length > 0) {
+          if (intento > 1) console.log(`[ObtenerEspecialidades] ${codigo}: obtenido en el intento ${intento}/${MAX_INTENTOS}`);
+          const requisitos = [];
+          const seen = new Set();
+          for (const it of items) {
+            const partes = (it.Descripcion || "").split("|").map(s => s.trim());
+            if (partes.length < 3) continue;
+            const especialidad    = partes[0];
+            const subEspecialidad = partes[1];
+            const categoria       = partes[2];
+            const req = parseSubEspecialidad(subEspecialidad, especialidad, categoria);
+            if (!req) continue;
+            const clave = req.or ? req.or.map(o => o.codigo).join("|") : req.codigo;
+            if (seen.has(clave)) continue;
+            seen.add(clave);
+            requisitos.push(req);
+          }
+          return requisitos;
+        }
+        console.warn(`[ObtenerEspecialidades] Intento ${intento}/${MAX_INTENTOS}: respuesta vacía (d:null) para ${codigo}`);
+      }
+    } catch (e) {
+      console.warn(`[ObtenerEspecialidades] Intento ${intento}/${MAX_INTENTOS}: error para ${codigo}:`, e.message);
     }
-    return requisitos;
-  } catch (e) {
-    console.warn(`[ObtenerEspecialidades] Error para ${codigo}:`, e.message);
-    return [];
+    if (intento < MAX_INTENTOS) await new Promise(r => setTimeout(r, 1500));
   }
+  console.warn(`[ObtenerEspecialidades] ${codigo}: sin especialidades tras ${MAX_INTENTOS} intentos`);
+  return [];
 }
 
 function estadoTexto(codigo) {
