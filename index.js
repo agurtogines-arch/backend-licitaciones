@@ -1865,7 +1865,10 @@ app.post("/mp/analizar", async (req, res) => {
           // la hora, que el prompt nunca pedía. Mapeo confirmado contra la
           // ficha real de Mercado Público (recuadro "Etapas y plazos").
           fechasPrecisas = {
-            publicacion:        lic.FechaPublicacion || null,
+            // MP es inconsistente: en algunas licitaciones FechaPublicacion
+            // viene a nivel raíz, en otras solo dentro de "Fechas". Se
+            // revisan ambos lugares, con el nivel raíz como prioridad.
+            publicacion:        lic.FechaPublicacion || lic.Fechas?.FechaPublicacion || null,
             inicioPreguntas:    lic.Fechas?.FechaInicio || null,
             finalPreguntas:     lic.Fechas?.FechaFinal || null,
             publicacionRespuestas: lic.Fechas?.FechaPubRespuestas || null,
