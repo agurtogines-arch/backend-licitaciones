@@ -4005,19 +4005,12 @@ app.post("/mp/clasificar-pool-ia", async (req, res) => {
         }
       } catch(e) { console.warn(`[clasif-ia] Cache check: ${e.message}`); }
 
-      // Solo clasificar licitaciones nuevas sin registro previo.
-      // Límite 100 por ejecución como techo de seguridad ante renovaciones masivas del pool.
-      //
-      // IMPORTANTE: se ordenan por fecha de publicación DESCENDENTE antes de
-      // tomar las primeras 100. El pool de MP no viene ordenado por fecha —
-      // sin este ordenamiento, el clasificador tomaba las primeras 100 que
-      // "cayeran" en el orden arbitrario de la API de MP, dejando licitaciones
-      // recién publicadas esperando semanas su turno mientras licitaciones
-      // antiguas (muchas ya sin relevancia) se clasificaban antes. Como las
-      // licitaciones nuevas son precisamente las que más generan casos de
-      // "el backend encuentra pero no aparece" (dependen del fallback de
-      // keywords en vez de la IA, más precisa), priorizarlas por antigüedad
-      // de publicación ataca esa causa de forma estructural.
+      // Límite diario de clasificación. Subido temporalmente a 3000 (2025-08-03)
+      // para vaciar de una sola vez el backlog acumulado (~2833 pendientes).
+      // TODO: bajar a 150 una vez confirmado que el backlog llegó a cero —
+      // 150/día da margen cómodo sobre el ritmo normal de licitaciones nuevas
+      // sin volver a acumular backlog, con un costo de ~$2/mes.
+      const LIMITE_DIARIO_CLASIFICACION = 3000;
       const sinClasificarTotal = candidatas
         .filter(l => !yaClasificadas.has(l.CodigoExterno))
         .sort((a, b) => {
@@ -4025,7 +4018,7 @@ app.post("/mp/clasificar-pool-ia", async (req, res) => {
           const fb = b.FechaPublicacion ? new Date(b.FechaPublicacion).getTime() : 0;
           return fb - fa; // más reciente primero
         });
-      const sinClasificar      = sinClasificarTotal.slice(0, 100);
+      const sinClasificar      = sinClasificarTotal.slice(0, LIMITE_DIARIO_CLASIFICACION);
       clasificacionIAState.ya_en_cache    = yaClasificadas.size;
       clasificacionIAState.a_clasificar   = sinClasificarTotal.length; // total real pendiente
       clasificacionIAState.en_este_lote   = sinClasificar.length;      // lo que clasifica ahora
