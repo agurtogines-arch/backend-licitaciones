@@ -4005,12 +4005,12 @@ app.post("/mp/clasificar-pool-ia", async (req, res) => {
         }
       } catch(e) { console.warn(`[clasif-ia] Cache check: ${e.message}`); }
 
-      // Límite diario de clasificación. Subido temporalmente a 3000 (2025-08-03)
-      // para vaciar de una sola vez el backlog acumulado (~2833 pendientes).
-      // TODO: bajar a 150 una vez confirmado que el backlog llegó a cero —
-      // 150/día da margen cómodo sobre el ritmo normal de licitaciones nuevas
-      // sin volver a acumular backlog, con un costo de ~$2/mes.
-      const LIMITE_DIARIO_CLASIFICACION = 3000;
+      // Límite diario de clasificación. Bajado a 150 (2025-08-03) tras la
+      // ráfaga que vació el backlog acumulado (llegó a ~100% de las
+      // licitaciones clasificables). 150/día da margen cómodo sobre el
+      // ritmo normal de licitaciones nuevas (~90/día estimado), evitando que
+      // vuelva a acumularse un backlog grande, con un costo de ~$2/mes.
+      const LIMITE_DIARIO_CLASIFICACION = 150;
       const sinClasificarTotal = candidatas
         .filter(l => !yaClasificadas.has(l.CodigoExterno))
         .sort((a, b) => {
