@@ -1299,41 +1299,53 @@ app.post("/buscar-general", async (req, res) => {
         // keywords y servicios ve el contenido real, no solo el título.
         const descripcionReal = l.Descripcion || descCacheMap.get(l.CodigoExterno) || "";
         const titulo = `${l.Nombre || ""} ${descripcionReal}`;
+        // Exclusiones duras: bloquean SIEMPRE, sin importar lo que digan la
+        // IA o el sistema de keywords (arriendos, mantenciones de edificios,
+        // programas sociales, sectores ajenos a LEN, etc.)
         if (esBloqueada(titulo)) return false;
         if (bloqueadaSectorial(titulo)) return false;
 
-        // ✦ PRIORIDAD: clasificación IA cuando está disponible en cache
+        // ── Clasificación por IA (si ya existe para esta licitación) ──────
         const iaClass = iaClassMap.get(l.CodigoExterno);
-        if (iaClass) {
-          if (iaClass.veredicto_ia === "🔴") return false;
-          return iaClass.divisiones_ia.includes(id);
-        }
+        const iaDiceQueSi = !!iaClass && iaClass.veredicto_ia !== "🔴" && iaClass.divisiones_ia.includes(id);
 
-        // Fallback: sistema de keywords (cuando IA aún no clasificó)
+        // ── Clasificación por keywords (siempre se evalúa, no solo como
+        // respaldo cuando falta la IA) ────────────────────────────────────
         const matchTec = keywords.some(kw => matchKw(titulo, kw));
-        if (!matchTec) return false;
-        // ✦ Tipos de proyecto que ya implican servicio (Plan Maestro, Anteproyecto, etc.)
-        const faltaServicio = servicios?.length && !tipoProyectoImplicito(titulo) && !servicios.some(s => matchKw(titulo, s));
-        if (faltaServicio) {
-          // Si aún no tenemos descripción real (ni del pool ni de cache) y
-          // la única razón de descarte es el servicio, damos una segunda
-          // oportunidad más abajo en vez de descartar definitivamente.
-          if (!descripcionReal && l.CodigoExterno) {
-            const key = `${l.CodigoExterno}::${id}`;
-            if (!yaEnRescate.has(key)) {
-              yaEnRescate.add(key);
-              candidatosRescate.push({ codigo: l.CodigoExterno, id, l });
+        let keywordsDicenQueSi = false;
+        if (matchTec) {
+          const faltaServicio = servicios?.length && !tipoProyectoImplicito(titulo) && !servicios.some(s => matchKw(titulo, s));
+          if (faltaServicio) {
+            // Si aún no tenemos descripción real y la única razón de
+            // descarte por keywords es el servicio, se da una segunda
+            // oportunidad más abajo (rescate) en vez de descartar
+            // definitivamente por esta vía — pero la IA todavía podría
+            // confirmar igual si ya la clasificó bien.
+            if (!descripcionReal && l.CodigoExterno) {
+              const key = `${l.CodigoExterno}::${id}`;
+              if (!yaEnRescate.has(key)) {
+                yaEnRescate.add(key);
+                candidatosRescate.push({ codigo: l.CodigoExterno, id, l });
+              }
+            }
+          } else {
+            const exclConfig = divConfig && aplicaExclusiones(divConfig, l.Comprador?.NombreOrganismo || "", titulo);
+            if (!exclConfig) {
+              const DIVISIONES_ESTRICTAS = new Set(["ito","mineria","energia"]);
+              const regionClasif = extraerRegionDeTexto(titulo);
+              const clasificacion = clasificarDivisiones(titulo, regionClasif?.codigo || null, l.Comprador?.NombreOrganismo || "");
+              const pasaEstricta = !(clasificacion.length === 0 && DIVISIONES_ESTRICTAS.has(id));
+              const pasaCruce = !(clasificacion.length > 0 && !clasificacion.some(d => d.id === id));
+              keywordsDicenQueSi = pasaEstricta && pasaCruce;
             }
           }
-          return false;
         }
-        if (divConfig && aplicaExclusiones(divConfig, l.Comprador?.NombreOrganismo || "", titulo)) return false;
-        const DIVISIONES_ESTRICTAS = new Set(["ito","mineria","energia"]);
-        const regionClasif = extraerRegionDeTexto(titulo);
-        const clasificacion = clasificarDivisiones(titulo, regionClasif?.codigo || null, l.Comprador?.NombreOrganismo || "");
-        if (clasificacion.length === 0 && DIVISIONES_ESTRICTAS.has(id)) return false;
-        if (clasificacion.length > 0 && !clasificacion.some(d => d.id === id)) return false;
-        return true;
+
+        // ── Decisión final: basta con que UNO de los dos sistemas
+        // confirme la relevancia — ya no gana automáticamente la IA. Esto
+        // evita perder licitaciones donde la IA se equivocó al descartar
+        // algo que las keywords sí reconocen correctamente (y viceversa).
+        return iaDiceQueSi || keywordsDicenQueSi;
       });
       let mapped = filtradas.map(mapItem);
       if (codigosValidos) mapped = mapped.filter(r => !r.codigoRegion || codigosValidos.has(r.codigoRegion));
