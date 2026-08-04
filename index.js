@@ -349,11 +349,22 @@ function regexPalabraAislada(termino) {
 
 function stemDiv(t) { return t.length >= 6 ? t.slice(0,-2) : t; }
 function matchDivKw(titulo, kw) {
-  const tNorm = expandirAbreviaturasMOP(normDiv(titulo));
+  // Se revisan AMBOS textos — el original y el expandido — nunca solo uno.
+  // La expansión de abreviaturas ("mej"→"mejoramiento") consume la forma
+  // corta antes de que una keyword que busca esa forma corta (ej. "ep mej")
+  // tenga oportunidad de encontrarla. Revisando también el texto SIN
+  // expandir, keywords que dependen de la abreviatura literal siguen
+  // funcionando, sin perder el beneficio de la expansión para keywords que
+  // ya usan la palabra completa (ej. "pavimento" encontrando "PAV").
+  const tOriginal  = normDiv(titulo);
+  const tExpandido = expandirAbreviaturasMOP(tOriginal);
   const kwNorm = normDiv(kw);
-  if (kwNorm.length <= 4) return regexPalabraAislada(kwNorm).test(tNorm);
+  if (kwNorm.length <= 4) {
+    return regexPalabraAislada(kwNorm).test(tOriginal) || regexPalabraAislada(kwNorm).test(tExpandido);
+  }
   return kwNorm.split(/\s+/).filter(t=>t.length>=3).every(t=>
-    tNorm.includes(stemDiv(t)) || apareceConTolerancia(tNorm, t)
+    tOriginal.includes(stemDiv(t)) || tExpandido.includes(stemDiv(t)) ||
+    apareceConTolerancia(tExpandido, t)
   );
 }
 
@@ -364,15 +375,20 @@ function matchDivKw(titulo, kw) {
 // permitía falsos positivos como "pav" matcheando dentro de "PAVANA".
 // Ahora ambas funciones (matchDivKw y matchKwSafe) usan la misma lógica de
 // protección para términos de 4 caracteres o menos (con soporte de plural),
-// y la misma tolerancia a errores de tipeo para términos de 7+ caracteres.
+// la misma tolerancia a errores de tipeo para términos de 7+ caracteres, y
+// revisan tanto el texto original como el expandido (ver nota en matchDivKw)
+// para no perder keywords que dependen de la forma abreviada literal.
 function matchKwSafe(titulo, kw) {
-  const tNorm = expandirAbreviaturasMOP(normDiv(titulo));
+  const tOriginal  = normDiv(titulo);
+  const tExpandido = expandirAbreviaturasMOP(tOriginal);
   const terms = normDiv(kw).split(/\s+/).filter(t => t.length >= 3);
   if (!terms.length) return false;
   return terms.every(t => {
-    if (t.length <= 4) return regexPalabraAislada(t).test(tNorm);
+    if (t.length <= 4) {
+      return regexPalabraAislada(t).test(tOriginal) || regexPalabraAislada(t).test(tExpandido);
+    }
     const stem = t.length >= 6 ? t.slice(0,-2) : t;
-    return tNorm.includes(stem) || apareceConTolerancia(tNorm, t);
+    return tOriginal.includes(stem) || tExpandido.includes(stem) || apareceConTolerancia(tExpandido, t);
   });
 }
 
