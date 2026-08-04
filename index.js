@@ -1849,7 +1849,72 @@ app.post("/mp/analizar", async (req, res) => {
       if (cacheRes.ok) {
         const data = await cacheRes.json();
         if (data.length > 0) {
-          console.log(`[analizar] Cache HIT para ${item.codigo} (creado ${data[0].creado_en})`);
+          const diasTranscurridos = (Date.now() - new Date(data[0].creado_en).getTime()) / 86400000;
+          const TTL_REFRESCO_FECHAS_DIAS = 3;
+
+          if (diasTranscurridos < TTL_REFRESCO_FECHAS_DIAS) {
+            console.log(`[analizar] Cache HIT para ${item.codigo} (creado ${data[0].creado_en})`);
+            return res.json({ analysis: data[0].analisis, cached: true, cacheCreadoEn: data[0].creado_en });
+          }
+
+          // ── Caché con más de 3 días: refrescar SOLO las fechas ──────────
+          // No se vuelve a llamar a la IA (cero costo adicional) — se
+          // consulta la API de MP (gratuita) para traer las fechas
+          // actuales y se reemplaza únicamente la sección "📅 FECHAS CLAVE"
+          // del análisis ya guardado, dejando el resto intacto. Si Mercado
+          // Público movió una fecha (algo común y legítimo), el usuario la
+          // ve actualizada sin tener que reanalizar manualmente ni pagar
+          // otro análisis completo.
+          console.log(`[analizar] Cache de ${item.codigo} tiene ${diasTranscurridos.toFixed(1)} días — refrescando solo fechas (sin IA)`);
+          try {
+            const apiUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?codigo=${item.codigo}&ticket=${TICKET}`;
+            const apiRes = await fetch(apiUrl, { signal: AbortSignal.timeout(10000) });
+            if (apiRes.ok) {
+              const apiData = await apiRes.json();
+              const lic = apiData.Listado?.[0];
+              if (lic) {
+                const fechasFrescas = {
+                  publicacion:           lic.FechaPublicacion || lic.Fechas?.FechaPublicacion || null,
+                  inicioPreguntas:       lic.Fechas?.FechaInicio || null,
+                  finalPreguntas:        lic.Fechas?.FechaFinal || null,
+                  publicacionRespuestas: lic.Fechas?.FechaPubRespuestas || null,
+                  cierre:                lic.Fechas?.FechaCierre || null,
+                  aperturaTecnica:       lic.Fechas?.FechaActoAperturaTecnica || null,
+                  aperturaEconomica:     lic.Fechas?.FechaActoAperturaEconomica || null,
+                  adjudicacion:          lic.Fechas?.FechaAdjudicacion || lic.Fechas?.FechaEstimadaAdjudicacion || null,
+                  adjudicacionEsEstimada: !lic.Fechas?.FechaAdjudicacion && !!lic.Fechas?.FechaEstimadaAdjudicacion
+                };
+                const bloqueFechasFresco = construirBloqueFechasClave(fechasFrescas);
+                if (bloqueFechasFresco) {
+                  const seccionRegex = /📅 FECHAS CLAVE[\s\S]*?(?=\n📊|\n🎯|\n⚠️|$)/;
+                  const textoActualizado = seccionRegex.test(data[0].analisis)
+                    ? data[0].analisis.replace(seccionRegex, bloqueFechasFresco + "\n")
+                    : data[0].analisis.trim() + "\n\n" + bloqueFechasFresco;
+
+                  // Guardar el texto refrescado — esto también resetea el
+                  // contador de 3 días para la próxima vez.
+                  await fetch(`${SUPABASE_URL}/rest/v1/analisis_cache`, {
+                    method: "POST",
+                    headers: { ...SUPABASE_HEADERS, "Prefer": "resolution=merge-duplicates" },
+                    body: JSON.stringify({ codigo: item.codigo, analisis: textoActualizado, creado_en: new Date().toISOString() }),
+                    signal: AbortSignal.timeout(5000)
+                  });
+                  await fetch(`${SUPABASE_URL}/rest/v1/licitaciones?codigo=eq.${encodeURIComponent(item.codigo)}`, {
+                    method: "PATCH",
+                    headers: SUPABASE_HEADERS,
+                    body: JSON.stringify({ analisis_ia_completo: textoActualizado }),
+                    signal: AbortSignal.timeout(5000)
+                  });
+                  console.log(`[analizar] Fechas de ${item.codigo} refrescadas sin usar IA`);
+                  return res.json({ analysis: textoActualizado, cached: true, fechasRefrescadas: true });
+                }
+              }
+            }
+          } catch (e) {
+            console.warn(`[analizar] No se pudieron refrescar fechas de ${item.codigo}, se devuelve la caché tal cual: ${e.message}`);
+          }
+          // Si el refresco falla por cualquier motivo, mejor devolver la
+          // caché vieja que dejar al usuario sin nada.
           return res.json({ analysis: data[0].analisis, cached: true, cacheCreadoEn: data[0].creado_en });
         }
       }
