@@ -1295,6 +1295,12 @@ app.post("/buscar-general", async (req, res) => {
     // definitivamente.
     const candidatosRescate = []; // { codigo, id, l }
     const yaEnRescate = new Set(); // evita duplicar el mismo codigo+division
+    // Casos donde la IA ya había clasificado (con opinión propia) pero dijo
+    // que NO, y el sistema de keywords dice que SÍ — un desacuerdo real que
+    // vale la pena revisar más adelante, en vez de depender de encontrarlo
+    // por casualidad (ver caso Puerto Williams, 2026-08-04).
+    const rescatesKeywordsIA = []; // { codigo, division_id, veredicto_ia, divisiones_ia }
+    const yaRegistradoRescate = new Set();
 
     const resultados = {};    for (const div of divisiones) {
       const { id, keywords, servicios, regionDesde, regionHasta } = div;
@@ -1357,6 +1363,25 @@ app.post("/buscar-general", async (req, res) => {
           }
         }
 
+        // ── Registro de desacuerdos IA vs keywords ─────────────────────
+        // Si la IA ya clasificó esta licitación (tiene opinión propia,
+        // no es que "aún no la haya visto") y dijo que NO, pero las
+        // keywords dicen que SÍ, se guarda el caso para revisión
+        // posterior — sin esto, este tipo de error de la IA solo se
+        // detecta por casualidad, como pasó hoy.
+        if (iaClass && !iaDiceQueSi && keywordsDicenQueSi) {
+          const key = `${l.CodigoExterno}::${id}`;
+          if (!yaRegistradoRescate.has(key)) {
+            yaRegistradoRescate.add(key);
+            rescatesKeywordsIA.push({
+              codigo: l.CodigoExterno,
+              division_id: id,
+              veredicto_ia: iaClass.veredicto_ia,
+              divisiones_ia: iaClass.divisiones_ia
+            });
+          }
+        }
+
         // ── Decisión final: basta con que UNO de los dos sistemas
         // confirme la relevancia — ya no gana automáticamente la IA. Esto
         // evita perder licitaciones donde la IA se equivocó al descartar
@@ -1371,6 +1396,26 @@ app.post("/buscar-general", async (req, res) => {
         if (seen.has(k)) return false;
         seen.add(k); return true;
       });
+    }
+
+    // ── Guardar desacuerdos IA vs keywords (no bloquea la respuesta) ──────
+    // Se guarda en segundo plano (sin "await") para no retrasar la
+    // búsqueda — es un registro para revisión posterior, no algo crítico
+    // para el resultado que ve el usuario ahora mismo.
+    if (rescatesKeywordsIA.length > 0) {
+      console.log(`[buscar-general] ${rescatesKeywordsIA.length} desacuerdo(s) IA vs keywords detectado(s), guardando para revisión...`);
+      fetch(`${SUPABASE_URL}/rest/v1/keywords_rescates_ia`, {
+        method: "POST",
+        headers: { ...SUPABASE_HEADERS, "Prefer": "resolution=merge-duplicates" },
+        body: JSON.stringify(rescatesKeywordsIA.map(r => ({
+          codigo: r.codigo,
+          division_id: r.division_id,
+          veredicto_ia: r.veredicto_ia,
+          divisiones_ia: r.divisiones_ia,
+          detectado_en: new Date().toISOString()
+        }))),
+        signal: AbortSignal.timeout(5000)
+      }).catch(e => console.warn(`[buscar-general] No se pudo guardar registro de desacuerdos IA vs keywords: ${e.message}`));
     }
 
     // ── Rescate: segunda oportunidad para candidatos sin descripción ─────
@@ -3850,6 +3895,24 @@ app.get("/mp/cache-pool-status", async (req, res) => {
 // USO: GET /mp/debug-clasificacion/1148-2-O126
 // Devuelve análisis paso a paso: pool MP, detección de región, filtros de
 // exclusión, keywords matcheadas por división y veredicto final.
+// Consulta los casos donde el sistema de keywords rescató una licitación
+// que la IA había descartado — para revisar si hay un patrón que valga la
+// pena corregir en el prompt de clasificación. Sin este endpoint, este tipo
+// de error de la IA solo se detecta por casualidad.
+app.get("/mp/desacuerdos-ia", async (req, res) => {
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/keywords_rescates_ia?select=*&order=detectado_en.desc&limit=200`,
+      { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(10000) }
+    );
+    if (!r.ok) return res.status(502).json({ error: "No se pudo consultar Supabase" });
+    const data = await r.json();
+    res.json({ total: data.length, desacuerdos: data });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get("/mp/debug-clasificacion/:codigo", async (req, res) => {
   const codigo = req.params.codigo;
   try {
