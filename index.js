@@ -1252,7 +1252,7 @@ app.post("/buscar-general", async (req, res) => {
         const tituloNorm = normDiv(l.Nombre || "");
         return SIGLA_REGEX.test(tituloNorm);
       });
-      const MAX_RESCATE_SIGLA = 20;
+      const MAX_RESCATE_SIGLA = 60; // subido de 20 (2026-08-04) — el rescate es gratis (solo consultas a la API de MP, sin costo de IA), el único límite real es no saturar a MP con demasiadas peticiones simultáneas
       const codigosSigla = [...new Set(candidatosSolaSigla.map(l => l.CodigoExterno).filter(Boolean))].slice(0, MAX_RESCATE_SIGLA);
       if (codigosSigla.length > 0) {
         console.log(`[buscar-general] Rescate previo (solo-sigla): ${candidatosSolaSigla.length} candidatos, consultando ${codigosSigla.length} (límite ${MAX_RESCATE_SIGLA})...`);
@@ -1427,7 +1427,7 @@ app.post("/buscar-general", async (req, res) => {
     // servicio, se rescatan. La descripción consultada se guarda en cache
     // para que futuras búsquedas ya no necesiten este paso.
     if (candidatosRescate.length > 0) {
-      const MAX_RESCATE = 30;
+      const MAX_RESCATE = 90; // subido de 30 (2026-08-04) — mismo motivo: rescate gratuito, solo cuidar no saturar la API de MP
       const codigosUnicos = [...new Set(candidatosRescate.map(c => c.codigo))].slice(0, MAX_RESCATE);
       console.log(`[buscar-general] Rescate: ${candidatosRescate.length} candidatos (${codigosUnicos.length} códigos únicos, límite ${MAX_RESCATE}) sin descripción — consultando detalle real...`);
       const descRescatadas = new Map();
