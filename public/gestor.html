@@ -739,25 +739,50 @@ async function guardarFechaManual(licId, campo, valorActual) {
 // recurso se intenta leer una línea "💰 MONTO REFERENCIAL:" del análisis.
 function parseMontoDesdeAnalisis(texto) {
   if (!texto) return null;
-  const m = texto.match(/💰\s*MONTO REFERENCIAL\s*:\s*([^\n\r]+)/i);
+  // El prompt del backend le pide a la IA esta línea exacta, con el formato
+  // "$849.896.000 CLP (Presupuesto)" — monto con separadores de miles y la
+  // base de la estimación entre paréntesis. Se toma el texto tal cual: ya
+  // viene como corresponde y no hay que reformatear nada.
+  // Se acepta "REFERENCIAL" además de "ESTIMADO" por si quedan análisis
+  // hechos con una versión anterior del prompt.
+  // El \s* de después del rótulo se come el salto de línea a propósito: la
+  // IA a veces pone el monto en la misma línea y a veces en la siguiente.
+  const m = texto.match(/💰\s*MONTO\s+(?:ESTIMADO|REFERENCIAL)\s*:?\s*([^\n\r]+)/i);
   if (!m) return null;
   const v = m[1].trim();
-  return (!v || /^(no informado|no indica|sin informaci[oó]n|-|—)$/i.test(v)) ? null : v;
+  if (!v) return null;
+  // Justamente porque cruza el salto de línea, si la IA dejó el monto en
+  // blanco lo que sigue es el título de la sección siguiente ("🏢 DIVISIÓN
+  // LEN"). Exigir al menos un dígito descarta eso sin descartar montos
+  // legítimos, que siempre traen cifras ($849.896.000, UF 3.500).
+  if (!/\d/.test(v)) return null;
+  return /^(no especificado|no informado|no indica|no publicado|sin informaci[oó]n|-|—)$/i.test(v) ? null : v;
+}
+// El número de la columna monto_estimado NO es confiable: el backend lo
+// calcula con parseFloat sobre el texto de Mercado Público, y parseFloat
+// sobre "849.896.000" devuelve 849,896 porque se corta en el segundo punto.
+// Por eso solo se usa cuando se ve sano (entero, de cuatro cifras para
+// arriba); un valor con decimales o menor a mil es la marca de ese error y
+// se descarta, para no mostrar "$850" donde van $849.896.000.
+function montoDesdeColumna(n) {
+  if (n === null || n === undefined || n === '') return null;
+  const num = Number(n);
+  if (!Number.isFinite(num) || !Number.isInteger(num) || num < 1000) return null;
+  return fmtCLP(num) + ' CLP';
 }
 // Igual que getFechasCalendario: lo escrito a mano siempre gana sobre lo
 // extraído automáticamente. Se guarda en el mismo steps_json._calendarioManual
 // que las fechas (claves distintas, así que no hay choque entre ambos).
 function getExtrasCalendario(lic) {
   const manual = getSJ(lic)._calendarioManual || {};
-  // Orden de prioridad: mano > monto_estimado (MP) > análisis (histórico).
-  // fmtCLP devuelve '—' para null, por eso acá se compara contra null antes
-  // de formatear: si no, un monto ausente se convertiría en el string '—' y
-  // taparía el fallback al análisis.
-  const oficial = (lic.monto_estimado !== null && lic.monto_estimado !== undefined && lic.monto_estimado !== '')
-    ? fmtCLP(lic.monto_estimado)
-    : null;
+  // Orden de prioridad: lo escrito a mano > el análisis > la columna.
+  // El análisis va antes que la columna porque trae el monto completo y con
+  // la base entre paréntesis, mientras que la columna puede venir dañada por
+  // el parseFloat del backend (ver montoDesdeColumna).
   return {
-    monto: (manual.monto ?? oficial ?? parseMontoDesdeAnalisis(lic.analisis_ia_completo)) || null,
+    monto: (manual.monto
+            ?? parseMontoDesdeAnalisis(lic.analisis_ia_completo)
+            ?? montoDesdeColumna(lic.monto_estimado)) || null,
     link:  manual.link || null
   };
 }
@@ -1126,7 +1151,7 @@ function renderGestionInterna() {
       <select id="gi-estado" onchange="actualizarCampoLicitacion('estado_proceso',this.value)" style="width:100%;border:1px solid #e2e8f0;border-radius:6px;padding:7px 10px;font-size:13px;font-family:inherit;background:#fff">${epOptions}</select>${lic.ultimo_polling_at?`<div style="font-size:10.5px;color:#64748b;margin-top:3px">↻ ${fmtDateTime(lic.ultimo_polling_at)}</div>`:''}</div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px">
-      <div><label style="font-size:10.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block">Monto Estimado MP</label><input type="number" value="${lic.monto_estimado||''}" onchange="actualizarCampoLicitacion('monto_estimado',this.value?Number(this.value):null)" placeholder="Sin info" style="width:100%;border:1px solid #e2e8f0;border-radius:6px;padding:7px 10px;font-size:13px;font-family:inherit"><div style="font-size:10.5px;color:#64748b;margin-top:3px">CLP. Auto desde MP.</div></div>
+      <div><label style="font-size:10.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block">Monto Estimado MP</label><input type="number" value="${lic.monto_estimado||''}" onchange="actualizarCampoLicitacion('monto_estimado',this.value?Number(this.value):null)" placeholder="Sin info" style="width:100%;border:1px solid #e2e8f0;border-radius:6px;padding:7px 10px;font-size:13px;font-family:inherit"><div style="font-size:10.5px;color:#64748b;margin-top:3px">${getExtrasCalendario(lic).monto ? esc(getExtrasCalendario(lic).monto) : 'CLP. Auto desde MP.'}</div></div>
       <div><label style="font-size:10.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block">Monto Ofertado LEN</label><input type="number" value="${lic.monto_ofertado_len||''}" onchange="actualizarCampoLicitacion('monto_ofertado_len',this.value?Number(this.value):null)" placeholder="Al postular" style="width:100%;border:1px solid #e2e8f0;border-radius:6px;padding:7px 10px;font-size:13px;font-family:inherit"><div style="font-size:10.5px;color:#64748b;margin-top:3px">CLP. Manual.</div></div>
       <div><label style="font-size:10.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block">Monto Adjudicado</label><input type="number" value="${lic.monto_adjudicado||''}" readonly style="width:100%;border:1px solid #e2e8f0;border-radius:6px;padding:7px 10px;font-size:13px;font-family:inherit;background:#f1f5f9;color:#475569"><div style="font-size:10.5px;color:#64748b;margin-top:3px">Auto por polling.</div></div>
     </div>
