@@ -787,10 +787,47 @@ async function guardarExtraManual(licId, campo) {
   toast(cfg.ok);
   renderCalendario();
 }
-// Chrome bloquea abrir rutas file:// o \\servidor desde una página web, así
-// que para rutas de disco/red el click copia la ruta al portapapeles para
-// pegarla en el Explorador. Las URL http(s) sí se abren en pestaña nueva.
+// Chrome bloquea los links a rutas locales SOLO cuando la página viene de un
+// servidor (http/https): ahí un href file:// no hace nada y la consola dice
+// "Not allowed to load local resource". Pero cuando el gestor se abre como
+// archivo del disco (doble click al .html, o sea location.protocol 'file:')
+// el navegador sí deja navegar a una carpeta local, sin instalar nada.
+//
+// Por eso el link se arma distinto según cómo se abrió el gestor: si es
+// archivo local, va derecho a la carpeta; si viene de un servidor, no hay
+// vuelta que darle y el click copia la ruta como antes. El botón ⧉ de al
+// lado copia la ruta siempre, en los dos casos.
+//
+// Ojo con lo que abre: es el listado de archivos de Chrome, no el
+// Explorador de Windows. Sirve para ver qué hay y abrir PDFs; los .docx o
+// .dwg se bajan como copia en vez de abrirse desde H:, así que para
+// trabajar un archivo sigue siendo mejor ir por el Explorador.
 function esUrlWeb(v) { return /^https?:\/\//i.test((v || '').trim()); }
+// Solo con la página abierta como archivo local el navegador permite esto.
+const PUEDE_ABRIR_CARPETAS = (location.protocol === 'file:');
+// Convierte una ruta de Windows en una URL file:// que el navegador entiende.
+//   H:\99-TEMP\Gines Agurto\65   →  file:///H:/99-TEMP/Gines%20Agurto/65/
+//   \\servidor\proyectos\Malleco →  file://servidor/proyectos/Malleco/
+// Cada tramo se codifica por separado (y no la ruta entera de una) porque
+// encodeURI dejaría pasar # y ?, que cortarían la URL: una carpeta llamada
+// "Anexo #3" abriría "Anexo " y el resto se perdería como fragmento.
+function rutaAFileUrl(ruta) {
+  const s = (ruta || '').trim().replace(/\\/g, '/');
+  if (!s) return null;
+  if (/^\/\//.test(s)) {                                  // \\servidor\recurso\...
+    const partes = s.replace(/^\/+/, '').split('/').filter(Boolean);
+    const host = partes.shift();
+    if (!host) return null;
+    const resto = partes.map(encodeURIComponent).join('/');
+    return 'file://' + encodeURIComponent(host) + '/' + (resto ? resto + '/' : '');
+  }
+  const m = s.match(/^([A-Za-z]):\/(.*)$/);               // H:\...
+  if (m) {
+    const resto = m[2].split('/').filter(Boolean).map(encodeURIComponent).join('/');
+    return 'file:///' + m[1] + ':/' + (resto ? resto + '/' : '');
+  }
+  return null;                                            // no es ruta absoluta
+}
 async function copiarRutaArchivos(licId) {
   const lic = lics.find(l => l.id === licId);
   const ruta = lic && (getSJ(lic)._calendarioManual || {}).link;
@@ -913,13 +950,17 @@ function renderCalendario() {
       <button onclick="guardarExtraManual('${lic.id}','monto')" title="Editar monto manualmente" style="${ESTILO_LAPIZ}">✏️</button>
     </td>`;
 
-    // Link a archivos: manual. Si es URL http(s) abre en pestaña nueva; si
-    // es ruta de disco/red (H:\..., \\servidor\...) el click copia la ruta.
-    const celdaLink = `<td style="padding:8px 12px;border-bottom:1px solid #eef2f6;max-width:280px;overflow:hidden;text-overflow:ellipsis">
+    // Link a archivos: manual. Si es URL http(s) abre en pestaña nueva. Si es
+    // ruta de disco/red y el gestor se abrió como archivo local, el click va
+    // derecho a la carpeta; si no, copia la ruta. El botón ⧉ copia siempre.
+    const urlCarpeta = PUEDE_ABRIR_CARPETAS ? rutaAFileUrl(extras.link) : null;
+    const celdaLink = `<td style="padding:8px 12px;border-bottom:1px solid #eef2f6;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
       ${extras.link
         ? (esUrlWeb(extras.link)
             ? `<a href="${esc(extras.link)}" target="_blank" rel="noopener" title="${esc(extras.link)}" style="color:#1d4ed8;text-decoration:none;font-weight:600">📁 ${esc(etiquetaLink(extras.link))}</a>`
-            : `<a href="javascript:void(0)" onclick="copiarRutaArchivos('${lic.id}')" title="${esc(extras.link)}&#10;(click para copiar la ruta)" style="color:#1d4ed8;text-decoration:none;font-weight:600;cursor:pointer">📁 ${esc(etiquetaLink(extras.link))}</a>`)
+            : (urlCarpeta
+                ? `<a href="${esc(urlCarpeta)}" target="_blank" title="${esc(extras.link)}&#10;(click para abrir la carpeta)" style="color:#1d4ed8;text-decoration:none;font-weight:600;cursor:pointer">📁 ${esc(etiquetaLink(extras.link))}</a><button onclick="copiarRutaArchivos('${lic.id}')" title="Copiar la ruta al portapapeles" style="${ESTILO_LAPIZ}">⧉</button>`
+                : `<a href="javascript:void(0)" onclick="copiarRutaArchivos('${lic.id}')" title="${esc(extras.link)}&#10;(click para copiar la ruta)" style="color:#1d4ed8;text-decoration:none;font-weight:600;cursor:pointer">📁 ${esc(etiquetaLink(extras.link))}</a><button onclick="copiarRutaArchivos('${lic.id}')" title="Copiar la ruta al portapapeles" style="${ESTILO_LAPIZ}">⧉</button>`))
         : '<span style="color:#94a3b8">—</span>'}
       <button onclick="guardarExtraManual('${lic.id}','link')" title="Editar link a archivos" style="${ESTILO_LAPIZ}">✏️</button>
     </td>`;
