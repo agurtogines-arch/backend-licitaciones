@@ -14,6 +14,48 @@ const TICKET = process.env.MP_TICKET || "1FC8A3E9-5D72-495C-8340-83E5B1749B79";
 const SUPABASE_URL = "https://veuzudobuiwtrigdxqjt.supabase.co";
 const SUPABASE_KEY = process.env.SUPABASE_KEY || "";
 if (!SUPABASE_KEY) console.warn("⚠️  SUPABASE_KEY no configurada como variable de entorno en Render");
+// ── Monto de Mercado Público → número entero de pesos ────────────────────
+// MP entrega el monto a veces como número y a veces como texto con formato
+// chileno ("849.896.000": punto de miles, coma decimal). El parseFloat que
+// se usaba antes se corta en el segundo punto y devuelve 849,896 en vez de
+// 849.896.000, y eso quedaba guardado así en la columna monto_estimado.
+function parseMontoMP(v) {
+  if (v === null || v === undefined || v === "") return null;
+  if (typeof v === "number") return Number.isFinite(v) && v > 0 ? Math.round(v) : null;
+
+  let s = String(v).trim().replace(/[^\d.,-]/g, "");   // fuera "$", "CLP", espacios
+  if (!s) return null;
+
+  const puntos = (s.match(/\./g) || []).length;
+  const comas  = (s.match(/,/g)  || []).length;
+
+  if (puntos && comas) {
+    // Tiene los dos: el último que aparece es el separador decimal.
+    if (s.lastIndexOf(",") > s.lastIndexOf(".")) s = s.replace(/\./g, "").replace(",", ".");
+    else                                         s = s.replace(/,/g, "");
+  } else if (puntos > 1) {
+    s = s.replace(/\./g, "");                          // "849.896.000" → miles
+  } else if (puntos === 1) {
+    // Un solo punto: es de miles si deja exactamente 3 dígitos detrás
+    // ("849.896"), y decimal si no ("849.5").
+    s = /\.\d{3}$/.test(s) ? s.replace(".", "") : s;
+  } else if (comas === 1) {
+    s = /,\d{3}$/.test(s) ? s.replace(",", "") : s.replace(",", ".");
+  } else if (comas > 1) {
+    s = s.replace(/,/g, "");
+  }
+
+  const n = Number(s);
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+}
+
+// Mismo monto ya formateado para mostrar: "$849.896.000 CLP".
+function fmtMontoMP(v, conSigno = true) {
+  const n = parseMontoMP(v);
+  if (n === null) return null;
+  return (conSigno ? "$" : "") + n.toLocaleString("es-CL") + " CLP";
+}
+
 const SUPABASE_HEADERS = {
   "apikey":        SUPABASE_KEY,
   "Authorization": `Bearer ${SUPABASE_KEY}`,
@@ -1112,7 +1154,7 @@ app.post("/buscar-general", async (req, res) => {
               organismo:   detalle.Comprador?.NombreOrganismo || null,
               region:      detalle.Comprador?.RegionUnidad || null,
               comuna:      detalle.Comprador?.ComunaUnidad || null,
-              monto:       parseFloat(detalle.MontoEstimado) || null,
+              monto:       parseMontoMP(detalle.MontoEstimado),
               fecha_publicacion: detalle.Fechas?.FechaPublicacion || null,
               tipo_licitacion:   detalle.Tipo || null,
               fetched_at:  new Date().toISOString()
@@ -1549,7 +1591,7 @@ app.post("/buscar-general", async (req, res) => {
                 organismo:   det.Comprador?.NombreOrganismo || null,
                 region:      det.Comprador?.RegionUnidad || null,
                 comuna:      det.Comprador?.ComunaUnidad || null,
-                monto:       parseFloat(det.MontoEstimado) || null,
+                monto:       parseMontoMP(det.MontoEstimado),
                 fecha_publicacion: det.Fechas?.FechaPublicacion || null,
                 tipo_licitacion:   det.Tipo || null,
                 fetched_at: new Date().toISOString()
@@ -1720,7 +1762,7 @@ app.post("/detalle-lote", async (req, res) => {
         resultados[codigo] = {
           organismo:  l.Comprador?.NombreOrganismo || null,
           region:     regionTexto || regionExtraida?.nombre || null,
-          monto:      l.MontoEstimado ? `${Number(l.MontoEstimado).toLocaleString("es-CL")} CLP` : null,
+          monto:      fmtMontoMP(l.MontoEstimado, false),
           descripcion: l.Descripcion || null
         };
       } catch(e) {}
@@ -1747,7 +1789,7 @@ app.get("/detalle/:codigo", async (req, res) => {
       organismo:     l.Comprador?.NombreOrganismo || "–",
       region:        regionTexto || regionExtraida?.nombre || null,
       regionOficial: regionExtraida?.oficial || null,
-      monto:         l.MontoEstimado ? `$${Number(l.MontoEstimado).toLocaleString("es-CL")} CLP` : null,
+      monto:         fmtMontoMP(l.MontoEstimado),
       descripcion:   l.Descripcion || ""
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -2005,7 +2047,7 @@ app.post("/mp/analizar", async (req, res) => {
         const lic = data.Listado?.[0];
         if (lic) {
           datosAPI = {
-            montoEstimado:           parseFloat(lic.MontoEstimado) || 0,
+            montoEstimado:           parseMontoMP(lic.MontoEstimado) || 0,
             organismoCompleto:       lic.Comprador?.NombreOrganismo || null,
             unidadCompradora:        lic.Comprador?.NombreUnidad   || null,
             rutOrganismo:            lic.Comprador?.RutOrganismo   || null,
@@ -2423,7 +2465,7 @@ app.post("/mp/guardar-gestor", async (req, res) => {
         if (lic) {
           datosExtra.fecha_publicacion           = (lic.Fechas?.FechaPublicacion || "").substring(0, 10) || null;
           datosExtra.fecha_adjudicacion_estimada = lic.Fechas?.FechaEstimadaAdjudicacion || null;
-          datosExtra.monto_estimado              = parseFloat(lic.MontoEstimado) || null;
+          datosExtra.monto_estimado              = parseMontoMP(lic.MontoEstimado);
           datosExtra.region                      = lic.Comprador?.RegionUnidad || null;
           nombreCompletoMP                       = lic.Nombre || "";
           descripcionMP                          = lic.Descripcion || "";
@@ -3852,7 +3894,7 @@ app.post("/mp/precalentar-pool", async (req, res) => {
               organismo:   det.Comprador?.NombreOrganismo || null,
               region:      det.Comprador?.RegionUnidad || null,
               comuna:      det.Comprador?.ComunaUnidad || null,
-              monto:       parseFloat(det.MontoEstimado) || null,
+              monto:       parseMontoMP(det.MontoEstimado),
               fecha_publicacion: det.Fechas?.FechaPublicacion || null,
               tipo_licitacion:   det.Tipo || null,
               fetched_at:  new Date().toISOString()
