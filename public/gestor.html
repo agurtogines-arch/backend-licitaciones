@@ -725,6 +725,101 @@ async function guardarFechaManual(licId, campo, valorActual) {
   toast('Fecha actualizada');
   renderCalendario();
 }
+// ── Calendario: campos extra (monto referencial y carpeta de archivos) ───
+// El monto sale de la columna monto_estimado de la tabla licitaciones, que
+// el backend ya llena desde MontoEstimado de la API de MP al guardar cada
+// licitación. No depende de que la IA lo transcriba ni de ningún cambio en
+// el backend: ese dato ya viene en el select('*') que carga el tablero.
+// Cuando MP no publica el monto (típico en licitaciones en UF, que se
+// informan por código BIP) la celda queda vacía y se completa a mano con el
+// mismo lápiz ✏️ de las fechas. El link a la carpeta es 100% manual.
+//
+// Fallback para licitaciones antiguas: las guardadas antes de que existiera
+// la columna monto_estimado tienen ese campo en null, así que como último
+// recurso se intenta leer una línea "💰 MONTO REFERENCIAL:" del análisis.
+function parseMontoDesdeAnalisis(texto) {
+  if (!texto) return null;
+  const m = texto.match(/💰\s*MONTO REFERENCIAL\s*:\s*([^\n\r]+)/i);
+  if (!m) return null;
+  const v = m[1].trim();
+  return (!v || /^(no informado|no indica|sin informaci[oó]n|-|—)$/i.test(v)) ? null : v;
+}
+// Igual que getFechasCalendario: lo escrito a mano siempre gana sobre lo
+// extraído automáticamente. Se guarda en el mismo steps_json._calendarioManual
+// que las fechas (claves distintas, así que no hay choque entre ambos).
+function getExtrasCalendario(lic) {
+  const manual = getSJ(lic)._calendarioManual || {};
+  // Orden de prioridad: mano > monto_estimado (MP) > análisis (histórico).
+  // fmtCLP devuelve '—' para null, por eso acá se compara contra null antes
+  // de formatear: si no, un monto ausente se convertiría en el string '—' y
+  // taparía el fallback al análisis.
+  const oficial = (lic.monto_estimado !== null && lic.monto_estimado !== undefined && lic.monto_estimado !== '')
+    ? fmtCLP(lic.monto_estimado)
+    : null;
+  return {
+    monto: (manual.monto ?? oficial ?? parseMontoDesdeAnalisis(lic.analisis_ia_completo)) || null,
+    link:  manual.link || null
+  };
+}
+const ETIQUETA_EXTRA = {
+  monto: { titulo: 'Monto referencial (ej: $125.000.000 o UF 3.500)', ok: 'Monto actualizado' },
+  link:  { titulo: 'Ruta o link a la carpeta de archivos\n(ej: H:\\99-TEMP\\... o https://...)', ok: 'Link actualizado' }
+};
+// El valor actual se lee acá adentro en vez de pasarlo por el onclick,
+// porque las rutas de red traen backslashes y comillas que romperían el
+// atributo HTML (H:\99-TEMP se convertiría en "H:9-TEMP" dentro de un
+// string de JS). Las fechas no tienen ese problema y siguen igual que antes.
+async function guardarExtraManual(licId, campo) {
+  const lic = lics.find(l => l.id === licId);
+  if (!lic) return;
+  const cfg = ETIQUETA_EXTRA[campo] || { titulo: campo, ok: 'Actualizado' };
+  const manual = getSJ(lic)._calendarioManual || {};
+  const actual = manual[campo] ?? (campo === 'monto' ? (parseMontoDesdeAnalisis(lic.analisis_ia_completo) || '') : '');
+  const nuevoValor = prompt(`${cfg.titulo}\n(dejar vacío para borrar)`, actual || '');
+  if (nuevoValor === null) return; // canceló
+  const sj = getSJ(lic);
+  sj._calendarioManual = { ...(sj._calendarioManual || {}) };
+  if (nuevoValor.trim()) sj._calendarioManual[campo] = nuevoValor.trim();
+  else delete sj._calendarioManual[campo];
+  lic.steps_json = sj;
+  const { error } = await sb.from('licitaciones').update({ steps_json: sj }).eq('id', licId);
+  if (error) { toast('⚠ Error al guardar: ' + error.message); return; }
+  toast(cfg.ok);
+  renderCalendario();
+}
+// Chrome bloquea abrir rutas file:// o \\servidor desde una página web, así
+// que para rutas de disco/red el click copia la ruta al portapapeles para
+// pegarla en el Explorador. Las URL http(s) sí se abren en pestaña nueva.
+function esUrlWeb(v) { return /^https?:\/\//i.test((v || '').trim()); }
+async function copiarRutaArchivos(licId) {
+  const lic = lics.find(l => l.id === licId);
+  const ruta = lic && (getSJ(lic)._calendarioManual || {}).link;
+  if (!ruta) return;
+  try {
+    await navigator.clipboard.writeText(ruta);
+    toast('📋 Ruta copiada — pégala en el Explorador de Windows');
+  } catch (e) {
+    prompt('Copia la ruta:', ruta);
+  }
+}
+// Texto corto para la celda: la última carpeta de la ruta, con la ruta
+// completa en el tooltip (las rutas de proyecto son demasiado largas).
+// En URLs, si el último tramo no dice nada (un número, un id) se muestra
+// el dominio, que es más reconocible.
+function etiquetaLink(v) {
+  const s = (v || '').trim().replace(/[\\/]+$/, '');
+  if (!s) return '';
+  if (esUrlWeb(s)) {
+    try {
+      const u = new URL(s);
+      const ult = decodeURIComponent(u.pathname.split('/').filter(Boolean).pop() || '');
+      return (ult && !/^\d+$/.test(ult)) ? ult : u.hostname.replace(/^www\./, '');
+    } catch (e) { /* URL rara: sigue al caso general */ }
+  }
+  const parts = s.split(/[\\/]/);
+  return parts[parts.length - 1] || s;
+}
+
 // Convierte "DD-MM-AAAA" o "DD-MM-AAAA HH:MM" a un objeto Date real.
 function parseFechaCalendario(str) {
   if (!str) return null;
@@ -769,7 +864,9 @@ function renderCalendario() {
     { key:'aperturaEco',     label:'Apertura Económica' },
     { key:'adjudicacion',    label:'Adjudicación' },
   ];
-  const ANCHO_CODIGO = 110, ANCHO_NOMBRE = 240;
+  // ANCHO_NUM: columna de numeración (1..N), fija junto a Código y Nombre.
+  const ANCHO_NUM = 42, ANCHO_CODIGO = 110, ANCHO_NOMBRE = 240;
+  const LEFT_CODIGO = ANCHO_NUM, LEFT_NOMBRE = ANCHO_NUM + ANCHO_CODIGO;
   // Orden: por fecha de PUBLICACIÓN real (la que ya trae cada licitación,
   // sin importar cuándo se agregó al gestor) — más antigua primero, ya que
   // lleva más tiempo publicada y sus plazos vencen antes. Las licitaciones
@@ -785,13 +882,18 @@ function renderCalendario() {
   });
 
   const thead = `<thead><tr style="background:#1E2D5A;color:white">
-    <th style="padding:9px 12px;text-align:left;position:sticky;left:0;top:0;background:#1E2D5A;z-index:3;width:${ANCHO_CODIGO}px;min-width:${ANCHO_CODIGO}px">Código</th>
-    <th style="padding:9px 12px;text-align:left;position:sticky;left:${ANCHO_CODIGO}px;top:0;background:#1E2D5A;z-index:3;width:${ANCHO_NOMBRE}px;min-width:${ANCHO_NOMBRE}px;box-shadow:2px 0 4px rgba(0,0,0,.15)">Nombre</th>
+    <th style="padding:9px 6px;text-align:center;position:sticky;left:0;top:0;background:#1E2D5A;z-index:3;width:${ANCHO_NUM}px;min-width:${ANCHO_NUM}px">#</th>
+    <th style="padding:9px 12px;text-align:left;position:sticky;left:${LEFT_CODIGO}px;top:0;background:#1E2D5A;z-index:3;width:${ANCHO_CODIGO}px;min-width:${ANCHO_CODIGO}px">Código</th>
+    <th style="padding:9px 12px;text-align:left;position:sticky;left:${LEFT_NOMBRE}px;top:0;background:#1E2D5A;z-index:3;width:${ANCHO_NOMBRE}px;min-width:${ANCHO_NOMBRE}px;box-shadow:2px 0 4px rgba(0,0,0,.15)">Nombre</th>
+    <th style="padding:9px 12px;text-align:right;position:sticky;top:0;background:#1E2D5A;z-index:2;min-width:160px">Monto Referencial</th>
     ${columnas.map(c => `<th style="padding:9px 12px;text-align:left;position:sticky;top:0;background:#1E2D5A;z-index:2">${c.label}</th>`).join('')}
+    <th style="padding:9px 12px;text-align:left;position:sticky;top:0;background:#1E2D5A;z-index:2;min-width:190px">Link a archivos</th>
   </tr></thead>`;
 
+  const ESTILO_LAPIZ = 'border:none;background:transparent;cursor:pointer;color:#64748b;font-size:11px;margin-left:4px;opacity:.6';
   const filas = conFechas.map(({ lic, fechas }, i) => {
     const manual = getSJ(lic)._calendarioManual || {};
+    const extras = getExtrasCalendario(lic);
     const bgFila = i % 2 === 0 ? '#ffffff' : '#f8fafc';
     const celdas = columnas.map(c => {
       const val = fechas[c.key];
@@ -803,10 +905,32 @@ function renderCalendario() {
         <button onclick="guardarFechaManual('${lic.id}','${c.key}',${val ? `'${val}'` : 'null'})" title="Editar fecha manualmente" style="border:none;background:transparent;cursor:pointer;color:#64748b;font-size:11px;margin-left:4px;opacity:.6">✏️</button>
       </td>`;
     }).join('');
+
+    // Monto referencial: automático desde MP, editable a mano cuando MP no
+    // lo publica (el usuario lo busca por código BIP y lo ingresa).
+    const celdaMonto = `<td style="padding:8px 12px;border-bottom:1px solid #eef2f6;text-align:right">
+      <span style="${manual.monto ? 'color:#92400e;font-weight:700' : 'color:#1e293b'}" title="${manual.monto ? 'Ingresado manualmente' : 'Desde Mercado Público'}">${esc(extras.monto || '—')}</span>
+      <button onclick="guardarExtraManual('${lic.id}','monto')" title="Editar monto manualmente" style="${ESTILO_LAPIZ}">✏️</button>
+    </td>`;
+
+    // Link a archivos: manual. Si es URL http(s) abre en pestaña nueva; si
+    // es ruta de disco/red (H:\..., \\servidor\...) el click copia la ruta.
+    const celdaLink = `<td style="padding:8px 12px;border-bottom:1px solid #eef2f6;max-width:280px;overflow:hidden;text-overflow:ellipsis">
+      ${extras.link
+        ? (esUrlWeb(extras.link)
+            ? `<a href="${esc(extras.link)}" target="_blank" rel="noopener" title="${esc(extras.link)}" style="color:#1d4ed8;text-decoration:none;font-weight:600">📁 ${esc(etiquetaLink(extras.link))}</a>`
+            : `<a href="javascript:void(0)" onclick="copiarRutaArchivos('${lic.id}')" title="${esc(extras.link)}&#10;(click para copiar la ruta)" style="color:#1d4ed8;text-decoration:none;font-weight:600;cursor:pointer">📁 ${esc(etiquetaLink(extras.link))}</a>`)
+        : '<span style="color:#94a3b8">—</span>'}
+      <button onclick="guardarExtraManual('${lic.id}','link')" title="Editar link a archivos" style="${ESTILO_LAPIZ}">✏️</button>
+    </td>`;
+
     return `<tr>
-      <td style="padding:8px 12px;font-weight:600;color:#1E2D5A;position:sticky;left:0;background:${bgFila};border-bottom:1px solid #eef2f6;z-index:1">${esc(lic.codigo || '—')}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #eef2f6;white-space:normal;position:sticky;left:${ANCHO_CODIGO}px;background:${bgFila};box-shadow:2px 0 4px rgba(0,0,0,.06)">${esc(lic.nombre || '—')}</td>
+      <td style="padding:8px 6px;text-align:center;color:#64748b;font-size:11.5px;position:sticky;left:0;background:${bgFila};border-bottom:1px solid #eef2f6;z-index:1">${i + 1}</td>
+      <td style="padding:8px 12px;font-weight:600;color:#1E2D5A;position:sticky;left:${LEFT_CODIGO}px;background:${bgFila};border-bottom:1px solid #eef2f6;z-index:1">${esc(lic.codigo || '—')}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #eef2f6;white-space:normal;position:sticky;left:${LEFT_NOMBRE}px;background:${bgFila};box-shadow:2px 0 4px rgba(0,0,0,.06);z-index:1">${esc(lic.nombre || '—')}</td>
+      ${celdaMonto}
       ${celdas}
+      ${celdaLink}
     </tr>`;
   }).join('');
   tabla.innerHTML = thead + `<tbody>${filas}</tbody>`;
