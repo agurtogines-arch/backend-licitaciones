@@ -2340,6 +2340,12 @@ Formato de salida: $XXX.XXX.XXX CLP (con separadores de miles y signo $).
 Indica la base de la estimación (Presupuesto Disponible / Monto Referencial / Estimado por contrato / etc.) si está disponible.
 Solo usa "No especificado" si realmente no aparece en ningún lado del contenido proporcionado.
 
+⏱️ PLAZO DE EJECUCIÓN
+Indica el plazo de ejecución del contrato o estudio (NO el plazo del proceso de licitación: no es la fecha de cierre de ofertas ni de adjudicación, es cuánto dura el trabajo una vez adjudicado).
+Búscalo en el contenido como "Plazo de Ejecución", "Plazo del Contrato", "Duración del Estudio/Servicio", "Plazo de Entrega" o similar. Si "Duración del contrato (API)" tiene un valor, úsalo como referencia.
+Formato de salida: un número y su unidad, tal como aparece en las bases (ej: "180 días corridos", "6 meses", "12 meses desde la orden de inicio").
+Usa "No especificado" si no aparece en ningún lado del contenido proporcionado.
+
 🏢 DIVISIÓN LEN
 La clasificación automática del sistema indica: ${divisionPreCalcLabel}.
 ${divisionPreCalc 
