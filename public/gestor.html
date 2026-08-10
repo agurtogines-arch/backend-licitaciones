@@ -749,14 +749,20 @@ function parseMontoDesdeAnalisis(texto) {
   // IA a veces pone el monto en la misma línea y a veces en la siguiente.
   const m = texto.match(/💰\s*MONTO\s+(?:ESTIMADO|REFERENCIAL)\s*:?\s*([^\n\r]+)/i);
   if (!m) return null;
-  const v = m[1].trim();
+  let v = m[1].trim();
   if (!v) return null;
   // Justamente porque cruza el salto de línea, si la IA dejó el monto en
   // blanco lo que sigue es el título de la sección siguiente ("🏢 DIVISIÓN
   // LEN"). Exigir al menos un dígito descarta eso sin descartar montos
   // legítimos, que siempre traen cifras ($849.896.000, UF 3.500).
   if (!/\d/.test(v)) return null;
-  return /^(no especificado|no informado|no indica|no publicado|sin informaci[oó]n|-|—)$/i.test(v) ? null : v;
+  if (/^(no especificado|no informado|no indica|no publicado|sin informaci[oó]n|-|—)$/i.test(v)) return null;
+  // La IA agrega la base de la estimación entre paréntesis —
+  // "(Presupuesto)", "(Presupuesto: Sectorial)"— que sirve en el análisis
+  // completo pero sobra en la columna, donde solo se quiere el valor: se
+  // recorta cualquier paréntesis final, se haya cerrado bien o no.
+  v = v.replace(/\s*\([^)]*\)?\s*$/, '').trim();
+  return v || null;
 }
 // El número de la columna monto_estimado NO es confiable: el backend lo
 // calcula con parseFloat sobre el texto de Mercado Público, y parseFloat
@@ -764,6 +770,22 @@ function parseMontoDesdeAnalisis(texto) {
 // Por eso solo se usa cuando se ve sano (entero, de cuatro cifras para
 // arriba); un valor con decimales o menor a mil es la marca de ese error y
 // se descarta, para no mostrar "$850" donde van $849.896.000.
+// El plazo de ejecución sale del análisis con el mismo patrón que el monto:
+// el backend le pide a la IA una línea "⏱️ PLAZO DE EJECUCIÓN" separada de
+// las fechas del proceso (que son del calendario de licitación, no del
+// plazo del contrato), así se puede extraer de forma determinística en vez
+// de tener que buscarlo dentro del párrafo de fechas.
+// No hay una columna en la base para esto — a diferencia del monto, MP no
+// entrega el plazo por API, así que no hay ningún valor "oficial" con el
+// que contrastar. Solo existen el análisis y la corrección manual.
+function parsePlazoDesdeAnalisis(texto) {
+  if (!texto) return null;
+  const m = texto.match(/⏱️\s*PLAZO\s+DE\s+EJECUCI[OÓ]N\s*:?\s*([^\n\r]+)/i);
+  if (!m) return null;
+  const v = m[1].trim();
+  if (!v || !/\d/.test(v)) return null;   // sin dígitos: se comió el título siguiente
+  return /^(no especificado|no informado|no indica|no publicado|sin informaci[oó]n|-|—)$/i.test(v) ? null : v;
+}
 function montoDesdeColumna(n) {
   if (n === null || n === undefined || n === '') return null;
   const num = Number(n);
@@ -783,23 +805,32 @@ function getExtrasCalendario(lic) {
     monto: (manual.monto
             ?? parseMontoDesdeAnalisis(lic.analisis_ia_completo)
             ?? montoDesdeColumna(lic.monto_estimado)) || null,
+    plazo: (manual.plazo ?? parsePlazoDesdeAnalisis(lic.analisis_ia_completo)) || null,
     link:  manual.link || null
   };
 }
 const ETIQUETA_EXTRA = {
   monto: { titulo: 'Monto referencial (ej: $125.000.000 o UF 3.500)', ok: 'Monto actualizado' },
+  plazo: { titulo: 'Plazo de ejecución (ej: 180 días corridos o 6 meses)', ok: 'Plazo actualizado' },
   link:  { titulo: 'Ruta o link a la carpeta de archivos\n(ej: H:\\99-TEMP\\... o https://...)', ok: 'Link actualizado' }
 };
 // El valor actual se lee acá adentro en vez de pasarlo por el onclick,
 // porque las rutas de red traen backslashes y comillas que romperían el
 // atributo HTML (H:\99-TEMP se convertiría en "H:9-TEMP" dentro de un
 // string de JS). Las fechas no tienen ese problema y siguen igual que antes.
+// Para monto y plazo, si no hay corrección manual el prompt arranca con lo
+// que ya extrajo el análisis, en vez de vacío: así corregir un valor casi
+// bueno es editar, no volver a escribirlo entero.
 async function guardarExtraManual(licId, campo) {
   const lic = lics.find(l => l.id === licId);
   if (!lic) return;
   const cfg = ETIQUETA_EXTRA[campo] || { titulo: campo, ok: 'Actualizado' };
   const manual = getSJ(lic)._calendarioManual || {};
-  const actual = manual[campo] ?? (campo === 'monto' ? (parseMontoDesdeAnalisis(lic.analisis_ia_completo) || '') : '');
+  const AUTO_POR_CAMPO = {
+    monto: () => parseMontoDesdeAnalisis(lic.analisis_ia_completo),
+    plazo: () => parsePlazoDesdeAnalisis(lic.analisis_ia_completo)
+  };
+  const actual = manual[campo] ?? ((AUTO_POR_CAMPO[campo] && AUTO_POR_CAMPO[campo]()) || '');
   const nuevoValor = prompt(`${cfg.titulo}\n(dejar vacío para borrar)`, actual || '');
   if (nuevoValor === null) return; // canceló
   const sj = getSJ(lic);
@@ -948,6 +979,7 @@ function renderCalendario() {
     <th style="padding:9px 12px;text-align:left;position:sticky;left:${LEFT_CODIGO}px;top:0;background:#1E2D5A;z-index:3;width:${ANCHO_CODIGO}px;min-width:${ANCHO_CODIGO}px">Código</th>
     <th style="padding:9px 12px;text-align:left;position:sticky;left:${LEFT_NOMBRE}px;top:0;background:#1E2D5A;z-index:3;width:${ANCHO_NOMBRE}px;min-width:${ANCHO_NOMBRE}px;box-shadow:2px 0 4px rgba(0,0,0,.15)">Nombre</th>
     <th style="padding:9px 12px;text-align:right;position:sticky;top:0;background:#1E2D5A;z-index:2;min-width:160px">Monto Referencial</th>
+    <th style="padding:9px 12px;text-align:left;position:sticky;top:0;background:#1E2D5A;z-index:2;min-width:140px">Plazo</th>
     ${columnas.map(c => `<th style="padding:9px 12px;text-align:left;position:sticky;top:0;background:#1E2D5A;z-index:2">${c.label}</th>`).join('')}
     <th style="padding:9px 12px;text-align:left;position:sticky;top:0;background:#1E2D5A;z-index:2;min-width:190px">Link a archivos</th>
   </tr></thead>`;
@@ -975,6 +1007,13 @@ function renderCalendario() {
       <button onclick="guardarExtraManual('${lic.id}','monto')" title="Editar monto manualmente" style="${ESTILO_LAPIZ}">✏️</button>
     </td>`;
 
+    // Plazo de ejecución: automático desde el análisis, editable a mano.
+    // Sin columna propia en la base (ver nota de parsePlazoDesdeAnalisis).
+    const celdaPlazo = `<td style="padding:8px 12px;border-bottom:1px solid #eef2f6">
+      <span style="${manual.plazo ? 'color:#92400e;font-weight:700' : 'color:#1e293b'}" title="${manual.plazo ? 'Ingresado manualmente' : 'Extraído del análisis'}">${esc(extras.plazo || '—')}</span>
+      <button onclick="guardarExtraManual('${lic.id}','plazo')" title="Editar plazo manualmente" style="${ESTILO_LAPIZ}">✏️</button>
+    </td>`;
+
     // Link a archivos: manual. Si es URL http(s) abre en pestaña nueva. Si es
     // ruta de disco/red y el gestor se abrió como archivo local, el click va
     // derecho a la carpeta; si no, copia la ruta. El botón ⧉ copia siempre.
@@ -995,6 +1034,7 @@ function renderCalendario() {
       <td style="padding:8px 12px;font-weight:600;color:#1E2D5A;position:sticky;left:${LEFT_CODIGO}px;background:${bgFila};border-bottom:1px solid #eef2f6;z-index:1">${esc(lic.codigo || '—')}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #eef2f6;white-space:normal;position:sticky;left:${LEFT_NOMBRE}px;background:${bgFila};box-shadow:2px 0 4px rgba(0,0,0,.06);z-index:1">${esc(lic.nombre || '—')}</td>
       ${celdaMonto}
+      ${celdaPlazo}
       ${celdas}
       ${celdaLink}
     </tr>`;
