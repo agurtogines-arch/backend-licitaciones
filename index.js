@@ -361,7 +361,14 @@ const ABREVIATURAS_MOP = {
   "alcant":"alcantarillado",
   "saneam":"saneamiento",
   "hidraul":"hidraulica",
-  "estruct":"estructural"
+  "estruct":"estructural",
+  // "FTO" = Fiscalización Técnica de Obras — sigla muy usada por SERVIU en
+  // licitaciones de inspección de proyectos habitacionales (ej. "SERVICIOS
+  // FTO PROYECTO CONJUNTO HABITACIONAL..."). Sin expandirla, el título
+  // nunca contiene "fiscalizacion"/"obras", así que nunca calzaba con la
+  // keyword de ITO ("fiscalizacion de obras") y la licitación quedaba sin
+  // clasificar en ninguna división pese a ser un trabajo de ITO típico.
+  "fto":"fiscalizacion tecnica de obras"
 };
 // Reemplaza solo palabras COMPLETAS que coincidan exactamente con una
 // abreviatura conocida (nunca substrings dentro de otras palabras) — el
