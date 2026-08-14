@@ -192,7 +192,13 @@ const DIVISIONES_LEN = [
     activa: true,
     keywords: ["ambiental","seia","impacto ambiental","pertinencia ambiental","linea de base","monitoreo ambiental","seguimiento ambiental","declaracion de impacto"],
     servicios: ["estudio","consultoria","monitoreo","asesoria","levantamiento"],
-    exclusiones: { organismos: ["mop", "minvu", "municipalidad", "universidad"] }
+    // "mop" se sacó de la exclusión de organismos (caso real: 2216-22-O126,
+    // "Consultoría Ambiental Estratégica... Estudio de Impacto Ambiental",
+    // publicada por "MOP Dirección General de Concesiones" — quedaba fuera
+    // pese a matchear "ambiental"/"seia"/"impacto ambiental", justo con el
+    // organismo que más licitaciones publica para LEN). Se mantienen
+    // minvu/municipalidad/universidad, que no se tocaron.
+    exclusiones: { organismos: ["minvu", "municipalidad", "universidad"] }
   },
   {
     id: "energia", label: "Energía", icon: "⚡", color: "#b45309",
