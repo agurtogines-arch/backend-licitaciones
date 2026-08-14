@@ -189,7 +189,7 @@ const DIVISIONES_LEN = [
   },
   {
     id: "medioambiente", label: "Medio Ambiente", icon: "🌿", color: "#15803d",
-    activa: false,
+    activa: true,
     keywords: ["ambiental","seia","impacto ambiental","pertinencia ambiental","linea de base","monitoreo ambiental","seguimiento ambiental","declaracion de impacto"],
     servicios: ["estudio","consultoria","monitoreo","asesoria","levantamiento"],
     exclusiones: { organismos: ["mop", "minvu", "municipalidad", "universidad"] }
