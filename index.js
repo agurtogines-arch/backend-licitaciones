@@ -145,7 +145,32 @@ const DIVISIONES_LEN = [
   {
     id: "infra", label: "Infraestructura", icon: "🛣️", color: "#7c3aed",
     activa: true,
-    keywords: ["ingenieria de detalle","ingenieria basica","estudio de factibilidad","anteproyecto","preinversion","est. preinv","ep const","ep mej","ep vial","iluminacion vial","conservacion vial","infraestructura vial","ingenieria vial","transporte vial","pavimento","pav","manual de carreteras","cambio climatico","proteccion costera","obras portuarias","infraestructura portuaria","obras maritimas"],
+    // El alcance técnico de Infraestructura es prácticamente el mismo que
+    // el de Zona Sur — la única diferencia real entre ambas es la
+    // cobertura geográfica: Zona Sur es 7ma región al sur, Infraestructura
+    // es todo Chile. Por eso este listado incorpora las mismas keywords
+    // viales/hidráulicas/sanitarias de "zonasur" (puentes, caminos,
+    // hidráulica, APR, saneamiento, etc.), para que un proyecto de ese
+    // mismo tipo en regiones I-VI/RM dejara de caer entre ambas divisiones
+    // sin ser capturado por ninguna (caso real: "Estudio Ing Reposición
+    // Puente Tilama", Región de Coquimbo — antes no calzaba con ninguna
+    // keyword de infra por más que fuera un puente/vial típico de LEN).
+    keywords: [
+      "ingenieria de detalle","ingenieria basica","estudio de factibilidad","anteproyecto",
+      "preinversion","est. preinv","ep const","ep mej","ep vial","iluminacion vial",
+      "conservacion vial","infraestructura vial","ingenieria vial","transporte vial",
+      "pavimento","pav","manual de carreteras","cambio climatico","proteccion costera",
+      "obras portuarias","infraestructura portuaria","obras maritimas",
+      // ── Mismo alcance vial/hidráulico/sanitario que Zona Sur ──
+      "vial","vias","seguridad vial","puentes","caminos","transito",
+      "diseño geometrico","prefactibilidad vial","factibilidad vial",
+      "prefactibilidad hidraulica","factibilidad hidraulica","hidraulica","hidrologia",
+      "aguas lluvias","cauces","apr","saneamiento","alcantarillado",
+      "planta de tratamiento","planta elevadora","conducciones","inundaciones",
+      "drenaje","cuencas","aguas servidas","agua potable","sanitario","ssr",
+      "agua potable rural","saneamiento rural","mejoramiento camino rural",
+      "habilitacion camino rural","electrificacion rural"
+    ],
     servicios: ["estudio","consultoria","diseno","prefactibilidad","factibilidad","asesoria","anteproyecto","inspeccion"],
     exclusiones: {
       organismos: ["serviu", "municipalidad", "ilustre municipalidad", "i. municipalidad"],
