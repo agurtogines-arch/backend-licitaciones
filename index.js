@@ -1080,15 +1080,41 @@ app.post("/buscar-general", async (req, res) => {
       return matchPatron || palabras <= 4;
     };
 
-    const genericasSinDesc = pool.filter(l =>
-      esTituloGenerico(l.Nombre) && !(l.Descripcion && l.Descripcion.trim().length > 20)
-    );
-    console.log(`[buscar-general] Pool=${pool.length} | Genéricas sin desc=${genericasSinDesc.length}`);
+    // DATO DE RAÍZ CONFIRMADO EN VIVO (consulta directa a la API de MP):
+    // el endpoint masivo (?estado=activas) NUNCA trae "FechaPublicacion" ni
+    // "Descripcion" para NINGUNA licitación, sea el título genérico o no —
+    // esos dos campos solo existen en el endpoint de detalle individual
+    // (?codigo=XXX). Por eso cualquier licitación que nunca haya disparado
+    // una consulta de detalle (ni por este enriquecimiento, ni por abrir su
+    // ficha, ni por "Analizar con IA") se queda sin fecha para siempre, sin
+    // importar cuántas palabras tenga su título.
+    //
+    // El heurístico "título genérico" de abajo NO decide quién necesita la
+    // FECHA — decide quién necesita la DESCRIPCIÓN para clasificarse bien
+    // (un título específico ya trae pistas suficientes por sí solo, así
+    // que no vale la pena gastar una consulta extra solo por eso). Son dos
+    // necesidades distintas que antes compartían un solo mecanismo
+    // gobernado por esa heurística, dejando sin ninguna vía de backfill a
+    // las licitaciones de título específico que nadie hubiera abierto aún.
+    //
+    // Ambas necesidades se resuelven con la MISMA llamada de detalle (un
+    // solo fetch trae fecha + descripción + monto + comprador a la vez),
+    // pero se calculan y priorizan por separado para que una nunca le
+    // quite el cupo a la otra: el backfill de fecha es un problema de
+    // integridad de datos (la fecha real existe y no se ha traído) y
+    // siempre va primero; el de descripción es una optimización de
+    // clasificación y se atiende con lo que sobre del cupo.
+    const necesitaDescripcion = l =>
+      esTituloGenerico(l.Nombre) && !(l.Descripcion && l.Descripcion.trim().length > 20);
+    const necesitaFecha = l => !l.FechaPublicacion;
+
+    const candidatos = pool.filter(l => necesitaDescripcion(l) || necesitaFecha(l));
+    console.log(`[buscar-general] Pool=${pool.length} | Necesitan descripción=${pool.filter(necesitaDescripcion).length} | Necesitan fecha=${pool.filter(necesitaFecha).length} | Candidatos únicos=${candidatos.length}`);
 
     let cacheMap = new Map();
-    if (genericasSinDesc.length > 0) {
+    if (candidatos.length > 0) {
       try {
-        const codigosNecesarios = genericasSinDesc.map(l => l.CodigoExterno).filter(Boolean);
+        const codigosNecesarios = candidatos.map(l => l.CodigoExterno).filter(Boolean);
         const CHUNK_QRY = 500;
         for (let i = 0; i < codigosNecesarios.length; i += CHUNK_QRY) {
           const chunk = codigosNecesarios.slice(i, i + CHUNK_QRY);
@@ -1102,26 +1128,33 @@ app.post("/buscar-general", async (req, res) => {
             for (const row of rows) cacheMap.set(row.codigo, row);
           }
         }
-        console.log(`[buscar-general] Cache hits: ${cacheMap.size}/${genericasSinDesc.length}`);
+        console.log(`[buscar-general] Cache hits: ${cacheMap.size}/${candidatos.length}`);
       } catch (e) {
         console.warn(`[buscar-general] Cache lookup falló: ${e.message}`);
       }
     }
 
-    for (const lic of genericasSinDesc) {
+    for (const lic of candidatos) {
       const cached = cacheMap.get(lic.CodigoExterno);
-      if (cached?.descripcion) {
-        lic.Descripcion = cached.descripcion;
-        if (cached.organismo && !lic.Comprador) {
-          lic.Comprador = { NombreOrganismo: cached.organismo, RegionUnidad: cached.region, ComunaUnidad: cached.comuna };
-        }
-        if (cached.monto && !lic.MontoEstimado) lic.MontoEstimado = cached.monto;
-        if (cached.fecha_publicacion && !lic.FechaPublicacion) lic.FechaPublicacion = cached.fecha_publicacion;
-        if (cached.tipo_licitacion && !lic.Tipo) lic.Tipo = cached.tipo_licitacion;
+      if (!cached) continue;
+      if (cached.descripcion) lic.Descripcion = cached.descripcion;
+      if (cached.organismo && !lic.Comprador) {
+        lic.Comprador = { NombreOrganismo: cached.organismo, RegionUnidad: cached.region, ComunaUnidad: cached.comuna };
       }
+      if (cached.monto && !lic.MontoEstimado) lic.MontoEstimado = cached.monto;
+      if (cached.fecha_publicacion && !lic.FechaPublicacion) lic.FechaPublicacion = cached.fecha_publicacion;
+      if (cached.tipo_licitacion && !lic.Tipo) lic.Tipo = cached.tipo_licitacion;
     }
 
-    const aEnriquecer = genericasSinDesc.filter(l => !cacheMap.has(l.CodigoExterno));
+    // De lo que sigue sin cache, se ordena para que quienes AÚN necesitan
+    // fecha de publicación (integridad de datos) vayan primero en la cola,
+    // por sobre quienes solo necesitan descripción (optimización). Así, si
+    // en un mismo pool aparecen muchos títulos genéricos nuevos de golpe,
+    // nunca dejan sin cupo el backfill de fecha de licitaciones de título
+    // específico.
+    const aEnriquecer = candidatos
+      .filter(l => !cacheMap.has(l.CodigoExterno))
+      .sort((a, b) => (necesitaFecha(b) ? 1 : 0) - (necesitaFecha(a) ? 1 : 0));
     const LIMITE_POR_BUSQUEDA = 30;
     const lotePendiente = aEnriquecer.slice(0, LIMITE_POR_BUSQUEDA);
     console.log(`[buscar-general] A enriquecer ahora: ${lotePendiente.length} (pendientes totales: ${aEnriquecer.length})`);
@@ -3595,6 +3628,167 @@ async function ciclo12h() {
 }
 setInterval(ciclo12h, POLLING_INTERVAL_MS);
 setTimeout(ciclo12h, 60 * 1000);
+
+// ── Backfill definitivo de fecha de publicación ───────────────────────────
+// Por qué existe: el endpoint masivo de MP (?estado=activas) NUNCA trae
+// FechaPublicacion — solo el detalle individual (?codigo=XXX) la tiene. En
+// /buscar-general el backfill de esa fecha solo ocurría cuando alguien
+// disparaba una búsqueda, con cupo compartido y limitado a 30 llamadas de
+// detalle por request (para no romper el tiempo de respuesta de esa ruta).
+// Si nadie buscaba, o si aparecían muchas licitaciones nuevas de golpe, el
+// backlog de licitaciones sin fecha podía tardar varias búsquedas en
+// cerrarse — y mientras tanto, una licitación de título específico que
+// nadie abriera manualmente se quedaba sin fecha indefinidamente.
+//
+// Este job es la solución definitiva a ESE límite estructural: corre solo,
+// en segundo plano, cada cierto tiempo, sin depender de que alguien use el
+// buscador ni de ningún límite de tiempo de respuesta HTTP. Recorre TODO
+// el pool activo (no solo lo que ya esté en mp_pool_cache), identifica qué
+// códigos siguen sin fecha_publicacion, y va cerrando ese backlog solo,
+// para siempre — sin volver a depender de una heurística de título ni de
+// que un usuario abra la ficha.
+let backfillFechaState = {
+  ultimo_inicio: null, ultimo_fin: null,
+  ultimo_revisadas: 0, ultimo_pendientes: 0, ultimo_actualizadas: 0, ultimo_error: null,
+  // ── Tendencia del backlog ──────────────────────────────────────────────
+  // Guarda las últimas corridas (pendientes al cierre de cada una) para
+  // poder distinguir un backlog que se achica solo (nada que hacer) de uno
+  // que crece sostenido (señal de que el lote/frecuencia ya no alcanza y
+  // hay que subirlos). Sin este historial, "ultimo_pendientes" por sí solo
+  // no dice si la situación está mejorando o empeorando.
+  historial_pendientes: [], // [{ ts, pendientes }], más reciente al final, máx. 20
+  tendencia: null           // "bajando" | "estable" | "subiendo" | null (aún sin datos suficientes)
+};
+
+const BACKFILL_FECHA_LOTE       = 100; // por corrida — no bloquea ninguna request de usuario
+const BACKFILL_FECHA_PARALELISMO = 5;
+const BACKFILL_FECHA_SLEEP_MS    = 250;
+const BACKFILL_HISTORIAL_MAX     = 20;
+// Margen para no gritar "sube" por ruido de +1/-1 entre corridas —
+// solo se considera una subida real cuando el backlog crece más que esto
+// respecto de la corrida anterior.
+const BACKFILL_MARGEN_ALERTA     = 10;
+
+async function backfillFechasPublicacion() {
+  backfillFechaState.ultimo_inicio = new Date().toISOString();
+  backfillFechaState.ultimo_error  = null;
+  try {
+    const controller = new AbortController();
+    const timeoutId  = setTimeout(() => controller.abort(), 120000);
+    const mpUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?estado=activas&ticket=${TICKET}`;
+    const pool = await fetchConReintentos(mpUrl, controller, "backfill-fechas:activas");
+    clearTimeout(timeoutId);
+    if (pool === null) throw new Error("MP_API_UNAVAILABLE tras reintentos");
+
+    // Averigua, en un solo viaje por lote, cuáles códigos YA tienen fecha
+    // guardada en caché — el resto son los pendientes reales, sin importar
+    // si alguna vez pasaron o no por /buscar-general.
+    const codigos = pool.map(l => l.CodigoExterno).filter(Boolean);
+    const conFecha = new Set();
+    const CHUNK = 500;
+    for (let i = 0; i < codigos.length; i += CHUNK) {
+      const chunk = codigos.slice(i, i + CHUNK);
+      const inList = chunk.map(c => `"${encodeURIComponent(c)}"`).join(",");
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/mp_pool_cache?codigo=in.(${inList})&fecha_publicacion=not.is.null&select=codigo`,
+        { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(12000) }
+      );
+      if (r.ok) for (const row of await r.json()) conFecha.add(row.codigo);
+    }
+
+    const pendientes = pool.filter(l => l.CodigoExterno && !conFecha.has(l.CodigoExterno));
+    backfillFechaState.ultimo_revisadas  = pool.length;
+    console.log(`[backfill-fechas] Pool=${pool.length} | Ya con fecha=${conFecha.size} | Pendientes=${pendientes.length}`);
+
+    const lote = pendientes.slice(0, BACKFILL_FECHA_LOTE);
+    const nuevasEnCache = [];
+    for (let i = 0; i < lote.length; i += BACKFILL_FECHA_PARALELISMO) {
+      const grupo = lote.slice(i, i + BACKFILL_FECHA_PARALELISMO);
+      await Promise.all(grupo.map(async lic => {
+        try {
+          const url = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?codigo=${lic.CodigoExterno}&ticket=${TICKET}`;
+          const r = await fetch(url, { signal: AbortSignal.timeout(6000) });
+          if (!r.ok) return;
+          const data = await r.json();
+          const detalle = data.Listado?.[0];
+          if (!detalle) return;
+          nuevasEnCache.push({
+            codigo:            lic.CodigoExterno,
+            nombre:            detalle.Nombre || lic.Nombre,
+            descripcion:       detalle.Descripcion || "",
+            organismo:         detalle.Comprador?.NombreOrganismo || null,
+            region:            detalle.Comprador?.RegionUnidad || null,
+            comuna:            detalle.Comprador?.ComunaUnidad || null,
+            monto:             parseMontoMP(detalle.MontoEstimado),
+            fecha_publicacion: detalle.Fechas?.FechaPublicacion || null,
+            tipo_licitacion:   detalle.Tipo || null,
+            fetched_at:        new Date().toISOString()
+          });
+        } catch (e) {}
+      }));
+      if (i + BACKFILL_FECHA_PARALELISMO < lote.length) {
+        await new Promise(r => setTimeout(r, BACKFILL_FECHA_SLEEP_MS));
+      }
+    }
+
+    if (nuevasEnCache.length > 0) {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/mp_pool_cache`, {
+        method: "POST",
+        headers: { ...SUPABASE_HEADERS, "Prefer": "resolution=merge-duplicates" },
+        body: JSON.stringify(nuevasEnCache),
+        signal: AbortSignal.timeout(15000)
+      });
+      if (!r.ok) console.warn(`[backfill-fechas] Falló guardado cache: ${r.status}`);
+    }
+
+    backfillFechaState.ultimo_actualizadas = nuevasEnCache.filter(n => n.fecha_publicacion).length;
+    backfillFechaState.ultimo_fin = new Date().toISOString();
+    const quedanPendientes = Math.max(0, pendientes.length - lote.length);
+    backfillFechaState.ultimo_pendientes = quedanPendientes;
+
+    // ── Tendencia + alerta ─────────────────────────────────────────────
+    // Compara contra la corrida anterior (no contra el arranque del
+    // servidor) para detectar si el backlog viene creciendo sostenido.
+    const anterior = backfillFechaState.historial_pendientes.at(-1) || null;
+    if (anterior) {
+      const delta = quedanPendientes - anterior.pendientes;
+      if (delta > BACKFILL_MARGEN_ALERTA) {
+        backfillFechaState.tendencia = "subiendo";
+        console.warn(`[backfill-fechas] ⚠️ ALERTA: el backlog de licitaciones sin fecha viene SUBIENDO (${anterior.pendientes} → ${quedanPendientes}, +${delta}). El lote actual (${BACKFILL_FECHA_LOTE} cada ${BACKFILL_FECHA_INTERVAL_MS / 60000} min) ya no alcanza a mantenerlo al día — considera subir BACKFILL_FECHA_LOTE o la frecuencia.`);
+      } else if (delta < -BACKFILL_MARGEN_ALERTA) {
+        backfillFechaState.tendencia = "bajando";
+      } else {
+        backfillFechaState.tendencia = "estable";
+      }
+    }
+    backfillFechaState.historial_pendientes.push({ ts: backfillFechaState.ultimo_fin, pendientes: quedanPendientes });
+    if (backfillFechaState.historial_pendientes.length > BACKFILL_HISTORIAL_MAX) {
+      backfillFechaState.historial_pendientes = backfillFechaState.historial_pendientes.slice(-BACKFILL_HISTORIAL_MAX);
+    }
+
+    console.log(`[backfill-fechas] Procesadas=${lote.length} | Con fecha nueva=${backfillFechaState.ultimo_actualizadas} | Quedan pendientes=${quedanPendientes} | Tendencia=${backfillFechaState.tendencia || "sin datos aún"}`);
+  } catch (e) {
+    backfillFechaState.ultimo_error = e.message;
+    backfillFechaState.ultimo_fin   = new Date().toISOString();
+    console.error("[backfill-fechas] Error:", e.message);
+  }
+}
+
+// Cada 30 min, sin depender de que alguien use el buscador. La primera
+// corrida arranca 90s después de levantar el servidor.
+const BACKFILL_FECHA_INTERVAL_MS = 30 * 60 * 1000;
+setInterval(backfillFechasPublicacion, BACKFILL_FECHA_INTERVAL_MS);
+setTimeout(backfillFechasPublicacion, 90 * 1000);
+
+// Disparo manual — útil para vaciar de una vez el backlog inicial la
+// primera vez que se despliega este cambio (llamar varias veces seguidas
+// si "pendientes" sigue siendo grande; cada llamada procesa hasta
+// BACKFILL_FECHA_LOTE códigos nuevos).
+app.get("/mp/backfill-fechas", async (req, res) => {
+  await backfillFechasPublicacion();
+  res.json({ ok: true, state: backfillFechaState });
+});
+app.get("/mp/backfill-fechas-status", (req, res) => res.json(backfillFechaState));
 
 app.get("/mp/polling-adjudicaciones", (req, res) => {
   pollingAdjudicaciones();
