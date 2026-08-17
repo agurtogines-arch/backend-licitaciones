@@ -190,7 +190,9 @@ const DIVISIONES_LEN = [
   {
     id: "medioambiente", label: "Medio Ambiente", icon: "🌿", color: "#15803d",
     activa: true,
-    keywords: ["ambiental","seia","impacto ambiental","pertinencia ambiental","linea de base","monitoreo ambiental","seguimiento ambiental","declaracion de impacto"],
+    // "consulta de pertinencia" agregado 2026-08: cubre el caso donde el
+    // título usa este término oficial de MP sin decir "ambiental" explícito.
+    keywords: ["ambiental","seia","impacto ambiental","pertinencia ambiental","linea de base","monitoreo ambiental","seguimiento ambiental","declaracion de impacto","consulta de pertinencia"],
     servicios: ["estudio","consultoria","monitoreo","asesoria","levantamiento"],
     // "mop" se sacó de la exclusión de organismos (caso real: 2216-22-O126,
     // "Consultoría Ambiental Estratégica... Estudio de Impacto Ambiental",
@@ -203,7 +205,11 @@ const DIVISIONES_LEN = [
   {
     id: "energia", label: "Energía", icon: "⚡", color: "#b45309",
     activa: true,
-    keywords: ["fotovoltaico","eolico","solar","ernc","bess","eficiencia energetica","hidrogeno verde","electromovilidad","energia renovable","descarbonizacion","autogeneracion","energetico"],
+    // Ampliación 2026-08: se dejaron fuera "Ingeniería Conceptual/Básica/
+    // Detalle", "Asistencia Técnica" y "Project Management" por ser
+    // términos genéricos que no distinguen un proyecto de energía de
+    // cualquier otro (ya se cubren igual vía "ingenieria" en servicios).
+    keywords: ["fotovoltaico","eolico","solar","ernc","bess","eficiencia energetica","hidrogeno verde","electromovilidad","energia renovable","descarbonizacion","autogeneracion","energetico","huella de carbono","behind the meter","on grid","off grid","sistemas aislados","owner engineering"],
     servicios: ["estudio","consultoria","diseno","asesoria","diagnostico","prefactibilidad","factibilidad","ingenieria"],
     exclusiones: { organismos: ["minvu", "ministerio de vivienda"] }
   },
@@ -223,7 +229,15 @@ const DIVISIONES_LEN = [
       "asesoria a la inspeccion","asesoria inspeccion fiscal",
       "asesoria a la inspeccion fiscal","asistencia a la inspeccion",
       "inspeccion de contrato","supervision de contrato",
-      "fiscalizacion de contrato"
+      "fiscalizacion de contrato",
+      // ── Ampliación 2026-08: solicitud explícita del cliente, curada para
+      // excluir términos genéricos de alto riesgo (inspección/asesoría/
+      // supervisión sueltas, y "SERVIU Edificación" por ser un patrón de
+      // organismo, no un término técnico buscable) ──
+      "topografia","servicio de laboratorio","riesgos estructurales",
+      "control documental","supervision de calidad","control de calidad",
+      "programacion y control","auditoria tecnica","auditoria financiera",
+      "ensayos no destructivos"
     ],
     servicios: [],
     exclusiones: {
