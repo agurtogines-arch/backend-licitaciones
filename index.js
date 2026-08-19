@@ -107,7 +107,15 @@ const DIVISIONES_LEN = [
   {
     id: "zonasur", label: "Zona Sur", icon: "🌊", color: "#0369a1",
     activa: true,
-    keywords: ["vial","vias","seguridad vial","puentes","caminos","transito","pavimento","pav","diseño geometrico","prefactibilidad vial","factibilidad vial","prefactibilidad hidraulica","factibilidad hidraulica","hidraulica","hidrologia","aguas lluvias","cauces","apr","saneamiento","alcantarillado","planta de tratamiento","planta elevadora","conducciones","inundaciones","drenaje","cuencas","aguas servidas","agua potable","sanitario","ssr","agua potable rural","saneamiento rural","mejoramiento camino rural","habilitacion camino rural","electrificacion rural"],
+    keywords: ["vial","vias","seguridad vial","puentes","caminos","transito","pavimento","pav","diseño geometrico","prefactibilidad vial","factibilidad vial","prefactibilidad hidraulica","factibilidad hidraulica","hidraulica","hidrologia","aguas lluvias","cauces","apr","saneamiento","alcantarillado","planta de tratamiento","planta elevadora","conducciones","inundaciones","drenaje","cuencas","aguas servidas","agua potable","sanitario","ssr","agua potable rural","saneamiento rural","mejoramiento camino rural","habilitacion camino rural","electrificacion rural",
+      // ── Patrón MOP "[acción] Ruta N-XX" — títulos de estudios de rutas que
+      // no traen "vial" ni "pavimento" explícito (caso real: 1068829-20-O126,
+      // "Estudio de Ingeniería Reposición Ruta N-55, Pinto, Región de Ñuble",
+      // no matcheaba ninguna keyword existente). Se usan combinaciones de
+      // dos palabras (ambas deben aparecer) en vez de "ruta"/"reposicion"
+      // sueltas, que serían demasiado genéricas y traerían falsos positivos
+      // (rutas de buses, reposición de mobiliario, etc.).
+      "reposicion ruta","mejoramiento ruta","conservacion ruta","rehabilitacion ruta","reposicion camino"],
     servicios: ["estudio","consultoria","asesoria","diseno","inspeccion","levantamiento"],
     regiones: ["7","16","8","9","14","10","11","12"],
     exclusiones: {
@@ -169,7 +177,13 @@ const DIVISIONES_LEN = [
       "planta de tratamiento","planta elevadora","conducciones","inundaciones",
       "drenaje","cuencas","aguas servidas","agua potable","sanitario","ssr",
       "agua potable rural","saneamiento rural","mejoramiento camino rural",
-      "habilitacion camino rural","electrificacion rural"
+      "habilitacion camino rural","electrificacion rural",
+      // ── Patrón MOP "[acción] Ruta N-XX" — ver nota igual en zonasur
+      // (caso real: 1068829-20-O126, "Estudio de Ingeniería Reposición
+      // Ruta N-55, Pinto, Región de Ñuble"). Combinaciones de dos palabras
+      // (ambas deben aparecer) para evitar falsos positivos de "ruta"/
+      // "reposicion" sueltas.
+      "reposicion ruta","mejoramiento ruta","conservacion ruta","rehabilitacion ruta","reposicion camino"
     ],
     servicios: ["estudio","consultoria","diseno","prefactibilidad","factibilidad","asesoria","anteproyecto","inspeccion"],
     exclusiones: {
