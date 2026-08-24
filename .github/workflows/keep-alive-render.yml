@@ -1,0 +1,22 @@
+name: Keep-alive Render (buscador de licitaciones)
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /health del backend en Render
+        run: |
+          HTTP_CODE=$(curl -s -o /tmp/respuesta.json -w "%{http_code}" \
+            --max-time 20 \
+            "https://backend-licitaciones.onrender.com/health")
+          echo "HTTP status: $HTTP_CODE"
+          cat /tmp/respuesta.json
+          if [ "$HTTP_CODE" -ne 200 ]; then
+            echo "⚠️ El backend no respondió 200."
+            exit 0
+          fi
