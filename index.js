@@ -3840,9 +3840,15 @@ async function backfillFechasPublicacion() {
   }
 }
 
-// Cada 30 min, sin depender de que alguien use el buscador. La primera
-// corrida arranca 90s después de levantar el servidor.
-const BACKFILL_FECHA_INTERVAL_MS = 30 * 60 * 1000;
+// Cada 5 min (bajado de 30 min el 2026-08-24), sin depender de que alguien
+// use el buscador. Render free tier duerme la instancia tras ~15 min sin
+// tráfico HTTP — con 30 min de intervalo, muchos ciclos de sueño/despertar
+// hacían que el job NUNCA llegara a correr antes de que el servidor se
+// durmiera de nuevo. Con 5 min alcanzan ~3 corridas dentro de los 15 min
+// que la instancia se mantiene despierta después de cada ping (ya sea de
+// un usuario real o del keep-alive externo). La primera corrida arranca
+// 90s después de levantar el servidor.
+const BACKFILL_FECHA_INTERVAL_MS = 5 * 60 * 1000;
 setInterval(backfillFechasPublicacion, BACKFILL_FECHA_INTERVAL_MS);
 setTimeout(backfillFechasPublicacion, 90 * 1000);
 
