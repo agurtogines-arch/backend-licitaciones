@@ -11,12 +11,25 @@ jobs:
     steps:
       - name: Ping /health del backend en Render
         run: |
+          set +e
           HTTP_CODE=$(curl -s -o /tmp/respuesta.json -w "%{http_code}" \
-            --max-time 20 \
+            --max-time 90 \
+            --retry 1 --retry-delay 5 \
             "https://backend-licitaciones.onrender.com/health")
-          echo "HTTP status: $HTTP_CODE"
-          cat /tmp/respuesta.json
-          if [ "$HTTP_CODE" -ne 200 ]; then
-            echo "⚠️ El backend no respondió 200."
+          CURL_EXIT=$?
+          set -e
+
+          if [ "$CURL_EXIT" -ne 0 ]; then
+            echo "⚠️ curl no pudo completar la petición (exit $CURL_EXIT) — probablemente Render seguía despertando tras un sleep largo. No se marca como fallo del workflow."
             exit 0
           fi
+
+          echo "HTTP status: $HTTP_CODE"
+          cat /tmp/respuesta.json
+
+          if [ "$HTTP_CODE" -ne 200 ]; then
+            echo "⚠️ El backend respondió pero no con 200 (código $HTTP_CODE)."
+            exit 0
+          fi
+
+          echo "✅ Backend despierto y respondiendo OK."
