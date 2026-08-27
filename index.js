@@ -13,6 +13,20 @@ const TICKET = process.env.MP_TICKET || "1FC8A3E9-5D72-495C-8340-83E5B1749B79";
 // ── Configuración Supabase (centralizada) ────────────────────────────────────
 const SUPABASE_URL = "https://veuzudobuiwtrigdxqjt.supabase.co";
 const SUPABASE_KEY = process.env.SUPABASE_KEY || "";
+// ── Alertas por correo (resultado de adjudicación) ─────────────────────────
+// RESEND_API_KEY: crear cuenta gratis en https://resend.com, generar una API
+// key y pegarla acá como variable de entorno en Render. Sin esta variable,
+// el sistema sigue funcionando normal, solo que no envía correos (se loguea
+// una advertencia y listo, no rompe el polling).
+const RESEND_API_KEY       = process.env.RESEND_API_KEY || "";
+// RESEND_FROM: remitente. "onboarding@resend.com" es el dominio de pruebas
+// de Resend, funciona sin verificar dominio propio y permite enviar a
+// cualquier destinatario. Si más adelante verifican un dominio propio de
+// LEN en Resend, se puede cambiar a algo como "alertas@len.cl".
+const RESEND_FROM          = process.env.RESEND_FROM || "onboarding@resend.com";
+// NOTIFICACION_EMAIL_TO: a quién(es) llega la alerta. Puede ser una lista
+// separada por comas, ej: "gines@len.cl,otra.persona@len.cl"
+const NOTIFICACION_EMAIL_TO = (process.env.NOTIFICACION_EMAIL_TO || "").split(",").map(e => e.trim()).filter(Boolean);
 if (!SUPABASE_KEY) console.warn("⚠️  SUPABASE_KEY no configurada como variable de entorno en Render");
 // ── Monto de Mercado Público → número entero de pesos ────────────────────
 // MP entrega el monto a veces como número y a veces como texto con formato
@@ -3544,6 +3558,51 @@ app.patch("/mp/actualizar-licitacion/:id", async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Envío de alerta por correo cuando se detecta un resultado ──────────────
+async function enviarAlertaResultado(lic, nuevoEstado, updates) {
+  if (!RESEND_API_KEY || NOTIFICACION_EMAIL_TO.length === 0) {
+    console.warn("[alerta-email] RESEND_API_KEY o NOTIFICACION_EMAIL_TO no configurados — no se envía correo.");
+    return;
+  }
+  const iconos = { Adjudicada: "🏆", Perdida: "❌", Desierta: "🚫", Revocada: "⚠️" };
+  const icono = iconos[nuevoEstado] || "📋";
+  const fmtMonto = (n) => n ? new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 }).format(n) : "—";
+  const filas = [
+    ["Licitación", lic.nombre || "—"],
+    ["Código", lic.codigo || "—"],
+    ["Mandante", lic.mandante || "—"],
+    ["Nuevo estado", `${icono} ${nuevoEstado}`],
+  ];
+  if (updates.adjudicatario)           filas.push(["Adjudicatario", updates.adjudicatario]);
+  if (updates.monto_adjudicado)        filas.push(["Monto adjudicado", fmtMonto(updates.monto_adjudicado)]);
+  if (lic.monto_ofertado_len)          filas.push(["LEN ofertó", fmtMonto(lic.monto_ofertado_len)]);
+  if (updates.fecha_adjudicacion_real) filas.push(["Fecha de adjudicación", updates.fecha_adjudicacion_real]);
+  const filasHtml = filas.map(([k, v]) => `<tr><td style="padding:4px 12px 4px 0;color:#64748b;font-size:13px">${k}</td><td style="padding:4px 0;font-size:13px;font-weight:600">${v}</td></tr>`).join("");
+  const html = `<div style="font-family:Arial,sans-serif;max-width:520px">
+    <h2 style="margin:0 0 4px">${icono} Resultado de adjudicación detectado</h2>
+    <p style="color:#64748b;font-size:13px;margin:0 0 16px">El gestor de licitaciones LEN detectó un cambio de estado automáticamente.</p>
+    <table>${filasHtml}</table>
+    <p style="color:#94a3b8;font-size:11px;margin-top:20px">Revisa el detalle completo en el gestor de licitaciones.</p>
+  </div>`;
+  try {
+    const r = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: RESEND_FROM,
+        to: NOTIFICACION_EMAIL_TO,
+        subject: `${icono} ${nuevoEstado}: ${lic.nombre || lic.codigo}`,
+        html
+      }),
+      signal: AbortSignal.timeout(10000)
+    });
+    if (!r.ok) console.warn(`[alerta-email] Resend respondió ${r.status}: ${await r.text()}`);
+    else console.log(`[alerta-email] Enviada para ${lic.codigo} → ${nuevoEstado}`);
+  } catch (e) {
+    console.warn(`[alerta-email] Error al enviar: ${e.message}`);
+  }
+}
+
 // ── Polling automático de adjudicaciones ──────────────────────────────────────
 let pollingState = {
   ultimo_inicio: null, ultimo_fin: null,
@@ -3614,6 +3673,11 @@ async function pollingAdjudicaciones() {
           if (patchRes.ok) {
             totalActualizadas++;
             console.log(`[polling] ${lic.codigo} → ${updates.estado_proceso}`);
+            // Solo alertamos si es un estado FINAL nuevo (no si ya estaba en ese
+            // mismo estado antes — evita reenviar el mismo correo cada ciclo).
+            if (["Adjudicada", "Perdida", "Desierta", "Revocada"].includes(updates.estado_proceso) && lic.estado_proceso !== updates.estado_proceso) {
+              enviarAlertaResultado(lic, updates.estado_proceso, updates).catch(e => console.warn("[alerta-email] no bloqueante:", e.message));
+            }
           }
         }
       } catch (e) { console.warn(`[polling] Error con ${lic.codigo}: ${e.message}`); }
@@ -3629,7 +3693,12 @@ async function pollingAdjudicaciones() {
   }
 }
 
-const POLLING_INTERVAL_MS = 12 * 60 * 60 * 1000;
+// Antes: 12h. Se baja a 1h para detectar resultados casi apenas MP los
+// publica. El filtro de fecha_adjudicacion_estimada (arriba, diffMs > 1 día)
+// ya evita que esto aumente las consultas a la API de MP para licitaciones
+// cuya fecha estimada todavía está lejos — solo se revisan con más
+// frecuencia las que están dentro de esa ventana de "falta poco o ya pasó".
+const POLLING_INTERVAL_MS = 1 * 60 * 60 * 1000;
 
 let limpiezaState = {
   ultimo_inicio: null, ultimo_fin: null,
