@@ -3603,6 +3603,52 @@ async function enviarAlertaResultado(lic, nuevoEstado, updates) {
   }
 }
 
+// ── Envío de alerta por correo cuando cambia una fecha del proceso ─────────
+// (final de preguntas, publicación de respuestas, cierre, aperturas, etc.)
+async function enviarAlertaCambioFechas(lic, cambios) {
+  if (!RESEND_API_KEY || NOTIFICACION_EMAIL_TO.length === 0) {
+    console.warn("[alerta-email] RESEND_API_KEY o NOTIFICACION_EMAIL_TO no configurados — no se envía correo.");
+    return;
+  }
+  const filasHtml = cambios.map(c => `<tr>
+      <td style="padding:4px 12px 4px 0;color:#64748b;font-size:13px">${c.label}</td>
+      <td style="padding:4px 12px 4px 0;font-size:13px;text-decoration:line-through;color:#94a3b8">${fmtDateTimeEmail(c.anterior)}</td>
+      <td style="padding:4px 0;font-size:13px;font-weight:700;color:#dc2626">${fmtDateTimeEmail(c.nuevo)}</td>
+    </tr>`).join("");
+  const html = `<div style="font-family:Arial,sans-serif;max-width:560px">
+    <h2 style="margin:0 0 4px">📅 Mercado Público cambió una fecha del proceso</h2>
+    <p style="color:#64748b;font-size:13px;margin:0 0 4px"><strong>${lic.nombre || "—"}</strong> (${lic.codigo || "—"})</p>
+    <p style="color:#64748b;font-size:13px;margin:0 0 16px">El gestor de licitaciones LEN detectó ${cambios.length > 1 ? "estos cambios" : "este cambio"} automáticamente al comparar contra Mercado Público.</p>
+    <table><thead><tr><th style="text-align:left;font-size:11px;color:#94a3b8;padding-bottom:4px">Fecha</th><th style="text-align:left;font-size:11px;color:#94a3b8;padding-bottom:4px">Antes</th><th style="text-align:left;font-size:11px;color:#94a3b8;padding-bottom:4px">Ahora</th></tr></thead><tbody>${filasHtml}</tbody></table>
+    <p style="color:#94a3b8;font-size:11px;margin-top:20px">El calendario del gestor ya quedó actualizado solo — revisa el detalle si necesitas ajustar plazos internos.</p>
+  </div>`;
+  try {
+    const r = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: RESEND_FROM,
+        to: NOTIFICACION_EMAIL_TO,
+        subject: `📅 Fecha actualizada por MP: ${lic.nombre || lic.codigo}`,
+        html
+      }),
+      signal: AbortSignal.timeout(10000)
+    });
+    if (!r.ok) console.warn(`[alerta-email-fechas] Resend respondió ${r.status}: ${await r.text()}`);
+    else console.log(`[alerta-email-fechas] Enviada para ${lic.codigo} (${cambios.length} cambio(s))`);
+  } catch (e) {
+    console.warn(`[alerta-email-fechas] Error al enviar: ${e.message}`);
+  }
+}
+function fmtDateTimeEmail(iso) {
+  if (!iso) return "—";
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return String(iso);
+    return d.toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short" });
+  } catch { return String(iso); }
+}
+
 // ── Polling automático de adjudicaciones ──────────────────────────────────────
 let pollingState = {
   ultimo_inicio: null, ultimo_fin: null,
@@ -3619,16 +3665,16 @@ async function pollingAdjudicaciones() {
     const r = await fetch(url, { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(20000) });
     if (!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`);
     const licitaciones = await r.json();
-    const ahora = new Date();
     let totalRevisadas = 0;
     let totalActualizadas = 0;
+    // Ya no se filtra por cercanía a fecha_adjudicacion_estimada: además de
+    // revisar el resultado de adjudicación, este ciclo ahora también revisa
+    // si MP cambió alguna fecha del proceso (fin de preguntas, publicación
+    // de respuestas, cierre, aperturas), que pueden moverse en cualquier
+    // etapa — no solo cerca del final. El universo son las licitaciones
+    // "activas" del gestor (Detectada/En análisis/Postulada), que es un
+    // número acotado, así que revisarlas todas cada hora es liviano.
     for (const lic of licitaciones) {
-      if (lic.fecha_adjudicacion_estimada) {
-        const estim = new Date(lic.fecha_adjudicacion_estimada);
-        const diffMs = estim - ahora;
-        const unDiaMs = 24 * 60 * 60 * 1000;
-        if (diffMs > unDiaMs) continue;
-      }
       totalRevisadas++;
       try {
         const apiUrl = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json?codigo=${lic.codigo}&ticket=${TICKET}`;
@@ -3638,6 +3684,35 @@ async function pollingAdjudicaciones() {
         const licData = data.Listado?.[0];
         if (!licData) continue;
         const updates = { ultimo_polling_at: new Date().toISOString() };
+
+        // ── Fechas del proceso (preguntas, respuestas, aperturas, cierre) ──
+        // Se guardan en columnas propias (no dependen del texto de la IA) y
+        // se comparan contra lo que ya había guardado para detectar cambios
+        // reales — así solo se avisa por correo cuando MP efectivamente
+        // movió una fecha, no la primera vez que se completa el dato.
+        const F = licData.Fechas || {};
+        const MAPA_FECHAS = [
+          { campo: "fecha_inicio_preguntas",   valor: F.FechaInicio,                label: "Inicio de preguntas" },
+          { campo: "fecha_final_preguntas",    valor: F.FechaFinal,                 label: "Final de preguntas" },
+          { campo: "fecha_pub_respuestas",     valor: F.FechaPubRespuestas,         label: "Publicación de respuestas" },
+          { campo: "fecha_cierre_mp",          valor: F.FechaCierre,                label: "Cierre de recepción de ofertas" },
+          { campo: "fecha_apertura_tecnica",   valor: F.FechaActoAperturaTecnica,   label: "Apertura técnica" },
+          { campo: "fecha_apertura_economica", valor: F.FechaActoAperturaEconomica, label: "Apertura económica" },
+        ];
+        const cambiosFecha = [];
+        for (const { campo, valor, label } of MAPA_FECHAS) {
+          if (!valor) continue;
+          const anterior = lic[campo];
+          if (anterior && anterior !== valor) cambiosFecha.push({ label, anterior, nuevo: valor });
+          if (anterior !== valor) updates[campo] = valor;
+        }
+        // fecha_cierre (columna que ya usa limpiarVencidas) se mantiene
+        // sincronizada con el cierre real de MP, en formato YYYY-MM-DD.
+        if (F.FechaCierre) {
+          const cierreDia = String(F.FechaCierre).substring(0, 10);
+          if (lic.fecha_cierre !== cierreDia) updates.fecha_cierre = cierreDia;
+        }
+
         const estadoMP = (licData.Estado || "").trim();
         if (estadoMP === "Adjudicada") {
           const items = licData.Items?.Listado || [];
@@ -3661,7 +3736,11 @@ async function pollingAdjudicaciones() {
           else updates.estado_proceso = "Perdida";
         } else if (estadoMP === "Desierta") updates.estado_proceso = "Desierta";
         else if (estadoMP === "Revocada") updates.estado_proceso = "Revocada";
-        if (updates.estado_proceso) {
+
+        // Hay algo que guardar si cambió el estado o si cambió alguna fecha
+        // (más allá de ultimo_polling_at, que siempre está presente).
+        const hayCambioReal = Object.keys(updates).length > 1;
+        if (hayCambioReal) {
           const patchRes = await fetch(
             `${SUPABASE_URL}/rest/v1/licitaciones?id=eq.${encodeURIComponent(lic.id)}`,
             {
@@ -3672,11 +3751,15 @@ async function pollingAdjudicaciones() {
           );
           if (patchRes.ok) {
             totalActualizadas++;
-            console.log(`[polling] ${lic.codigo} → ${updates.estado_proceso}`);
+            if (updates.estado_proceso) console.log(`[polling] ${lic.codigo} → ${updates.estado_proceso}`);
+            if (cambiosFecha.length) console.log(`[polling-fechas] ${lic.codigo}: ${cambiosFecha.length} fecha(s) cambiada(s)`);
             // Solo alertamos si es un estado FINAL nuevo (no si ya estaba en ese
             // mismo estado antes — evita reenviar el mismo correo cada ciclo).
-            if (["Adjudicada", "Perdida", "Desierta", "Revocada"].includes(updates.estado_proceso) && lic.estado_proceso !== updates.estado_proceso) {
+            if (updates.estado_proceso && ["Adjudicada", "Perdida", "Desierta", "Revocada"].includes(updates.estado_proceso) && lic.estado_proceso !== updates.estado_proceso) {
               enviarAlertaResultado(lic, updates.estado_proceso, updates).catch(e => console.warn("[alerta-email] no bloqueante:", e.message));
+            }
+            if (cambiosFecha.length) {
+              enviarAlertaCambioFechas(lic, cambiosFecha).catch(e => console.warn("[alerta-email-fechas] no bloqueante:", e.message));
             }
           }
         }
@@ -3693,11 +3776,13 @@ async function pollingAdjudicaciones() {
   }
 }
 
-// Antes: 12h. Se baja a 1h para detectar resultados casi apenas MP los
-// publica. El filtro de fecha_adjudicacion_estimada (arriba, diffMs > 1 día)
-// ya evita que esto aumente las consultas a la API de MP para licitaciones
-// cuya fecha estimada todavía está lejos — solo se revisan con más
-// frecuencia las que están dentro de esa ventana de "falta poco o ya pasó".
+// Antes: 12h. Se baja a 1h para detectar resultados de adjudicación y
+// cambios de fecha (fin de preguntas, respuestas, aperturas, cierre) casi
+// apenas MP los publica. Ya no hay filtro de cercanía a una fecha: cada
+// ciclo revisa TODAS las licitaciones activas del gestor (universo acotado,
+// Detectada/En análisis/Postulada), porque ahora también hay que detectar
+// cambios de fecha que pueden ocurrir en cualquier etapa del proceso, no
+// solo cerca de la adjudicación.
 const POLLING_INTERVAL_MS = 1 * 60 * 60 * 1000;
 
 let limpiezaState = {
