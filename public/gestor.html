@@ -693,13 +693,53 @@ function parseFechasDesdeAnalisis(texto) {
   });
   return out;
 }
-// Fusiona lo extraído del análisis con las fechas corregidas/agregadas a
-// mano (guardadas en steps_json._calendarioManual) — lo manual siempre gana.
+// Convierte una fecha/hora ISO (la que trae la API de Mercado Público, ya
+// guardada por el polling en columnas propias de licitaciones) al mismo
+// formato "DD-MM-AAAA HH:MM" que usa el resto del calendario. Las fechas
+// "solo día" (YYYY-MM-DD, como fecha_cierre) se parsean como texto en vez
+// de con new Date(), para no correr el riesgo de que el huso horario del
+// navegador la corra un día para atrás.
+function formatFechaCalendarioISO(iso) {
+  if (!iso) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+    const [y, m, d] = iso.split('-');
+    return `${d}-${m}-${y}`;
+  }
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return null;
+    const pad = n => String(n).padStart(2, '0');
+    return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  } catch { return null; }
+}
+// Fechas que llegan directo desde Mercado Público vía el polling automático
+// (pollingAdjudicaciones, cada 1h — ver backend), guardadas en columnas
+// propias de la tabla licitaciones. Es la fuente "viva": a diferencia del
+// texto de la IA, esta se corrige sola cuando MP cambia una fecha.
+function getFechasVivasDeColumnas(lic) {
+  return {
+    publicacion:      formatFechaCalendarioISO(lic.fecha_publicacion),
+    inicioPreguntas:  formatFechaCalendarioISO(lic.fecha_inicio_preguntas),
+    finalPreguntas:   formatFechaCalendarioISO(lic.fecha_final_preguntas),
+    respuestas:       formatFechaCalendarioISO(lic.fecha_pub_respuestas),
+    cierre:           formatFechaCalendarioISO(lic.fecha_cierre_mp || lic.fecha_cierre),
+    aperturaTec:      formatFechaCalendarioISO(lic.fecha_apertura_tecnica),
+    aperturaEco:      formatFechaCalendarioISO(lic.fecha_apertura_economica),
+    adjudicacion:     formatFechaCalendarioISO(lic.fecha_adjudicacion_real || lic.fecha_adjudicacion_estimada),
+  };
+}
+// Fusiona, en orden de prioridad: lo corregido a mano (steps_json.
+// _calendarioManual) > lo que trajo el polling automático desde MP > lo que
+// se extrajo una sola vez del texto del análisis con IA (última red de
+// seguridad, para licitaciones viejas que el polling todavía no alcanzó a
+// revisar). Lo manual siempre gana porque puede reflejar un acuerdo o
+// corrección que no está en ningún sistema.
 function getFechasCalendario(lic) {
   const parsed = parseFechasDesdeAnalisis(lic.analisis_ia_completo);
+  const vivo = getFechasVivasDeColumnas(lic);
   const manual = getSJ(lic)._calendarioManual || {};
   const out = {};
-  CAMPOS_CALENDARIO.forEach(({key}) => { out[key] = (manual[key] ?? parsed[key]) || null; });
+  CAMPOS_CALENDARIO.forEach(({key}) => { out[key] = (manual[key] ?? vivo[key] ?? parsed[key]) || null; });
   return out;
 }
 async function guardarFechaManual(licId, campo, valorActual) {
