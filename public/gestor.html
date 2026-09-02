@@ -693,24 +693,25 @@ function parseFechasDesdeAnalisis(texto) {
   });
   return out;
 }
-// Convierte una fecha/hora ISO (la que trae la API de Mercado Público, ya
-// guardada por el polling en columnas propias de licitaciones) al mismo
-// formato "DD-MM-AAAA HH:MM" que usa el resto del calendario. Las fechas
-// "solo día" (YYYY-MM-DD, como fecha_cierre) se parsean como texto en vez
-// de con new Date(), para no correr el riesgo de que el huso horario del
-// navegador la corra un día para atrás.
+// Convierte una fecha/hora de Mercado Público (guardada por el polling en
+// columnas propias de licitaciones) al mismo formato "DD-MM-AAAA HH:MM"
+// que usa el resto del calendario.
+// A PROPÓSITO no se usa new Date(...) en ningún caso, ni siquiera para las
+// que sí traen hora: MP entrega sus fechas como hora de Chile SIN indicar
+// huso horario (ej. "2026-09-10T08:00:00" = 08:00 en Chile). Si eso se
+// pasara por new Date().getHours(), el resultado depende del huso horario
+// del navegador de quien lo esté viendo — en la práctica, Supabase termina
+// devolviendo estas columnas con sufijo de huso horario (ej. "...+00:00"),
+// y un navegador en Chile (UTC-3) correría la hora 3 horas para atrás
+// (08:00 → 05:00). Por eso se extraen los números literales del texto con
+// una expresión regular: lo que dice el texto es lo que se muestra, sin
+// que ninguna conversión de huso horario pueda tocarlo.
 function formatFechaCalendarioISO(iso) {
   if (!iso) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
-    const [y, m, d] = iso.split('-');
-    return `${d}-${m}-${y}`;
-  }
-  try {
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return null;
-    const pad = n => String(n).padStart(2, '0');
-    return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  } catch { return null; }
+  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/);
+  if (!m) return null;
+  const [, y, mo, d, h, mi] = m;
+  return h ? `${d}-${mo}-${y} ${h}:${mi}` : `${d}-${mo}-${y}`;
 }
 // Fechas que llegan directo desde Mercado Público vía el polling automático
 // (pollingAdjudicaciones, cada 1h — ver backend), guardadas en columnas
