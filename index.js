@@ -3654,13 +3654,20 @@ async function enviarAlertaCambioFechas(lic, cambios) {
     console.warn(`[alerta-email-fechas] Error al enviar: ${e.message}`);
   }
 }
+// A PROPÓSITO no usa new Date(...): MP entrega sus fechas como hora de
+// Chile SIN indicar huso horario (ej. "2026-09-10T08:00:00" = 08:00 en
+// Chile). Si se convirtiera con new Date(...).toLocaleString(...), el
+// resultado depende del huso horario del servidor donde corre Render (si
+// no es Chile, o si el valor ya viene con sufijo de huso horario desde
+// Supabase, la hora se corre — mismo bug que se corrigió en el calendario
+// del gestor, ver formatFechaCalendarioISO). Se extraen los números
+// literales del texto en vez de dejar que cualquier conversión los toque.
 function fmtDateTimeEmail(iso) {
   if (!iso) return "—";
-  try {
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return String(iso);
-    return d.toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short" });
-  } catch { return String(iso); }
+  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/);
+  if (!m) return String(iso);
+  const [, y, mo, d, h, mi] = m;
+  return h ? `${d}-${mo}-${y} ${h}:${mi}` : `${d}-${mo}-${y}`;
 }
 
 // ── Polling automático de adjudicaciones ──────────────────────────────────────
