@@ -130,7 +130,16 @@ const DIVISIONES_LEN = [
       // sueltas, que serían demasiado genéricas y traerían falsos positivos
       // (rutas de buses, reposición de mobiliario, etc.).
       "reposicion ruta","mejoramiento ruta","conservacion ruta","rehabilitacion ruta","reposicion camino"],
-    servicios: ["estudio","consultoria","asesoria","diseno","inspeccion","levantamiento"],
+    // "diagnostico" agregado 2026-09 (caso real: 5048-44-O126, "EST. BÁS:
+    // DIAG. OFERTA-DEMANDA VIAL CORREDOR BIOCEÁNICO JAMA-SICO") — el título
+    // matcheaba la keyword técnica "vial" pero quedaba fuera porque "EST."
+    // (Estudio) no se expande por abreviatura (choca con "Este", el punto
+    // cardinal) y "DIAG." sí se expande a "diagnostico" pero esa palabra no
+    // estaba en la lista de servicios. Mismo término que ya usa Energía sin
+    // problemas — solo habilita el paso a licitaciones que YA matchearon una
+    // keyword técnica real (vial/hidráulica/etc.), no agrega riesgo de falsos
+    // positivos por sí sola.
+    servicios: ["estudio","consultoria","asesoria","diseno","inspeccion","levantamiento","diagnostico"],
     regiones: ["7","16","8","9","14","10","11","12"],
     exclusiones: {
       // Si el texto tiene señales claras de ITO, NO es Zona Sur — el servicio
@@ -199,7 +208,12 @@ const DIVISIONES_LEN = [
       // "reposicion" sueltas.
       "reposicion ruta","mejoramiento ruta","conservacion ruta","rehabilitacion ruta","reposicion camino"
     ],
-    servicios: ["estudio","consultoria","diseno","prefactibilidad","factibilidad","asesoria","anteproyecto","inspeccion"],
+    // "diagnostico" agregado 2026-09 — mismo caso real y mismo razonamiento
+    // que la nota en zonasur (5048-44-O126, "EST. BÁS: DIAG. OFERTA-DEMANDA
+    // VIAL..."): matcheaba "vial" pero el filtro de servicio lo bloqueaba
+    // porque "EST." no se expande (choca con "Este") y "diagnostico" no
+    // estaba en la lista. Ya usado en Energía sin problemas.
+    servicios: ["estudio","consultoria","diseno","prefactibilidad","factibilidad","asesoria","anteproyecto","inspeccion","diagnostico"],
     exclusiones: {
       organismos: ["serviu", "municipalidad", "ilustre municipalidad", "i. municipalidad"],
       // Si tiene señales ITO, no es infra — infra hace proyectos/diseños,
