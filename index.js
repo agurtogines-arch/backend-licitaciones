@@ -467,8 +467,21 @@ function toleranciaMaxima(largo) {
   if (largo <= 9) return 1;  // 7-9 letras: tolera 1 error de tipeo
   return 2;                 // 10+ letras: tolera 2 errores de tipeo
 }
+// Términos que NO deben aceptar tolerancia a errores de tipeo, aunque
+// tengan 7+ letras. Se agregan acá cuando una keyword real choca con una
+// palabra común de otro significado que está a muy poca distancia de
+// edición (caso real 2026-09: "conducciones" — término hidráulico real —
+// coincidía dentro de tolerancia con "condiciones", la palabra más común
+// de cualquier licitación chilena ("de acuerdo a las condiciones
+// establecidas..."), colando licitaciones de cualquier rubro a Zona Sur e
+// Infraestructura sin ninguna relación real con ingeniería). Estos
+// términos solo matchean con coincidencia exacta (vía tOriginal/
+// tExpandido.includes(stem) en matchDivKw/matchKwSafe) — dejan de
+// aceptarse como "probable error de tipeo".
+const TERMINOS_SIN_TOLERANCIA_TIPEO = new Set(["conducciones"]);
 function apareceConTolerancia(tNorm, termino) {
   if (termino.length < 7) return false;
+  if (TERMINOS_SIN_TOLERANCIA_TIPEO.has(termino)) return false;
   const tol = toleranciaMaxima(termino.length);
   const palabras = tNorm.split(/[^a-z]+/).filter(Boolean);
   return palabras.some(p => Math.abs(p.length - termino.length) <= 2 && distanciaEdicion(p, termino) <= tol);
@@ -1497,8 +1510,18 @@ app.post("/buscar-general", async (req, res) => {
         if (bloqueadaSectorial(titulo)) return false;
 
         // ── Clasificación por IA (si ya existe para esta licitación) ──────
+        // Igual que en el camino de keywords, un "sí" de la IA no basta por
+        // sí solo: pasa siempre por las exclusiones duras de la división
+        // (organismos, keywords, combinados). Antes la IA las saltaba por
+        // completo — un veredicto erróneo de la IA (ej. prompt mal
+        // interpretado) podía colar cualquier licitación sin ningún
+        // resguardo. Ahora ambos caminos comparten la misma red de
+        // seguridad.
         const iaClass = iaClassMap.get(l.CodigoExterno);
-        const iaDiceQueSi = !!iaClass && iaClass.veredicto_ia !== "🔴" && iaClass.divisiones_ia.includes(id);
+        let iaDiceQueSi = !!iaClass && iaClass.veredicto_ia !== "🔴" && iaClass.divisiones_ia.includes(id);
+        if (iaDiceQueSi && divConfig && aplicaExclusiones(divConfig, l.Comprador?.NombreOrganismo || "", titulo)) {
+          iaDiceQueSi = false;
+        }
 
         // ── Clasificación por keywords (siempre se evalúa, no solo como
         // respaldo cuando falta la IA) ────────────────────────────────────
@@ -1523,7 +1546,16 @@ app.post("/buscar-general", async (req, res) => {
             const exclConfig = divConfig && aplicaExclusiones(divConfig, l.Comprador?.NombreOrganismo || "", titulo);
             if (!exclConfig) {
               const DIVISIONES_ESTRICTAS = new Set(["ito","mineria","energia"]);
-              const regionClasif = extraerRegionDeTexto(titulo);
+              // Región: primero el campo real que entrega MP (Comprador.
+              // RegionUnidad) — no depende de que el título la mencione. El
+              // texto (título+descripción) queda solo como respaldo para
+              // cuando ese campo viene vacío. Antes se usaba SOLO el texto,
+              // lo que en la práctica casi nunca detectaba región (la
+              // mayoría de los títulos no la repiten) y dejaba a Zona Sur
+              // sin su filtro geográfico real (caso 2026-09: licitación de
+              // salud de la Región Metropolitana coló a Zona Sur porque el
+              // título no mencionaba ninguna región).
+              const regionClasif = extraerRegionDeTexto(l.Comprador?.RegionUnidad || "") || extraerRegionDeTexto(titulo);
               const clasificacion = clasificarDivisiones(titulo, regionClasif?.codigo || null, l.Comprador?.NombreOrganismo || "");
               const pasaEstricta = !(clasificacion.length === 0 && DIVISIONES_ESTRICTAS.has(id));
               const pasaCruce = !(clasificacion.length > 0 && !clasificacion.some(d => d.id === id));
@@ -1631,7 +1663,9 @@ app.post("/buscar-general", async (req, res) => {
         const divConfig = DIVISIONES_LEN.find(d => d.id === cand.id);
         if (divConfig && aplicaExclusiones(divConfig, cand.l.Comprador?.NombreOrganismo || "", titulo)) continue;
         const DIVISIONES_ESTRICTAS = new Set(["ito","mineria","energia"]);
-        const regionClasif = extraerRegionDeTexto(titulo);
+        // Mismo respaldo con el campo real de MP que en el flujo principal
+        // (ver nota arriba) — acá también hay Comprador disponible.
+        const regionClasif = extraerRegionDeTexto(cand.l.Comprador?.RegionUnidad || "") || extraerRegionDeTexto(titulo);
         const clasificacion = clasificarDivisiones(titulo, regionClasif?.codigo || null, cand.l.Comprador?.NombreOrganismo || "");
         if (clasificacion.length === 0 && DIVISIONES_ESTRICTAS.has(cand.id)) continue;
         if (clasificacion.length > 0 && !clasificacion.some(d => d.id === cand.id)) continue;
@@ -4730,7 +4764,9 @@ app.post("/mp/clasificar-pool-ia", async (req, res) => {
       let totalClasificadas = 0;
       let totalErrores      = 0;
 
-      const PROMPT_SISTEMA = `Eres clasificador de licitaciones públicas chilenas para LEN Ingeniería (consultora: diseña, estudia, inspecciona — NUNCA construye ni compra).
+      const PROMPT_SISTEMA = `Eres un buscador de licitaciones EXPERTO, con años de experiencia filtrando el Mercado Público chileno específicamente para LEN Ingeniería, una consultora que SOLO diseña, estudia e inspecciona (NUNCA construye, ejecuta obras, ni compra/arrienda/vende bienes).
+
+Actúa con el criterio de un especialista senior de LEN revisando el listado diario, no como un buscador de palabras clave. Para cada licitación pregúntate primero: "¿el OBJETO real del contrato es un servicio de ingeniería (diseño, estudio, consultoría, inspección técnica), o es otra cosa que solo MENCIONA de paso una palabra técnica?".
 
 DIVISIONES ACTIVAS DE LEN:
 zonasur — Hidráulica, hidrología, aguas lluvias, drenaje, cauces, APR, saneamiento, vial, puentes, caminos, planes maestros, seguridad vial. SOLO en regiones Maule(7), Ñuble(16), Biobío(8), Araucanía(9), Los Ríos(14), Los Lagos(10), Aysén(11), Magallanes(12).
@@ -4739,13 +4775,25 @@ ito — Inspección técnica, supervisión, fiscalización, AIF, asesoría a la 
 energia — ERNC, fotovoltaico, eólico, BESS, hidrógeno verde, eficiencia energética, electromovilidad, descarbonización. Opera en todo Chile.
 mineria — SOLO estudios de hidráulica, saneamiento, vial o seguridad vial dentro de faenas mineras. NO insumos ni extracción.
 
+CRITERIO DE DECISIÓN, en este orden:
+1. Objeto del contrato: si es construir, ejecutar obra, suministrar, comprar, arrendar o contratar una persona (no un servicio de consultoría), es NO — aunque el título mencione una obra o palabra técnica de ingeniería.
+2. Sector del organismo/rubro de fondo: si el mandante o el propósito real pertenece a salud, educación, cultura, deporte, turismo, seguridad, alimentación, agroindustria, etc., es NO, salvo que el objeto explícito y central del contrato sea un estudio/diseño/inspección de ingeniería (no basta con que aparezca una palabra técnica).
+3. Alcance regional/nacional: recién si pasa los dos filtros anteriores, decide zonasur/infra (por región de ejecución) o ito/energia/mineria (nacional, con las condiciones propias de cada una).
+
 DESCARTAR SIEMPRE (divisiones=[]):
 - Construcción/ejecución directa de obras
-- Suministro, compra, arriendo de materiales o equipos
-- Contratación de persona individual
-- Salud, alimentación, educación, cultura, deporte, turismo, seguridad privada
+- Suministro, compra, arriendo de materiales, equipos o inmuebles
+- Contratación de persona individual / honorarios a título individual
+- Salud, alimentación, educación, cultura, deporte, turismo, seguridad privada — INCLUSO si el título usa palabras técnicas de ingeniería (ej.: "reparación/mantención de conducciones de un hospital" es mantención de un edificio de salud, no un estudio de LEN)
 - Carrocerías, vehículos, mobiliario, vestuario
 - Mataderos, agroindustria, asesoría psicosocial/contable/jurídica
+
+SEÑALES DE FALSO POSITIVO — ante estas, sé más estricto, no más permisivo:
+- Una palabra técnica de ingeniería (ej. "conducciones", "redes", "instalaciones", "obras") aparece en el contexto de MANTENCIÓN o REPARACIÓN de algo ya existente (un edificio, una instalación), y no en un estudio, diseño o inspección nueva.
+- El organismo mandante pertenece claramente a un sector ajeno a la ingeniería (hospital, escuela, servicio de salud, programa social), aunque el texto mencione de paso una obra o instalación técnica.
+- El objeto es "mantención", "reparación menor", "arriendo", "compra" o "suministro" — LEN no ejecuta ni compra, así que salvo que el objeto central y explícito sea un estudio/diseño/inspección de ingeniería, la respuesta es NO.
+
+Ante una duda razonable entre incluir y descartar, PRIORIZA DESCARTAR: para LEN es preferible que el sistema muestre menos licitaciones pero todas relevantes, a que muestre más incluyendo falsos positivos que el equipo debe filtrar manualmente.
 
 REGLA REGIONAL: La región donde se EJECUTA el trabajo determina zonasur vs infra.
 
