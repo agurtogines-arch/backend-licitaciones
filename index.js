@@ -496,6 +496,33 @@ function regexPalabraAislada(termino) {
   return new RegExp(`(?<![a-z])${termino}(e?s)?(?![a-z])`);
 }
 
+// ── Coincidencia de frase "aislada" (no pegada a otra palabra) ───────────
+// Usada por los filtros de exclusión general (EXCLUSION/SALVAVIDAS/
+// EXCLUSION_SECTORIAL) que hasta ahora comparaban con `.includes()` plano.
+// Eso permitía falsos positivos graves: la palabra salvavidas "ito" (para
+// detectar Inspección Técnica de Obra) matcheaba dentro de CUALQUIER
+// palabra española que contuviera esas 3 letras — "propósito", "depósito",
+// "crédito", "sitio", "necesito", etc. — que aparecen todo el tiempo en
+// descripciones burocráticas normales. Caso real (2026-09,
+// 1057532-73-L126, "informe de blindaje radiológico para sala de
+// mamografía"): el título es un caso claro de exclusión ("ADQUISICIÓN
+// DE...", sin término de rescate real), pero la descripción decía "...con
+// el propósito de determinar las protecciones radiológicas..." y "ito"
+// matcheó dentro de "propósito", neutralizando el salvavidas y dejando
+// pasar la licitación igual que si tuviera "ITO" real en el título.
+// Se exige que el carácter inmediatamente anterior no sea una letra (evita
+// además que "construccion de " matchee dentro de "reconstruccion de "), y
+// si la frase no termina en espacio, que el carácter siguiente tampoco lo
+// sea (evita que "estudio" matchee dentro de "estudioso", por ejemplo).
+function contieneFraseAislada(texto, frase) {
+  const f = (frase || "");
+  if (!f) return false;
+  const esc = f.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const terminaEnEspacio = /\s$/.test(f);
+  const patron = `(?<![a-z])${esc}${terminaEnEspacio ? "" : "(?![a-z])"}`;
+  return new RegExp(patron).test(texto || "");
+}
+
 function stemDiv(t) { return t.length >= 6 ? t.slice(0,-2) : t; }
 function matchDivKw(titulo, kw) {
   // Se revisan AMBOS textos — el original y el expandido — nunca solo uno.
@@ -912,7 +939,7 @@ const EXCLUSION_SECTORIAL = [
 ];
 function bloqueadaSectorial(titulo) {
   const t = normDiv(titulo);
-  return EXCLUSION_SECTORIAL.some(ex => t.includes(ex));
+  return EXCLUSION_SECTORIAL.some(ex => contieneFraseAislada(t, ex));
 }
 
 // ── Tipos de proyecto que YA implican servicio profesional ─────────────────
@@ -1095,9 +1122,9 @@ app.get("/buscar", async (req, res) => {
     ];
     const esBloqueada = (titulo) => {
       const t = norm(titulo);
-      const tieneExclusion = EXCLUSION.some(ex => t.includes(ex));
+      const tieneExclusion = EXCLUSION.some(ex => contieneFraseAislada(t, ex));
       if (!tieneExclusion) return false;
-      return !SALVAVIDAS.some(sv => t.includes(sv));
+      return !SALVAVIDAS.some(sv => contieneFraseAislada(t, sv));
     };
     const filtradas = licitaciones.filter(l => {
       const titulo = `${l.Nombre || ""} ${l.Descripcion || ""}`;
@@ -1335,9 +1362,9 @@ app.post("/buscar-general", async (req, res) => {
     ];
     const esBloqueada = (titulo) => {
       const t = norm(titulo);
-      const tieneExclusion = EXCLUSION.some(ex => t.includes(ex));
+      const tieneExclusion = EXCLUSION.some(ex => contieneFraseAislada(t, ex));
       if (!tieneExclusion) return false;
-      return !SALVAVIDAS.some(sv => t.includes(sv));
+      return !SALVAVIDAS.some(sv => contieneFraseAislada(t, sv));
     };
     const mapItem = l => {
       const textoCompleto  = `${l.Nombre || ""} ${l.Descripcion || ""}`;
@@ -4494,10 +4521,10 @@ app.get("/mp/debug-clasificacion/:codigo", async (req, res) => {
       "estudio","consultoria","consultoría","contraparte","auditoria","auditoría",
       "diseño","proyecto de ingenieria","proyecto de ingeniería","ito"
     ];
-    const exclusionesEncontradas = EXCLUSION.filter(ex => tNorm.includes(normDiv(ex)));
-    const salvavidasEncontrados  = SALVAVIDAS.filter(sv => tNorm.includes(normDiv(sv)));
+    const exclusionesEncontradas = EXCLUSION.filter(ex => contieneFraseAislada(tNorm, normDiv(ex)));
+    const salvavidasEncontrados  = SALVAVIDAS.filter(sv => contieneFraseAislada(tNorm, normDiv(sv)));
     const bloqueadaPorExclusion  = exclusionesEncontradas.length > 0 && salvavidasEncontrados.length === 0;
-    const sectorialEncontradas   = EXCLUSION_SECTORIAL.filter(ex => tNorm.includes(ex));
+    const sectorialEncontradas   = EXCLUSION_SECTORIAL.filter(ex => contieneFraseAislada(tNorm, ex));
 
     // 6. Match por keywords del backend (DIVISIONES_LEN)
     const matchesPorDivision = {};
@@ -4674,9 +4701,9 @@ app.post("/mp/clasificar-pool-ia", async (req, res) => {
                        "contraparte","auditoria","diseño","proyecto de ingenieria","ito"];
       const esBloqueadaIA = titulo => {
         const t = normIA(titulo);
-        const tieneExcl = EXCL_IA.some(ex => t.includes(ex));
+        const tieneExcl = EXCL_IA.some(ex => contieneFraseAislada(t, ex));
         if (!tieneExcl) return false;
-        return !SALV_IA.some(sv => t.includes(sv));
+        return !SALV_IA.some(sv => contieneFraseAislada(t, sv));
       };
       const candidatas = pool.filter(l => {
         const t = `${l.Nombre || ""} ${l.Descripcion || ""}`;
