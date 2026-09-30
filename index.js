@@ -129,7 +129,18 @@ const DIVISIONES_LEN = [
       // dos palabras (ambas deben aparecer) en vez de "ruta"/"reposicion"
       // sueltas, que serían demasiado genéricas y traerían falsos positivos
       // (rutas de buses, reposición de mobiliario, etc.).
-      "reposicion ruta","mejoramiento ruta","conservacion ruta","rehabilitacion ruta","reposicion camino"],
+      "reposicion ruta","mejoramiento ruta","conservacion ruta","rehabilitacion ruta","reposicion camino",
+      // "conectividad ruta"/"conectividad vial" agregado 2026-09 (caso real:
+      // 5048-59-O126, "EST. BAS. DIAGNÓSTICO CONECTIVIDAD RUTA 5 - PASO
+      // MAMUIL MALAL, R. ARAUCANÍA" — estudio de diagnóstico territorial de
+      // conectividad vial para MOP DGOP, no matcheaba ninguna keyword
+      // existente porque no usa "vial"/"camino"/"puente", solo "conectividad"
+      // + el número de ruta). Se usa como combo de dos palabras, nunca
+      // "conectividad" sola — "conectividad" sola es un término de alto
+      // riesgo (conectividad a internet/digital, telecomunicaciones rurales,
+      // nada que ver con LEN) y generaría el mismo tipo de falso positivo que
+      // ya se corrigió antes con "ruta"/"reposicion" sueltas.
+      "conectividad ruta","conectividad vial"],
     // "diagnostico" agregado 2026-09 (caso real: 5048-44-O126, "EST. BÁS:
     // DIAG. OFERTA-DEMANDA VIAL CORREDOR BIOCEÁNICO JAMA-SICO") — el título
     // matcheaba la keyword técnica "vial" pero quedaba fuera porque "EST."
@@ -206,7 +217,12 @@ const DIVISIONES_LEN = [
       // Ruta N-55, Pinto, Región de Ñuble"). Combinaciones de dos palabras
       // (ambas deben aparecer) para evitar falsos positivos de "ruta"/
       // "reposicion" sueltas.
-      "reposicion ruta","mejoramiento ruta","conservacion ruta","rehabilitacion ruta","reposicion camino"
+      "reposicion ruta","mejoramiento ruta","conservacion ruta","rehabilitacion ruta","reposicion camino",
+      // "conectividad ruta"/"conectividad vial" — ver nota igual en zonasur
+      // (caso real: 5048-59-O126, diagnóstico de conectividad Ruta 5 - Paso
+      // Mamuil Malal, MOP DGOP). "conectividad" sola NO se agrega — es un
+      // término de alto riesgo (conectividad digital/internet) ajeno a LEN.
+      "conectividad ruta","conectividad vial"
     ],
     // "diagnostico" agregado 2026-09 — mismo caso real y mismo razonamiento
     // que la nota en zonasur (5048-44-O126, "EST. BÁS: DIAG. OFERTA-DEMANDA
