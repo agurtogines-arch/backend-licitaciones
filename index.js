@@ -140,7 +140,26 @@ const DIVISIONES_LEN = [
       // riesgo (conectividad a internet/digital, telecomunicaciones rurales,
       // nada que ver con LEN) y generaría el mismo tipo de falso positivo que
       // ya se corrigió antes con "ruta"/"reposicion" sueltas.
-      "conectividad ruta","conectividad vial"],
+      "conectividad ruta","conectividad vial",
+      // "ruta" SOLA agregada 2026-09 tras revisar evidencia real: una
+      // muestra de 42 licitaciones activas con "ruta" en el título (vía
+      // /buscar?keywords=ruta) mostró 42/42 relacionadas a vialidad — ningún
+      // falso positivo real observado (ni "hoja de ruta" de minería/energía,
+      // ni "ruta crítica" de gestión, ni rutas de transporte/reparto). Antes
+      // se evitó deliberadamente por el riesgo teórico de esos casos, pero
+      // en la práctica no aparecen, y el costo de NO tenerla es más alto:
+      // dejaba fuera "EST. BAS. DIAGNÓSTICO CONECTIVIDAD RUTA 5..." y
+      // cualquier título futuro que mencione una ruta por número sin usar
+      // "vial"/"camino". Como palabra de 4 letras, ya queda protegida por
+      // el límite de palabra de matchDivKw (no matchea dentro de otra
+      // palabra), y de todos modos debe seguir pasando el filtro de
+      // servicio (estudio/consultoria/diagnostico/etc.) para no colar
+      // construcción u obra pura. Riesgo residual conocido y aceptado: un
+      // "Hoja de Ruta" de descarbonización (Energía/Minería) que además
+      // mencione un servicio (estudio/consultoría) podría aparecer también
+      // duplicado en Zona Sur/Infra — no es basura, pero sí una
+      // clasificación cruzada a vigilar si se repite.
+      "ruta"],
     // "diagnostico" agregado 2026-09 (caso real: 5048-44-O126, "EST. BÁS:
     // DIAG. OFERTA-DEMANDA VIAL CORREDOR BIOCEÁNICO JAMA-SICO") — el título
     // matcheaba la keyword técnica "vial" pero quedaba fuera porque "EST."
@@ -222,7 +241,10 @@ const DIVISIONES_LEN = [
       // (caso real: 5048-59-O126, diagnóstico de conectividad Ruta 5 - Paso
       // Mamuil Malal, MOP DGOP). "conectividad" sola NO se agrega — es un
       // término de alto riesgo (conectividad digital/internet) ajeno a LEN.
-      "conectividad ruta","conectividad vial"
+      "conectividad ruta","conectividad vial",
+      // "ruta" sola — ver nota igual en zonasur (evidencia real: 42/42
+      // licitaciones activas con "ruta" en el título eran de vialidad).
+      "ruta"
     ],
     // "diagnostico" agregado 2026-09 — mismo caso real y mismo razonamiento
     // que la nota en zonasur (5048-44-O126, "EST. BÁS: DIAG. OFERTA-DEMANDA
@@ -4569,6 +4591,25 @@ app.get("/mp/debug-clasificacion/:codigo", async (req, res) => {
       organismo
     );
 
+    // 7b. Consultar si la IA ya clasificó esta licitación (ia_clasificaciones)
+    // — antes este endpoint solo mostraba el camino de keywords, dejando a
+    // ciegas cualquier pregunta sobre "¿y la IA qué dijo?" (no se podía
+    // saber sin acceso directo a la base de datos). Es puramente de lectura,
+    // no cambia ningún comportamiento existente.
+    let clasificacionIA = null;
+    try {
+      const rIA = await fetch(
+        `${SUPABASE_URL}/rest/v1/ia_clasificaciones?codigo=eq.${encodeURIComponent(codigo)}&select=divisiones_ia,veredicto_ia,razon_ia,clasificado_en`,
+        { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(8000) }
+      );
+      if (rIA.ok) {
+        const filas = await rIA.json();
+        clasificacionIA = filas[0] || { sin_clasificar: true, nota: "Aún no ha sido clasificada por /mp/clasificar-pool-ia (pendiente de cupo diario, o el job no ha corrido desde su publicación)." };
+      }
+    } catch (e) {
+      clasificacionIA = { error: `No se pudo consultar ia_clasificaciones: ${e.message}` };
+    }
+
     // 8. Veredicto
     let veredicto;
     if (!enListado && detalle) {
@@ -4611,6 +4652,7 @@ app.get("/mp/debug-clasificacion/:codigo", async (req, res) => {
       },
       matches_por_division: matchesPorDivision,
       clasificacion_final_sistema: clasificacionFinal,
+      clasificacion_ia: clasificacionIA,
       veredicto
     });
   } catch (err) {
